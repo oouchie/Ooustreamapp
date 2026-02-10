@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Play button triangle — centered in safe zone (24-84) -->
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M40,30 L40,78 L76,54 Z"/>
+
+    <!-- Subtle inner highlight for depth -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M44,36 L44,72 L70,54 Z"/>
+</vector>

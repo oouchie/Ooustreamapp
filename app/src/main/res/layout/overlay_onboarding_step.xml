@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC000000">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="48dp">
+
+        <!-- Step indicator (e.g., "1 of 4") -->
+        <TextView
+            android:id="@+id/onboarding_step_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#9CA3AF"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Instruction icon/animation area -->
+        <ImageView
+            android:id="@+id/onboarding_icon"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginBottom="24dp"
+            android:tint="@color/brand_cyan"/>
+
+        <!-- Main instruction text -->
+        <TextView
+            android:id="@+id/onboarding_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Sub-instruction -->
+        <TextView
+            android:id="@+id/onboarding_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#9CA3AF"
+            android:textSize="16sp"
+            android:gravity="center"
+            android:layout_marginBottom="32dp"/>
+
+        <!-- Animated hint (pulsing) -->
+        <TextView
+            android:id="@+id/onboarding_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/focus_gold"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+
+    </LinearLayout>
+
+    <!-- Skip button -->
+    <TextView
+        android:id="@+id/onboarding_skip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="48dp"
+        android:padding="12dp"
+        android:text="Skip Tutorial"
+        android:textColor="#6B7280"
+        android:textSize="14sp"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:background="@android:color/transparent"/>
+
+</FrameLayout>

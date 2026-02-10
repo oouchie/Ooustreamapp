@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/section_card_root"
+    android:layout_width="280dp"
+    android:layout_height="140dp"
+    android:background="@drawable/bg_section_card_aurora"
+    android:clipToOutline="true"
+    android:clipChildren="false"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Gradient background layer -->
+    <View
+        android:id="@+id/section_gradient_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/section_icon"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                tools:ignore="ContentDescription" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/section_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="#B3FFFFFF"
+                tools:text="1,247 channels" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/section_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            tools:text="Live TV" />
+
+        <TextView
+            android:id="@+id/section_cta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp"
+            android:textColor="#99FFFFFF"
+            tools:text="Browse Channels &#8594;" />
+    </LinearLayout>
+
+    <!-- Accent bar at bottom -->
+    <View
+        android:id="@+id/section_accent_bar"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom" />
+</FrameLayout>

@@ -1,0 +1,47 @@
+package com.ooustream.iptv.player
+
+import androidx.media3.exoplayer.DefaultLoadControl
+import com.ooustream.iptv.common.QualityTier
+import com.ooustream.iptv.data.model.ContentType
+
+object BufferConfigs {
+    fun forContentType(type: ContentType): DefaultLoadControl = when (type) {
+        ContentType.LIVE -> DefaultLoadControl.Builder()
+            .setBufferDurationsMs(5_000, 15_000, 1_000, 1_500)
+            .build()
+        ContentType.VOD -> DefaultLoadControl.Builder()
+            .setBufferDurationsMs(25_000, 90_000, 2_000, 5_000)
+            .build()
+        ContentType.SERIES -> DefaultLoadControl.Builder()
+            .setBufferDurationsMs(20_000, 60_000, 1_500, 3_000)
+            .build()
+    }
+
+    fun forContentTypeAndQuality(type: ContentType, tier: QualityTier): DefaultLoadControl {
+        return when (tier) {
+            QualityTier.LOW -> {
+                // Conservative buffers for weak connections
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        if (type == ContentType.LIVE) 3_000 else 15_000,
+                        if (type == ContentType.LIVE) 8_000 else 45_000,
+                        1_000,
+                        if (type == ContentType.LIVE) 1_000 else 2_000
+                    )
+                    .build()
+            }
+            QualityTier.MEDIUM -> forContentType(type)
+            QualityTier.HIGH -> {
+                // Generous buffers — absorb any network hiccup
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        if (type == ContentType.LIVE) 8_000 else 40_000,
+                        if (type == ContentType.LIVE) 25_000 else 120_000,
+                        2_000,
+                        if (type == ContentType.LIVE) 2_000 else 5_000
+                    )
+                    .build()
+            }
+        }
+    }
+}

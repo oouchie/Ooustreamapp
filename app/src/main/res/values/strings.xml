@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ooustream</string>
+    <string name="default_server_url">https://flarecoral.com</string>
+
+    <!-- Sections -->
+    <string name="live_tv">Live TV</string>
+    <string name="movies">Movies</string>
+    <string name="series">Series</string>
+    <string name="favorites">Favorites</string>
+    <string name="search">Search</string>
+    <string name="settings">Settings</string>
+
+    <!-- Auth -->
+    <string name="server_url">Server URL</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="logging_in">Logging in…</string>
+    <string name="login_failed">Login failed</string>
+    <string name="invalid_credentials">Invalid username or password</string>
+    <string name="account_expired">Account expired</string>
+    <string name="logout">Logout</string>
+    <string name="logout_confirm">Are you sure you want to logout?</string>
+
+    <!-- Player -->
+    <string name="loading">Loading…</string>
+    <string name="error_stream">Unable to play stream</string>
+    <string name="retry">Retry</string>
+
+    <!-- Favorites -->
+    <string name="added_to_favorites">Added to Favorites</string>
+    <string name="removed_from_favorites">Removed from Favorites</string>
+    <string name="no_favorites">No favorites yet</string>
+
+    <!-- Parental Controls -->
+    <string name="parental_controls">Parental Controls</string>
+    <string name="parental_setup_desc">Create a 4-digit PIN to protect restricted content.</string>
+    <string name="parental_enter_pin_desc">Enter your 4-digit PIN to continue.</string>
+    <string name="parental_change_pin_desc">Enter your current PIN and a new 4-digit PIN.</string>
+    <string name="parental_new_pin">New PIN</string>
+    <string name="parental_current_pin">Current PIN</string>
+    <string name="parental_pin">PIN</string>
+    <string name="parental_set_pin">Set PIN</string>
+    <string name="parental_change_pin">Change PIN</string>
+    <string name="parental_unlock">Unlock</string>
+    <string name="parental_disable">Disable Parental Controls</string>
+    <string name="parental_enable">Enable Parental Controls</string>
+    <string name="parental_pin_set_success">Parental PIN set successfully</string>
+    <string name="parental_unlocked">Parental controls unlocked</string>
+    <string name="parental_pin_changed">PIN changed successfully</string>
+    <string name="parental_enabled">Parental controls enabled</string>
+    <string name="parental_disabled">Parental controls disabled</string>
+    <string name="parental_pin_must_be_4">PIN must be 4 digits</string>
+    <string name="parental_incorrect_pin">Current PIN is incorrect</string>
+    <string name="parental_too_many_attempts">Too many attempts. Try again in %ds</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_clear_cache">Clear Cache</string>
+    <string name="settings_clear_cache_confirm">This will clear all cached content data. Your favorites and watch history will be removed. Continue?</string>
+    <string name="settings_cache_cleared">Cache cleared</string>
+    <string name="settings_about">About</string>
+    <string name="settings_backup">Backup &amp; Restore</string>
+    <string name="settings_speed_test">Speed Test</string>
+    <string name="settings_update">Check for Updates</string>
+
+    <!-- Speed Test -->
+    <string name="speed_test_title">Speed Test</string>
+    <string name="speed_test_running">Testing…</string>
+    <string name="speed_test_ping">Ping</string>
+    <string name="speed_test_download">Download</string>
+    <string name="speed_test_rating">Rating</string>
+
+    <!-- Backup -->
+    <string name="backup_title">Backup &amp; Restore</string>
+    <string name="backup_export">Export Data</string>
+    <string name="backup_import">Import Data</string>
+    <string name="backup_clear_all">Clear All Data</string>
+    <string name="backup_success">Backup exported successfully</string>
+    <string name="backup_import_success">Data imported successfully</string>
+
+    <!-- Updates -->
+    <string name="update_title">Updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_available">Update available</string>
+    <string name="update_up_to_date">App is up to date</string>
+    <string name="update_downloading">Downloading update…</string>
+    <string name="update_install">Install Update</string>
+
+    <!-- Player -->
+    <string name="audio_track">Audio Track</string>
+    <string name="subtitles">Subtitles</string>
+    <string name="external_player">External Player</string>
+    <string name="external_player_failed">Failed to launch external player</string>
+    <string name="no_external_players">No external players found</string>
+
+    <!-- Hero / Home -->
+    <string name="watch_now">Watch Now</string>
+    <string name="featured">Featured</string>
+    <string name="resume">Resume</string>
+
+    <!-- Channel Zapping -->
+    <string name="channel_up">Channel Up</string>
+    <string name="channel_down">Channel Down</string>
+
+    <!-- Binge Mode -->
+    <string name="next_episode_in">Next episode in %ds</string>
+    <string name="watch_next">Watch Next</string>
+    <string name="binge_cancel">Stay on this episode</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Sleep Timer</string>
+    <string name="sleep_timer_set">Sleep timer: %d minutes</string>
+    <string name="sleep_timer_off">Sleep timer off</string>
+    <string name="sleep_timer_remaining">Sleep timer: %dm remaining</string>
+
+    <!-- Stream Stats -->
+    <string name="stream_stats">Stream Info</string>
+
+    <!-- Remote Hints -->
+    <string name="hint_player_live">UP/DOWN: Channels \u2022 OK: Controls \u2022 BACK: Exit</string>
+    <string name="hint_player_vod">LEFT/RIGHT: Seek \u2022 OK: Controls \u2022 BACK: Exit</string>
+    <string name="hint_browse">OK: Select \u2022 BACK: Home</string>
+
+    <!-- Crash Recovery -->
+    <string name="restoring_playback">Restoring playback…</string>
+
+    <!-- Series Detail -->
+    <string name="rating_format">\u2605 %.1f</string>
+
+    <!-- General -->
+    <string name="error_network">Network error. Check your connection.</string>
+    <string name="error_general">Something went wrong</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="all">All</string>
+    <string name="recently_added">Recently Added</string>
+    <string name="continue_watching">Continue Watching</string>
+    <string name="for_you">For You</string>
+</resources>

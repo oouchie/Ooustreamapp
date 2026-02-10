@@ -1,0 +1,215 @@
+package com.ooustream.iptv.settings
+
+import android.os.Bundle
+import android.view.View
+import android.widget.Toast
+import androidx.fragment.app.viewModels
+import androidx.leanback.app.GuidedStepSupportFragment
+import androidx.leanback.widget.GuidanceStylist
+import androidx.leanback.widget.GuidedAction
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.ooustream.iptv.BuildConfig
+import com.ooustream.iptv.MainActivity
+import com.ooustream.iptv.R
+import com.ooustream.iptv.account.AccountDashboardFragment
+import com.ooustream.iptv.backup.BackupFragment
+import com.ooustream.iptv.parental.ParentalPinFragment
+import com.ooustream.iptv.speedtest.SpeedTestFragment
+import com.ooustream.iptv.update.UpdateFragment
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+
+@AndroidEntryPoint
+class SettingsFragment : GuidedStepSupportFragment() {
+
+    companion object {
+        private const val ACTION_ACCOUNT = 1L
+        private const val ACTION_PARENTAL = 2L
+        private const val ACTION_BACKUP = 3L
+        private const val ACTION_SPEED_TEST = 4L
+        private const val ACTION_UPDATE = 5L
+        private const val ACTION_CLEAR_CACHE = 6L
+        private const val ACTION_ABOUT = 7L
+        private const val ACTION_LOGOUT = 8L
+    }
+
+    private val viewModel: SettingsViewModel by viewModels()
+
+    // region Guidance
+
+    override fun onCreateGuidance(savedInstanceState: Bundle?): GuidanceStylist.Guidance {
+        return GuidanceStylist.Guidance(
+            "Settings",
+            "Manage your Ooustream account and preferences",
+            "",
+            null
+        )
+    }
+
+    // endregion
+
+    // region Actions
+
+    override fun onCreateActions(actions: MutableList<GuidedAction>, savedInstanceState: Bundle?) {
+        // Account Dashboard
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_ACCOUNT)
+                .title("Account")
+                .description("${viewModel.getUsername()} \u2022 View subscription details")
+                .build()
+        )
+
+        // Parental Controls
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_PARENTAL)
+                .title("Parental Controls")
+                .description("Manage PIN and content restrictions")
+                .build()
+        )
+
+        // Backup & Restore
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_BACKUP)
+                .title("Backup & Restore")
+                .description("Export or import your data")
+                .build()
+        )
+
+        // Speed Test
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_SPEED_TEST)
+                .title("Speed Test")
+                .description("Test your connection speed")
+                .build()
+        )
+
+        // Check for Updates
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_UPDATE)
+                .title("Check for Updates")
+                .description("Current version: ${BuildConfig.VERSION_NAME}")
+                .build()
+        )
+
+        // Clear Cache
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_CLEAR_CACHE)
+                .title("Clear Cache")
+                .description("Clear all cached data")
+                .build()
+        )
+
+        // About (non-actionable)
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_ABOUT)
+                .title("About")
+                .description("Ooustream v${BuildConfig.VERSION_NAME}")
+                .focusable(false)
+                .build()
+        )
+
+        // Logout
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_LOGOUT)
+                .title("Logout")
+                .description("Sign out of your account")
+                .build()
+        )
+    }
+
+    override fun onGuidedActionClicked(action: GuidedAction) {
+        when (action.id) {
+            ACTION_ACCOUNT -> navigateToFragment(AccountDashboardFragment())
+            ACTION_PARENTAL -> navigateToFragment(ParentalPinFragment())
+            ACTION_BACKUP -> navigateToFragment(BackupFragment())
+            ACTION_SPEED_TEST -> navigateToFragment(SpeedTestFragment())
+            ACTION_UPDATE -> navigateToFragment(UpdateFragment())
+            ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
+            ACTION_LOGOUT -> showLogoutConfirmation()
+        }
+    }
+
+    // endregion
+
+    // region State Observation
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        observeEvents()
+    }
+
+    private fun observeEvents() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.event.collect { event ->
+                        when (event) {
+                            is SettingsViewModel.SettingsEvent.LoggedOut -> {
+                                (activity as? MainActivity)?.navigateToLogin()
+                            }
+                            is SettingsViewModel.SettingsEvent.CacheCleared -> {
+                                Toast.makeText(requireContext(), "Cache cleared", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+                launch {
+                    viewModel.error.collect { message ->
+                        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // endregion
+
+    // region Navigation
+
+    private fun navigateToFragment(fragment: androidx.fragment.app.Fragment) {
+        requireActivity().supportFragmentManager.beginTransaction()
+            .replace(R.id.main_container, fragment)
+            .addToBackStack(null)
+            .commit()
+    }
+
+    // endregion
+
+    // region Confirmation Dialogs
+
+    private fun showClearCacheConfirmation() {
+        add(
+            parentFragmentManager,
+            SettingsConfirmFragment.newInstance(
+                title = "Clear Cache?",
+                message = "This will clear all cached content data. Your favorites, watch history, and EPG cache will be removed. Continue?",
+                confirmLabel = "Clear",
+                onConfirm = { viewModel.clearCache() }
+            )
+        )
+    }
+
+    private fun showLogoutConfirmation() {
+        add(
+            parentFragmentManager,
+            SettingsConfirmFragment.newInstance(
+                title = "Logout?",
+                message = "Are you sure you want to sign out of your account?",
+                confirmLabel = "Logout",
+                onConfirm = { viewModel.logout() }
+            )
+        )
+    }
+
+    // endregion
+}

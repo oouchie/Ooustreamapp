@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="brand_cyan">#00B4D8</color>
+    <color name="brand_blue">#0077B6</color>
+    <color name="focus_gold">#FFC107</color>
+
+    <!-- Backgrounds -->
+    <color name="background">#0A0A0A</color>
+    <color name="card_bg">#1A2332</color>
+    <color name="card_elevated">#1E2D3D</color>
+    <color name="card_focused_border">#3300B4D8</color>
+    <color name="input_bg">#1A2332</color>
+    <color name="surface">#111827</color>
+
+    <!-- Section Accent Colors -->
+    <color name="live_blue">#0088E6</color>
+    <color name="movies_purple">#8B5CF6</color>
+    <color name="series_amber">#F59E0B</color>
+    <color name="favorites_red">#EF4444</color>
+    <color name="success_green">#10B981</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9CA3AF</color>
+    <color name="text_muted">#6B7280</color>
+
+    <!-- Status -->
+    <color name="error">#EF4444</color>
+    <color name="warning">#F59E0B</color>
+
+    <!-- Misc -->
+    <color name="transparent">#00000000</color>
+    <color name="overlay_dark">#B3000000</color>
+    <color name="overlay_deep">#E60A0A0A</color>
+    <color name="settings_gray">#9CA3AF</color>
+
+    <!-- Aurora Cinema Background System -->
+    <color name="aurora_bg_deep">#FF050508</color>
+    <color name="aurora_bg_base">#FF0A0A0F</color>
+    <color name="aurora_bg_elevated">#FF12121A</color>
+    <color name="aurora_bg_card">#FF1A1A24</color>
+    <color name="aurora_glass">#14FFFFFF</color>
+    <color name="aurora_glass_border">#14FFFFFF</color>
+
+    <!-- Gold Focus System -->
+    <color name="focus_gold_glow">#4DFFC107</color>
+    <color name="focus_gold_soft">#1AFFC107</color>
+
+    <!-- Content Type Gradients -->
+    <color name="live_blue_start">#FF0D47A1</color>
+    <color name="live_blue_end">#FF1976D2</color>
+    <color name="movie_purple_start">#FF4A148C</color>
+    <color name="movie_purple_end">#FF9C27B0</color>
+    <color name="series_amber_start">#FFE65100</color>
+    <color name="series_amber_end">#FFFB8C00</color>
+    <color name="search_green_start">#FF1B5E20</color>
+    <color name="search_green_end">#FF43A047</color>
+
+    <!-- Text accent -->
+    <color name="text_accent">#FFFFC107</color>
+
+    <!-- Status Badges -->
+    <color name="badge_live">#FFEF4444</color>
+    <color name="badge_new">#FF10B981</color>
+
+    <!-- Ambient Aurora -->
+    <color name="aurora_blue_tint">#FF0A1628</color>
+    <color name="aurora_purple_tint">#FF12081F</color>
+    <color name="aurora_teal_tint">#FF081A1A</color>
+</resources>

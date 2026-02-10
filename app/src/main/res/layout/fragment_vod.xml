@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/aurora_bg_deep">
+
+    <!-- Layer 0: Aurora atmospheric background -->
+    <View
+        android:id="@+id/aurora_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Layer 1: Main Content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/overscan_margin"
+        android:paddingEnd="@dimen/overscan_margin"
+        android:paddingBottom="@dimen/overscan_margin"
+        android:paddingTop="56dp">
+
+        <!-- 2-Panel Content -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <!-- Categories Sidebar (25%) - Glass Card -->
+            <LinearLayout
+                android:id="@+id/vod_sidebar"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="25"
+                android:orientation="vertical"
+                android:background="@drawable/bg_glass_panel"
+                android:padding="6dp"
+                android:layout_marginEnd="8dp"
+                android:clipToPadding="false"
+                android:clipChildren="false">
+
+                <EditText
+                    android:id="@+id/vod_category_search"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="4dp"
+                    android:background="@drawable/bg_input_rounded"
+                    android:hint="Search"
+                    android:textColorHint="@color/text_muted"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:paddingHorizontal="12dp"
+                    android:singleLine="true"
+                    android:inputType="text"
+                    android:visibility="gone" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/vod_categories_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false" />
+            </LinearLayout>
+
+            <!-- Content Area (75%) -->
+            <androidx.leanback.widget.VerticalGridView
+                android:id="@+id/vod_grid"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="75"
+                android:clipToPadding="false"
+                android:clipChildren="false" />
+        </LinearLayout>
+
+        <!-- Navigation Hints - Aurora styled -->
+        <TextView
+            android:id="@+id/vod_nav_hints"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_nav_hints_aurora"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="16dp"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- Layer 2: Frosted Glass Header -->
+    <LinearLayout
+        android:id="@+id/frosted_header"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="@dimen/overscan_margin"
+        android:paddingEnd="@dimen/overscan_margin"
+        android:background="@drawable/bg_livetv_header">
+
+        <ImageView
+            android:id="@+id/header_logo"
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/logo_full"
+            android:contentDescription="@string/app_name" />
+
+        <TextView
+            android:id="@+id/header_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:id="@+id/header_center_logo"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:adjustViewBounds="true"
+            android:scaleType="center"
+            android:src="@drawable/logo_full"
+            android:contentDescription="@string/app_name" />
+
+        <TextClock
+            android:id="@+id/header_clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:format12Hour="hh:mm a"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/header_search_input"
+            android:layout_width="0dp"
+            android:layout_height="30dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_input_rounded"
+            android:hint="Search movies..."
+            android:textColorHint="@color/text_muted"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:paddingHorizontal="12dp"
+            android:singleLine="true"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/header_search_icon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="12dp"
+            android:padding="2dp"
+            android:src="@drawable/ic_search"
+            android:scaleType="centerInside"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true"
+            android:contentDescription="Search"
+            android:nextFocusDown="@+id/vod_grid" />
+    </LinearLayout>
+</FrameLayout>

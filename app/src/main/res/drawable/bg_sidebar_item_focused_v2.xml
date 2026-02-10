@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sidebar item focused state: stronger gold gradient + gold border -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#20FFC107"
+                android:endColor="@android:color/transparent"
+                android:angle="0" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item android:width="3dp" android:gravity="start">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/focus_gold" />
+            <corners
+                android:topLeftRadius="8dp"
+                android:bottomLeftRadius="8dp" />
+        </shape>
+    </item>
+</layer-list>

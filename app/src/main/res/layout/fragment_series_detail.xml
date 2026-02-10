@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <!-- Backdrop image (full width, behind everything) -->
+    <ImageView
+        android:id="@+id/series_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.3"
+        android:contentDescription="@null" />
+
+    <!-- Gradient overlay on backdrop -->
+    <View
+        android:id="@+id/backdrop_gradient"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/gradient_series_backdrop" />
+
+    <!-- Main content: scrollable vertical layout -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/content_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:focusable="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Top: Cover + Metadata (compact, fixed height) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="40dp"
+                android:paddingEnd="40dp"
+                android:paddingTop="24dp"
+                android:paddingBottom="12dp"
+                android:gravity="top">
+
+                <!-- Cover poster -->
+                <ImageView
+                    android:id="@+id/series_cover"
+                    android:layout_width="100dp"
+                    android:layout_height="150dp"
+                    android:scaleType="centerCrop"
+                    android:background="@color/card_bg"
+                    android:contentDescription="@null" />
+
+                <!-- Series metadata -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingStart="20dp">
+
+                    <TextView
+                        android:id="@+id/series_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        tools:text="Breaking Bad" />
+
+                    <!-- Rating + Genre + Year row -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/series_rating"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/focus_gold"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:visibility="gone"
+                            tools:text="★ 9.5"
+                            tools:visibility="visible" />
+
+                        <TextView
+                            android:id="@+id/series_genre"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp"
+                            android:layout_marginStart="10dp"
+                            android:visibility="gone"
+                            tools:text="Drama, Crime"
+                            tools:visibility="visible" />
+
+                        <TextView
+                            android:id="@+id/series_release"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_muted"
+                            android:textSize="12sp"
+                            android:layout_marginStart="10dp"
+                            android:visibility="gone"
+                            tools:text="2008"
+                            tools:visibility="visible" />
+                    </LinearLayout>
+
+                    <!-- Cast -->
+                    <TextView
+                        android:id="@+id/series_cast"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:layout_marginTop="4dp"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:visibility="gone"
+                        tools:text="Bryan Cranston, Aaron Paul"
+                        tools:visibility="visible" />
+
+                    <!-- Plot -->
+                    <TextView
+                        android:id="@+id/series_plot"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginTop="4dp"
+                        android:maxLines="2"
+                        android:ellipsize="end"
+                        android:lineSpacingMultiplier="1.2"
+                        android:visibility="gone"
+                        tools:text="A chemistry teacher teams up with a former student." />
+
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Seasons horizontal tabs -->
+            <TextView
+                android:id="@+id/seasons_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Seasons"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginStart="40dp"
+                android:layout_marginTop="4dp"
+                android:visibility="gone" />
+
+            <androidx.leanback.widget.HorizontalGridView
+                android:id="@+id/seasons_row"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:paddingStart="40dp"
+                android:paddingEnd="40dp"
+                android:clipToPadding="false"
+                android:visibility="gone" />
+
+            <!-- Episodes label -->
+            <TextView
+                android:id="@+id/episodes_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Episodes"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginStart="40dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <!-- Episodes list (fully expanded inside scroll view) -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/episodes_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:layout_marginTop="8dp"
+                android:paddingStart="40dp"
+                android:paddingEnd="40dp"
+                android:paddingBottom="24dp"
+                android:clipToPadding="false"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:visibility="gone" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Loading indicator -->
+    <ProgressBar
+        android:id="@+id/loading_indicator"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/focus_gold"
+        android:visibility="gone" />
+
+</FrameLayout>

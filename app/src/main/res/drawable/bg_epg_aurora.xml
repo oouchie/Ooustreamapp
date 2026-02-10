@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Aurora EPG panel background -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FF0E0E16" />
+    <stroke
+        android:width="1dp"
+        android:color="#14FFFFFF" />
+    <corners android:radius="10dp" />
+</shape>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/category_root"
+    android:layout_width="match_parent"
+    android:layout_height="42dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="10dp"
+    android:paddingEnd="12dp"
+    android:layout_marginBottom="2dp"
+    android:background="@drawable/bg_category_aurora"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Emoji icon (replaces ImageView) -->
+    <TextView
+        android:id="@+id/category_emoji"
+        android:layout_width="22dp"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginEnd="8dp" />
+
+    <!-- Keep old ImageView for backward compat but hidden -->
+    <ImageView
+        android:id="@+id/category_icon"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Category name -->
+    <TextView
+        android:id="@+id/category_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Count badge with glass pill -->
+    <TextView
+        android:id="@+id/category_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_muted"
+        android:textSize="10sp"
+        android:background="@drawable/bg_sidebar_count_pill"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp" />
+</LinearLayout>

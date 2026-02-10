@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0A">
+
+    <!-- Centered login card -->
+    <LinearLayout
+        android:layout_width="480dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:background="@drawable/bg_login_card"
+        android:padding="40dp">
+
+        <!-- Logo -->
+        <ImageView
+            android:id="@+id/logoImage"
+            android:layout_width="wrap_content"
+            android:layout_height="72dp"
+            android:layout_gravity="center_horizontal"
+            android:adjustViewBounds="true"
+            android:src="@drawable/logo_full"
+            android:contentDescription="@string/app_name" />
+
+        <!-- Subtitle -->
+        <TextView
+            android:id="@+id/subtitleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Sign in to your account"
+            android:textColor="#9CA3AF"
+            android:textSize="14sp" />
+
+        <!-- Username -->
+        <EditText
+            android:id="@+id/usernameInput"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/bg_input_rounded"
+            android:hint="@string/username"
+            android:textColorHint="#6B7280"
+            android:textColor="#F9FAFB"
+            android:textSize="14sp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:singleLine="true"
+            android:inputType="text"
+            android:imeOptions="actionNext"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusDown="@+id/passwordInput" />
+
+        <!-- Password -->
+        <EditText
+            android:id="@+id/passwordInput"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_input_rounded"
+            android:hint="@string/password"
+            android:textColorHint="#6B7280"
+            android:textColor="#F9FAFB"
+            android:textSize="14sp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:singleLine="true"
+            android:inputType="textPassword"
+            android:imeOptions="actionDone"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@+id/usernameInput"
+            android:nextFocusDown="@+id/loginButton" />
+
+        <!-- Login Button -->
+        <Button
+            android:id="@+id/loginButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/bg_brand_gradient"
+            android:text="Sign In"
+            android:textColor="#F9FAFB"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:gravity="center"
+            android:focusable="true"
+            android:nextFocusUp="@+id/passwordInput" />
+
+        <!-- Status / Error text -->
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="12dp"
+            android:textSize="13sp"
+            android:textColor="#9CA3AF"
+            android:visibility="gone"
+            tools:text="Signing in..."
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+</FrameLayout>

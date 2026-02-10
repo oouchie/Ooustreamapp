@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/poster_root"
+    android:layout_width="160dp"
+    android:layout_height="240dp"
+    android:background="@drawable/bg_poster_card_aurora"
+    android:clipToOutline="true"
+    android:clipChildren="true"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Poster image -->
+    <ImageView
+        android:id="@+id/poster_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:background="@color/aurora_bg_elevated"
+        tools:ignore="ContentDescription" />
+
+    <!-- Bottom gradient for title readability (bottom 60%) -->
+    <View
+        android:id="@+id/gradient_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="144dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_poster_aurora" />
+
+    <!-- Quality badge (top-right) -->
+    <TextView
+        android:id="@+id/poster_quality_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.05"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:visibility="gone"
+        tools:text="4K"
+        tools:visibility="visible" />
+
+    <!-- Bottom info overlay -->
+    <LinearLayout
+        android:id="@+id/poster_info_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/poster_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="4" />
+
+        <!-- Rating (gold) -->
+        <TextView
+            android:id="@+id/poster_rating"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/focus_gold"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="4"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>
