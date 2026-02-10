@@ -23,7 +23,7 @@ class UpdateService @Inject constructor(
 ) {
 
     companion object {
-        const val DEFAULT_MANIFEST_URL = "https://flarecoral.com/ooustream/update.json"
+        const val DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/oouchie/Ooustreamapp/main/update.json"
         private const val APK_FILE_NAME = "update.apk"
         private const val FILE_PROVIDER_AUTHORITY = "com.ooustream.iptv.fileprovider"
     }
