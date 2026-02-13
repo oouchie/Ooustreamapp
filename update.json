@@ -1,7 +1,7 @@
 {
-  "version_name": "2.0.0",
-  "version_code": 2,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.0.0/ooustream-v2.0.0.apk",
-  "changelog": "v2.0.0 - Major Update\n\n• Aurora Cinema design with gold focus effects\n• Movie & Series detail pages with artwork, ratings, and plot info\n• Binge Watch with auto next-episode for series\n• Quality badges on all movies (4K/FHD/HD/CAM/SD)\n• New Releases virtual category\n• Quick-Access Sidebar (DPAD Left)\n• For You personalized recommendations\n• FTS4 full-text search with autocomplete\n• Picture-in-Picture mode\n• Audio-Only mode for music/radio\n• Live channel preview on focus\n• Adaptive buffer control (3 network tiers)\n• Smart category ordering based on watch habits\n• Audio feedback for D-pad navigation\n• Subscription status dashboard\n• Deep link support (ooustream:// scheme)\n• Onboarding tutorial for new users",
+  "version_name": "2.1.0",
+  "version_code": 3,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.0/app-release.apk",
+  "changelog": "v2.1.0\n\n• Audio & Subtitle Track Picker — slide-in panel for switching audio/subtitle tracks\n• Trending Series row on Home screen\n• D-pad seek fix — Left/Right seeks on progress bar, navigates on action buttons\n• Track picker always shows available tracks with Default/Off fallbacks\n• App name updated to Ooustream IPTV\n• Bug fixes and performance improvements",
   "mandatory": false
 }
