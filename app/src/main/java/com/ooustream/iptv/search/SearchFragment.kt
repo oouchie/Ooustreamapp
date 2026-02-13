@@ -2,6 +2,8 @@ package com.ooustream.iptv.search
 
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.fragment.app.viewModels
 import androidx.leanback.app.SearchSupportFragment
 import androidx.leanback.widget.ArrayObjectAdapter
@@ -10,6 +12,7 @@ import androidx.leanback.widget.ListRow
 import androidx.leanback.widget.ListRowPresenter
 import androidx.leanback.widget.ObjectAdapter
 import androidx.leanback.widget.OnItemViewClickedListener
+import androidx.leanback.widget.Presenter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -115,6 +118,14 @@ class SearchFragment : SearchSupportFragment(), SearchSupportFragment.SearchResu
     private fun displaySearchResults(results: com.ooustream.iptv.data.repository.SearchResults) {
         rowsAdapter.clear()
 
+        // Empty state
+        if (results.live.isEmpty() && results.vod.isEmpty() && results.series.isEmpty()) {
+            val emptyAdapter = ArrayObjectAdapter(EmptyResultPresenter())
+            emptyAdapter.add(getString(R.string.no_results))
+            rowsAdapter.add(ListRow(HeaderItem("Search Results"), emptyAdapter))
+            return
+        }
+
         // Live TV row
         if (results.live.isNotEmpty()) {
             val liveAdapter = ArrayObjectAdapter(ChannelPresenter())
@@ -181,5 +192,22 @@ class SearchFragment : SearchSupportFragment(), SearchSupportFragment.SearchResu
     override fun onQueryTextSubmit(query: String): Boolean {
         viewModel.search(query)
         return true
+    }
+
+    /** Simple presenter for "No results found" empty state. */
+    private class EmptyResultPresenter : Presenter() {
+        override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
+            val tv = TextView(parent.context).apply {
+                setPadding(48, 32, 48, 32)
+                textSize = 18f
+                setTextColor(0xFFAAAAAA.toInt())
+                isFocusable = false
+            }
+            return ViewHolder(tv)
+        }
+        override fun onBindViewHolder(viewHolder: ViewHolder, item: Any) {
+            (viewHolder.view as TextView).text = item as String
+        }
+        override fun onUnbindViewHolder(viewHolder: ViewHolder) {}
     }
 }

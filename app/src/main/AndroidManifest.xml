@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Fire TV compatibility: all hardware features optional -->
     <uses-feature android:name="android.software.leanback" android:required="false"/>
@@ -16,6 +17,7 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
@@ -31,7 +33,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|layoutDirection|screenLayout|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -56,6 +57,18 @@
                 android:name="android.app.searchable"
                 android:resource="@xml/searchable"/>
         </activity>
+
+        <!-- Disable default WorkManager initializer — using Hilt-managed Configuration.Provider -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <!-- FileProvider for sharing APK files with the system package installer -->
         <provider

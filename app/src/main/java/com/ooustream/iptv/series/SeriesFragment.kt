@@ -24,19 +24,28 @@ import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.CategoryEmoji
 import com.ooustream.iptv.common.CategoryItem
+import com.ooustream.iptv.common.CategoryListAdapter
+import com.ooustream.iptv.common.ContentInfoHelper
 import com.ooustream.iptv.common.PosterItem
 import com.ooustream.iptv.common.PosterPresenter
 import com.ooustream.iptv.common.PosterSkeletonPresenter
+import com.ooustream.iptv.data.repository.ContentRepository
 import android.widget.Toast
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class SeriesFragment : Fragment(), KeyEventHandler {
 
+    @Inject lateinit var contentRepository: ContentRepository
+
     private val viewModel: SeriesViewModel by viewModels()
+    private var contentInfoHelper: ContentInfoHelper? = null
     private var searchFilter = ""
+    private var searchOpen = false
     private var filteredSeries: List<com.ooustream.iptv.data.model.Series> = emptyList()
+    private var categoryAdapter: CategoryListAdapter? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_series, container, false)
@@ -61,9 +70,32 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
-        navHints.text = "OK: Series Detail \u2022 Long-press: Favorite \u2022 Back: Home"
+        navHints.text = "OK: Series Detail \u2022 Long-press: More Info \u2022 Back: Home"
+
+        // Content info overlay for long-press
+        val infoHelper = ContentInfoHelper(this, contentRepository) { item ->
+            val series = filteredSeries.find { it.seriesId == item.id } ?: return@ContentInfoHelper
+            val fragment = SeriesDetailFragment.newInstance(series.seriesId, series.name)
+            requireActivity().supportFragmentManager.beginTransaction()
+                .replace(R.id.main_container, fragment)
+                .addToBackStack(null)
+                .commit()
+        }
+        infoHelper.attach(view as ViewGroup)
+        infoHelper.setOnFavorite { item ->
+            val series = filteredSeries.find { it.seriesId == item.id }
+            if (series != null) viewModel.toggleFavorite(series)
+        }
+        contentInfoHelper = infoHelper
 
         categoriesList.layoutManager = LinearLayoutManager(requireContext())
+        categoriesList.setHasFixedSize(true)
+        categoriesList.setItemViewCacheSize(20)
+        categoryAdapter = CategoryListAdapter { cat ->
+            viewModel.selectCategory(cat.id)
+            updateCategoryList(categoriesList)
+        }
+        categoriesList.adapter = categoryAdapter
 
         posterGrid.setNumColumns(5)
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())
@@ -91,7 +123,15 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                 viewHolder.itemView.setOnLongClickListener {
                     val pos = viewHolder.adapterPosition
                     if (pos >= 0 && pos < filteredSeries.size) {
-                        viewModel.toggleFavorite(filteredSeries[pos])
+                        val s = filteredSeries[pos]
+                        contentInfoHelper?.onLongPress?.invoke(PosterItem(
+                            id = s.seriesId,
+                            title = s.name,
+                            imageUrl = s.cover,
+                            rating = s.rating,
+                            extension = null,
+                            type = "series"
+                        ))
                     }
                     true
                 }
@@ -116,7 +156,6 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         }
 
         // Header search icon toggle
-        var searchOpen = false
         headerSearchIcon.setOnClickListener {
             searchOpen = !searchOpen
             if (searchOpen) {
@@ -147,7 +186,13 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.categories.collect { updateCategoryList(categoriesList) }
+                viewModel.categories.collect {
+                    updateCategoryList(categoriesList)
+                    if (viewModel.savedCategoryPosition >= 0) {
+                        categoriesList.scrollToPosition(viewModel.savedCategoryPosition)
+                        viewModel.savedCategoryPosition = -1
+                    }
+                }
             }
         }
 
@@ -158,8 +203,12 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                     // Swap from skeleton to real adapter on first data arrival
                     if (!skeletonSwapped && series.isNotEmpty()) {
                         posterGrid.adapter = posterBridgeAdapter
-                        posterGrid.selectedPosition = 0
                         skeletonSwapped = true
+                        val restorePos = viewModel.savedGridPosition
+                        posterGrid.post {
+                            posterGrid.selectedPosition = if (restorePos >= 0) restorePos else 0
+                            viewModel.savedGridPosition = -1
+                        }
                     }
                 }
             }
@@ -209,60 +258,42 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         if (searchFilter.isEmpty() || "recently added".contains(searchFilter)) virtualCats.add(recentlyAddedCat)
         val cats = virtualCats + apiCats
 
-        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_category, parent, false)
-                return object : RecyclerView.ViewHolder(view) {}
-            }
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val cat = cats[position]
-                val root = holder.itemView as android.widget.LinearLayout
-                val name = root.findViewById<android.widget.TextView>(R.id.category_name)
-                val count = root.findViewById<android.widget.TextView>(R.id.category_count)
-                val emoji = root.findViewById<android.widget.TextView>(R.id.category_emoji)
-                name.text = cat.name
-                count.text = if (cat.count > 0) cat.count.toString() else ""
-                emoji.text = CategoryEmoji.get(cat.name)
-
-                // Special category colored emoji
-                when (cat.id) {
-                    SeriesViewModel.FAVORITES_ID -> emoji.setTextColor(0xFFEF4444.toInt())
-                    SeriesViewModel.RECENTLY_ADDED_ID -> emoji.setTextColor(0xFF10B981.toInt())
-                    else -> emoji.setTextColor(0xFFFFFFFF.toInt())
-                }
-
-                val isSelected = viewModel.selectedCategoryId.value == cat.id
-                if (isSelected) {
-                    root.setBackgroundResource(R.drawable.bg_sidebar_item_active)
-                    name.setTextColor(0xFFFFC107.toInt())
-                } else {
-                    root.setBackgroundResource(R.drawable.bg_category_aurora)
-                    name.setTextColor(0xFF9CA3AF.toInt())
-                }
-                root.setOnFocusChangeListener { v, hasFocus ->
-                    if (hasFocus) {
-                        v.setBackgroundResource(R.drawable.bg_sidebar_item_focused_v2)
-                        v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(150).start()
-                        name.setTextColor(0xFFFFC107.toInt())
-                    } else {
-                        if (isSelected) {
-                            v.setBackgroundResource(R.drawable.bg_sidebar_item_active)
-                            name.setTextColor(0xFFFFC107.toInt())
-                        } else {
-                            v.setBackgroundResource(R.drawable.bg_category_aurora)
-                            name.setTextColor(0xFF9CA3AF.toInt())
-                        }
-                        v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
-                    }
-                }
-                holder.itemView.setOnClickListener {
-                    viewModel.selectCategory(cat.id)
-                    notifyDataSetChanged()
-                }
-            }
-            override fun getItemCount() = cats.size
-        }
+        val emojiColors = mapOf(
+            SeriesViewModel.FAVORITES_ID to 0xFFEF4444.toInt(),
+            SeriesViewModel.RECENTLY_ADDED_ID to 0xFF10B981.toInt()
+        )
+        categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
     }
 
-    override fun onKeyEvent(keyCode: Int): Boolean = false
+    override fun onDestroyView() {
+        // Save focus positions for restoration on back navigation
+        view?.findViewById<VerticalGridView>(R.id.series_grid)?.let {
+            viewModel.savedGridPosition = it.selectedPosition
+        }
+        view?.findViewById<RecyclerView>(R.id.series_categories_list)?.let {
+            viewModel.savedCategoryPosition =
+                (it.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: -1
+        }
+        super.onDestroyView()
+    }
+
+    override fun onKeyEvent(keyCode: Int): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK && searchOpen) {
+            closeSearch()
+            return true
+        }
+        return false
+    }
+
+    private fun closeSearch() {
+        searchOpen = false
+        val v = view ?: return
+        v.findViewById<EditText>(R.id.header_search_input)?.let {
+            it.setText("")
+            it.visibility = View.GONE
+        }
+        v.findViewById<TextView>(R.id.header_title)?.visibility = View.VISIBLE
+        v.findViewById<android.widget.TextClock>(R.id.header_clock)?.visibility = View.VISIBLE
+        v.findViewById<ImageView>(R.id.header_center_logo)?.visibility = View.VISIBLE
+    }
 }

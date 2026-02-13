@@ -47,6 +47,10 @@
     <color name="focus_gold_glow">#4DFFC107</color>
     <color name="focus_gold_soft">#1AFFC107</color>
 
+    <!-- Playback Controls -->
+    <color name="playback_progress_buffered">#33FFC107</color>
+    <color name="playback_scrim_end">#E6050508</color>
+
     <!-- Content Type Gradients -->
     <color name="live_blue_start">#FF0D47A1</color>
     <color name="live_blue_end">#FF1976D2</color>

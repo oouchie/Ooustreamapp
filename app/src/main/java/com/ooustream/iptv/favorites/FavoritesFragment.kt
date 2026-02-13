@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.viewModels
 import androidx.leanback.app.RowsSupportFragment
 import androidx.leanback.widget.ArrayObjectAdapter
@@ -55,22 +56,48 @@ class FavoritesFragment : RowsSupportFragment() {
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
         adapter = rowsAdapter
 
+        // Removable presenters: add long-press → remove confirmation
+        val removablePoster = RemovablePosterPresenter { item ->
+            confirmRemove(item.title, item.id.toString())
+        }
+        val removableChannel = RemovableChannelPresenter { channel ->
+            confirmRemove(channel.name, channel.streamId.toString())
+        }
+
         // The "All Favorites" row uses a ClassPresenterSelector so it can display
         // both LiveStream items (via ChannelPresenter) and PosterItem items
         // (via PosterPresenter) in the same horizontal list.
         val mixedSelector = ClassPresenterSelector().apply {
-            addClassPresenter(LiveStream::class.java, ChannelPresenter())
-            addClassPresenter(PosterItem::class.java, PosterPresenter())
+            addClassPresenter(LiveStream::class.java, RemovableChannelPresenter { channel ->
+                confirmRemove(channel.name, channel.streamId.toString())
+            })
+            addClassPresenter(PosterItem::class.java, RemovablePosterPresenter { item ->
+                confirmRemove(item.title, item.id.toString())
+            })
         }
         allAdapter = ArrayObjectAdapter(mixedSelector)
-        liveAdapter = ArrayObjectAdapter(ChannelPresenter())
-        vodAdapter = ArrayObjectAdapter(PosterPresenter())
-        seriesAdapter = ArrayObjectAdapter(PosterPresenter())
+        liveAdapter = ArrayObjectAdapter(removableChannel)
+        vodAdapter = ArrayObjectAdapter(removablePoster)
+        seriesAdapter = ArrayObjectAdapter(RemovablePosterPresenter { item ->
+            confirmRemove(item.title, item.id.toString())
+        })
 
         rowsAdapter.add(ListRow(HeaderItem(0, "All Favorites"), allAdapter))
         rowsAdapter.add(ListRow(HeaderItem(1, "Live TV"), liveAdapter))
         rowsAdapter.add(ListRow(HeaderItem(2, "Movies"), vodAdapter))
         rowsAdapter.add(ListRow(HeaderItem(3, "Series"), seriesAdapter))
+    }
+
+    private fun confirmRemove(name: String, streamId: String) {
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.remove_favorite_title)
+            .setMessage(getString(R.string.remove_favorite_message, name))
+            .setPositiveButton(R.string.remove) { _, _ ->
+                viewModel.removeFavorite(streamId)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun setupClickListeners() {
@@ -270,5 +297,31 @@ class FavoritesFragment : RowsSupportFragment() {
         }
 
         override fun onUnbindViewHolder(viewHolder: ViewHolder) {}
+    }
+
+    /** PosterPresenter that adds long-click → remove callback. */
+    private class RemovablePosterPresenter(
+        private val onLongClick: (PosterItem) -> Unit
+    ) : PosterPresenter() {
+        override fun onBindViewHolder(viewHolder: ViewHolder, item: Any) {
+            super.onBindViewHolder(viewHolder, item)
+            viewHolder.view.setOnLongClickListener {
+                onLongClick(item as PosterItem)
+                true
+            }
+        }
+    }
+
+    /** ChannelPresenter that adds long-click → remove callback. */
+    private class RemovableChannelPresenter(
+        private val onLongClick: (LiveStream) -> Unit
+    ) : ChannelPresenter() {
+        override fun onBindViewHolder(viewHolder: ViewHolder, item: Any) {
+            super.onBindViewHolder(viewHolder, item)
+            viewHolder.view.setOnLongClickListener {
+                onLongClick(item as LiveStream)
+                true
+            }
+        }
     }
 }

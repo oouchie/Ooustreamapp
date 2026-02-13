@@ -1,6 +1,7 @@
 package com.ooustream.iptv.player
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.view.KeyEvent
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -18,37 +19,51 @@ class OoustreamPlaybackGlue(
 ) : PlaybackTransportControlGlue<LeanbackPlayerAdapter>(context, adapter) {
 
     var contentType: ContentType = ContentType.LIVE
-    var onChannelSwitch: ((Int) -> Unit)? = null  // direction: -1 or +1
-    var onZapConfirm: (() -> Unit)? = null         // confirm zap overlay selection
-    var isZapOverlayShowing: (() -> Boolean)? = null // query overlay visibility
+    var customControlsManager: PlayerControlsManager? = null
+    var onChannelSwitch: ((Int) -> Unit)? = null
+    var onZapConfirm: (() -> Unit)? = null
+    var isZapOverlayShowing: (() -> Boolean)? = null
     var onAudioTrackClicked: (() -> Unit)? = null
     var onSubtitleTrackClicked: (() -> Unit)? = null
     var onExternalPlayerClicked: (() -> Unit)? = null
     var onSleepTimerClicked: (() -> Unit)? = null
     var onStatsToggle: (() -> Unit)? = null
+    private var backConsumedOnDown = false
     var onAudioOnlyToggled: (() -> Unit)? = null
+    var isTrackPickerShowing: (() -> Boolean)? = null
+    var onDismissTrackPicker: (() -> Unit)? = null
+
+    // Seek/navigation callbacks (wired by fragment)
+    var onSeekForward: ((Long) -> Unit)? = null
+    var onSeekBackward: ((Long) -> Unit)? = null
+    var onNextEpisode: (() -> Unit)? = null
 
     private val ffAction = PlaybackControlsRow.FastForwardAction(context)
     private val rwAction = PlaybackControlsRow.RewindAction(context)
 
+    private val iconTint = ColorStateList(
+        arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+        intArrayOf(0xFFFFC107.toInt(), 0xFFFFFFFF.toInt())
+    )
+
     val audioTrackAction = Action(ACTION_AUDIO_TRACK, "Audio").apply {
-        icon = ContextCompat.getDrawable(context, R.drawable.ic_audio_track)
+        icon = ContextCompat.getDrawable(context, R.drawable.ic_audio_track)?.mutate()?.also { it.setTintList(iconTint) }
     }
 
     val subtitleTrackAction = Action(ACTION_SUBTITLE_TRACK, "Subtitles").apply {
-        icon = ContextCompat.getDrawable(context, R.drawable.ic_subtitles)
+        icon = ContextCompat.getDrawable(context, R.drawable.ic_subtitles)?.mutate()?.also { it.setTintList(iconTint) }
     }
 
     val externalPlayerAction = Action(ACTION_EXTERNAL_PLAYER, "External Player").apply {
-        icon = ContextCompat.getDrawable(context, R.drawable.ic_external_player)
+        icon = ContextCompat.getDrawable(context, R.drawable.ic_external_player)?.mutate()?.also { it.setTintList(iconTint) }
     }
 
     val sleepTimerAction = Action(ACTION_SLEEP_TIMER, "Sleep Timer").apply {
-        icon = ContextCompat.getDrawable(context, R.drawable.ic_sleep_timer)
+        icon = ContextCompat.getDrawable(context, R.drawable.ic_sleep_timer)?.mutate()?.also { it.setTintList(iconTint) }
     }
 
     val audioOnlyAction = Action(ACTION_AUDIO_ONLY, "Audio Only").apply {
-        icon = ContextCompat.getDrawable(context, R.drawable.ic_audio_only)
+        icon = ContextCompat.getDrawable(context, R.drawable.ic_audio_only)?.mutate()?.also { it.setTintList(iconTint) }
     }
 
     override fun onCreateSecondaryActions(adapter: ArrayObjectAdapter) {
@@ -65,12 +80,14 @@ class OoustreamPlaybackGlue(
             ffAction -> {
                 if (contentType != ContentType.LIVE) {
                     playerAdapter.seekTo(playerAdapter.currentPosition + 10_000)
+                    onSeekForward?.invoke(10_000)
                 }
             }
             rwAction -> {
                 if (contentType != ContentType.LIVE) {
                     val newPos = (playerAdapter.currentPosition - 10_000).coerceAtLeast(0)
                     playerAdapter.seekTo(newPos)
+                    onSeekBackward?.invoke(10_000)
                 }
             }
             audioTrackAction -> onAudioTrackClicked?.invoke()
@@ -91,60 +108,181 @@ class OoustreamPlaybackGlue(
     }
 
     override fun onKey(v: View?, keyCode: Int, event: KeyEvent?): Boolean {
-        if (event?.action != KeyEvent.ACTION_DOWN) return super.onKey(v, keyCode, event)
+        val controlsHidden = customControlsManager?.isVisible != true
 
-        when (keyCode) {
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                if (host != null && !host.isControlsOverlayVisible) {
-                    host.showControlsOverlay(true)
+        // BACK key: dismiss controls if visible (edge case: focus still in BrowseFrameLayout).
+        // Primary Back handling is via OnBackPressedCallback in the fragment, which works
+        // regardless of focus location. This is defense-in-depth for the rare case where
+        // focus remains inside Leanback's BrowseFrameLayout when controls are showing.
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event?.action == KeyEvent.ACTION_DOWN) {
+                if (isTrackPickerShowing?.invoke() == true) {
+                    onDismissTrackPicker?.invoke()
+                    backConsumedOnDown = true
                     return true
                 }
-                return super.onKey(v, keyCode, event)
+                if (!controlsHidden) {
+                    customControlsManager?.hide()
+                    backConsumedOnDown = true
+                    return true
+                }
+                backConsumedOnDown = false
+            }
+            if (event?.action == KeyEvent.ACTION_UP && backConsumedOnDown) {
+                backConsumedOnDown = false
+                return true
+            }
+            return false
+        }
+
+        // ACTION_UP handling
+        if (event?.action != KeyEvent.ACTION_DOWN) {
+            // Always consume media buttons and MENU
+            if (keyCode in intArrayOf(
+                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_REWIND,
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
+                    KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MENU
+                )) return true
+
+            // D-pad Left/Right for VOD/Series: always consume (seek handled on DOWN)
+            if (contentType != ContentType.LIVE && keyCode in intArrayOf(
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT
+                )) return true
+
+            // Controls visible → pass remaining D-pad through for focus navigation
+            if (!controlsHidden) {
+                val isDpad = keyCode in intArrayOf(
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER
+                )
+                if (isDpad) return false
+            }
+
+            // Controls hidden → consume D-pad keys we handled on DOWN
+            return true
+        }
+
+        // ACTION_DOWN handling
+        when (keyCode) {
+            // Media play/pause: toggle playback + show controls
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (isPlaying) pause() else play()
+                customControlsManager?.show()
+                return true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY -> {
                 if (!isPlaying) play()
+                customControlsManager?.show()
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
                 if (isPlaying) pause()
+                customControlsManager?.show()
                 return true
             }
+
+            // FF/RW media buttons: seek + show controls
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                 if (contentType != ContentType.LIVE) {
                     playerAdapter.seekTo(playerAdapter.currentPosition + 10_000)
+                    onSeekForward?.invoke(10_000)
                 }
+                customControlsManager?.show()
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_REWIND -> {
                 if (contentType != ContentType.LIVE) {
                     val newPos = (playerAdapter.currentPosition - 10_000).coerceAtLeast(0)
                     playerAdapter.seekTo(newPos)
+                    onSeekBackward?.invoke(10_000)
                 }
+                customControlsManager?.show()
                 return true
             }
+
+            // DPAD LEFT/RIGHT — always seek for VOD/Series regardless of controls state
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (contentType != ContentType.LIVE) {
+                    val delta = seekDeltaForRepeat(event?.repeatCount ?: 0)
+                    val newPos = (playerAdapter.currentPosition - delta).coerceAtLeast(0)
+                    playerAdapter.seekTo(newPos)
+                    onSeekBackward?.invoke(delta)
+                    if (controlsHidden) customControlsManager?.show()
+                    else customControlsManager?.resetAutoHideTimer()
+                    return true
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (contentType != ContentType.LIVE) {
+                    val delta = seekDeltaForRepeat(event?.repeatCount ?: 0)
+                    playerAdapter.seekTo(playerAdapter.currentPosition + delta)
+                    onSeekForward?.invoke(delta)
+                    if (controlsHidden) customControlsManager?.show()
+                    else customControlsManager?.resetAutoHideTimer()
+                    return true
+                }
+            }
+
+            // DPAD UP: channel switch (LIVE when hidden) or next episode (SERIES when hidden)
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
                 if (contentType == ContentType.LIVE) {
-                    onChannelSwitch?.invoke(-1)
+                    if (controlsHidden) {
+                        onChannelSwitch?.invoke(-1)
+                        return true
+                    }
+                    customControlsManager?.resetAutoHideTimer()
+                    return false
+                }
+                if (contentType == ContentType.SERIES && controlsHidden) {
+                    onNextEpisode?.invoke()
                     return true
+                }
+                if (!controlsHidden) {
+                    customControlsManager?.resetAutoHideTimer()
+                    return false
                 }
             }
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                 if (contentType == ContentType.LIVE) {
-                    onChannelSwitch?.invoke(+1)
-                    return true
+                    if (controlsHidden) {
+                        onChannelSwitch?.invoke(+1)
+                        return true
+                    }
+                    customControlsManager?.resetAutoHideTimer()
+                    return false
+                }
+                if (!controlsHidden) {
+                    customControlsManager?.resetAutoHideTimer()
+                    return false
                 }
             }
+
+            // DPAD CENTER/ENTER: show controls or confirm zap
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                if (controlsHidden) {
+                    customControlsManager?.show()
+                    return true
+                }
                 if (contentType == ContentType.LIVE && isZapOverlayShowing?.invoke() == true) {
                     onZapConfirm?.invoke()
                     return true
                 }
+                // Controls visible → let focus system handle OK on buttons
+                customControlsManager?.resetAutoHideTimer()
+                return false
             }
+
             KeyEvent.KEYCODE_MENU -> {
                 onStatsToggle?.invoke()
                 return true
             }
         }
-        return super.onKey(v, keyCode, event)
+        return true // Consume unhandled keys to prevent Leanback from showing its controls
+    }
+
+    private fun seekDeltaForRepeat(repeatCount: Int): Long = when {
+        repeatCount > 10 -> 60_000L
+        repeatCount > 3 -> 30_000L
+        else -> 10_000L
     }
 }

@@ -3,9 +3,12 @@ package com.ooustream.iptv.di
 import android.content.Context
 import androidx.room.Room
 import com.ooustream.iptv.data.local.OoustreamDatabase
+import com.ooustream.iptv.data.local.dao.ChannelScoreDao
+import com.ooustream.iptv.data.local.dao.ChannelWatchLogDao
 import com.ooustream.iptv.data.local.dao.ContentCacheDao
 import com.ooustream.iptv.data.local.dao.CrashRecoveryDao
 import com.ooustream.iptv.data.local.dao.EpgCacheDao
+import com.ooustream.iptv.data.local.dao.EpgPatternDao
 import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
@@ -55,4 +58,13 @@ object DatabaseModule {
 
     @Provides
     fun provideSearchIndexDao(db: OoustreamDatabase): SearchIndexDao = db.searchIndexDao()
+
+    @Provides
+    fun provideChannelWatchLogDao(db: OoustreamDatabase): ChannelWatchLogDao = db.channelWatchLogDao()
+
+    @Provides
+    fun provideChannelScoreDao(db: OoustreamDatabase): ChannelScoreDao = db.channelScoreDao()
+
+    @Provides
+    fun provideEpgPatternDao(db: OoustreamDatabase): EpgPatternDao = db.epgPatternDao()
 }

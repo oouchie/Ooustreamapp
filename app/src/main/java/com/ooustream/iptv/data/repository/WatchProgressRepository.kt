@@ -19,5 +19,14 @@ class WatchProgressRepository @Inject constructor(
     suspend fun saveProgress(progress: WatchProgressEntity) =
         watchProgressDao.upsert(progress)
 
+    suspend fun markCompleted(streamId: String) =
+        watchProgressDao.markCompleted(streamId)
+
+    suspend fun dismiss(streamId: String) =
+        watchProgressDao.dismiss(streamId)
+
+    suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity> =
+        watchProgressDao.getSeriesEpisodes(seriesId)
+
     suspend fun clearAll() = watchProgressDao.clearAll()
 }

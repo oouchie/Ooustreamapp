@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
@@ -32,11 +33,17 @@ import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.common.CategoryEmoji
 import com.ooustream.iptv.common.CategoryItem
+import com.ooustream.iptv.common.CategoryListAdapter
 import com.ooustream.iptv.common.ChannelPresenter
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
+import com.ooustream.iptv.common.DpadSoundManager
+import com.ooustream.iptv.common.FocusBracketDrawable
+import com.ooustream.iptv.common.GoldGlowFocusDrawable
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.SmartEpgFiller
+import com.ooustream.iptv.epg.bindEpgText
 import com.ooustream.iptv.player.ChannelListHolder
 import com.ooustream.iptv.player.LivePreviewManager
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
@@ -55,13 +62,17 @@ import java.util.TimeZone
 class LiveTvFragment : Fragment(), KeyEventHandler {
 
     @Inject lateinit var okHttpClient: OkHttpClient
+    @Inject lateinit var smartEpgFiller: SmartEpgFiller
 
     private val viewModel: LiveTvViewModel by viewModels()
     private var previewManager: LivePreviewManager? = null
     private var previewingChannel: LiveStream? = null
     private var previewJob: Job? = null
+    private var epgJob: Job? = null
     private var searchFilter = ""
+    private var searchOpen = false
     private var favoriteIds: Set<String> = emptySet()
+    private var categoryAdapter: CategoryListAdapter? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_live_tv, container, false)
@@ -83,6 +94,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val channelsList = view.findViewById<VerticalGridView>(R.id.channels_list)
         val previewPlayerView = view.findViewById<PlayerView>(R.id.preview_player_view)
         val previewPlaceholder = view.findViewById<TextView>(R.id.preview_placeholder)
+        val previewContainer = view.findViewById<FrameLayout>(R.id.preview_container)
+        val previewFocusHint = view.findViewById<TextView>(R.id.preview_focus_hint)
         val navHints = view.findViewById<TextView>(R.id.nav_hints)
 
         // Header search
@@ -93,14 +106,46 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
         navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
 
-        // Categories RecyclerView
+        // Preview container — click to go fullscreen (focusable only when previewing)
+        previewContainer.setOnClickListener {
+            previewingChannel?.let { goFullscreen(it) }
+        }
+        // Gold border + bracket focus effect on preview panel
+        previewContainer.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                DpadSoundManager.getInstance()?.playMove()
+                v.overlay.add(GoldGlowFocusDrawable())
+                v.overlay.add(FocusBracketDrawable())
+                previewFocusHint.visibility = View.VISIBLE
+                navHints.text = "OK: Watch fullscreen \u2022 \u2190: Back to channels"
+            } else {
+                v.overlay.clear()
+                previewFocusHint.visibility = View.GONE
+                navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
+            }
+        }
+        // PlayerView should NOT steal focus — container handles it
+        previewPlayerView.isFocusable = false
+
+        // Categories RecyclerView — stable adapter for smooth D-pad scrolling
         categoriesList.layoutManager = LinearLayoutManager(requireContext())
+        categoriesList.setHasFixedSize(true)
+        categoriesList.setItemViewCacheSize(20)
+        categoriesList.itemAnimator = null  // No animations during D-pad scroll
+        categoryAdapter = CategoryListAdapter { cat ->
+            viewModel.selectCategory(cat.id)
+            updateCategoryList(categoriesList)
+        }
+        categoriesList.adapter = categoryAdapter
 
         // Channels VerticalGridView (Leanback - handles 5000+ items)
         channelsList.setNumColumns(1)
         channelsList.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE)
         channelsList.setWindowAlignmentOffsetPercent(40f)
         channelsList.setItemAlignmentOffsetPercent(50f)
+        // Speed up rapid D-pad scrolling: disable child layout animation
+        channelsList.setAnimateChildLayout(false)
+        channelsList.itemAnimator = null
         val channelPresenter = ChannelPresenter()
         val channelAdapter = ArrayObjectAdapter(channelPresenter)
 
@@ -121,7 +166,6 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
         // Header search icon toggle
         val centerLogo = view.findViewById<ImageView>(R.id.header_center_logo)
-        var searchOpen = false
         headerSearchIcon.setOnClickListener {
             searchOpen = !searchOpen
             if (searchOpen) {
@@ -163,8 +207,21 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     val pos = viewHolder.adapterPosition
                     if (pos < 0 || pos >= filteredChannels.size) return@setOnClickListener
                     val channel = filteredChannels[pos]
-                    // Single press goes directly to fullscreen (preview auto-starts on focus)
-                    goFullscreen(channel)
+                    if (previewingChannel?.streamId == channel.streamId) {
+                        // Second tap — go fullscreen
+                        goFullscreen(channel)
+                    } else {
+                        // First tap — start preview
+                        previewJob?.cancel()
+                        previewingChannel = channel
+                        val url = viewModel.buildStreamUrl(channel.streamId)
+                        previewPlayerView.visibility = View.VISIBLE
+                        previewPlaceholder.visibility = View.GONE
+                        previewManager?.startPreview(previewPlayerView, url)
+                        // Enable D-pad focus on preview panel now that content is playing
+                        previewContainer.isFocusable = true
+                        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
                 }
                 // Long press for favorites
                 viewHolder.itemView.setOnLongClickListener {
@@ -182,7 +239,14 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         // Observe categories
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.categories.collect { updateCategoryList(categoriesList) }
+                viewModel.categories.collect {
+                    updateCategoryList(categoriesList)
+                    // Restore category scroll position on back navigation
+                    if (viewModel.savedCategoryPosition >= 0) {
+                        categoriesList.scrollToPosition(viewModel.savedCategoryPosition)
+                        viewModel.savedCategoryPosition = -1
+                    }
+                }
             }
         }
 
@@ -195,6 +259,13 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     if (!skeletonSwapped && channels.isNotEmpty()) {
                         channelsList.adapter = channelBridgeAdapter
                         skeletonSwapped = true
+                        // Restore focus position on back navigation
+                        if (viewModel.savedChannelPosition >= 0) {
+                            channelsList.post {
+                                channelsList.selectedPosition = viewModel.savedChannelPosition
+                                viewModel.savedChannelPosition = -1
+                            }
+                        }
                     }
                 }
             }
@@ -219,21 +290,15 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             ) {
                 if (position >= 0 && position < filteredChannels.size) {
                     val channel = filteredChannels[position]
-                    viewModel.loadEpg(channel.streamId)
 
-                    // Cancel any pending preview from the previous focused channel
-                    previewJob?.cancel()
-
-                    // Start preview after 800ms sustained focus
-                    previewJob = viewLifecycleOwner.lifecycleScope.launch {
-                        delay(800)
-                        previewingChannel = channel
-                        val url = viewModel.buildStreamUrl(channel.streamId)
-                        previewPlayerView.visibility = View.VISIBLE
-                        previewPlaceholder.visibility = View.GONE
-                        previewManager?.startPreview(previewPlayerView, url)
-                        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    // Debounce EPG load — skip during rapid scrolling
+                    epgJob?.cancel()
+                    epgJob = viewLifecycleOwner.lifecycleScope.launch {
+                        delay(400)
+                        viewModel.loadEpg(channel.streamId)
                     }
+
+                    previewJob?.cancel()
                 } else {
                     // Focus moved to an invalid position, cancel pending preview
                     previewJob?.cancel()
@@ -252,6 +317,35 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         epgList.adapter = EpgAdapter(emptyList())
                     } else {
                         epgList.adapter = EpgAdapter(programs)
+                    }
+
+                    // Update focused channel card with EPG text (real or inferred)
+                    val selectedPos = channelsList.selectedPosition
+                    if (selectedPos >= 0 && selectedPos < filteredChannels.size) {
+                        val channel = filteredChannels[selectedPos]
+                        val epgTextView = channelsList.findViewHolderForAdapterPosition(selectedPos)
+                            ?.itemView?.findViewById<TextView>(R.id.channel_epg)
+
+                        if (programs.isNotEmpty()) {
+                            val now = System.currentTimeMillis() / 1000
+                            val current = programs.find { p ->
+                                val start = p.startTimestamp?.toLongOrNull() ?: return@find false
+                                val end = p.stopTimestamp?.toLongOrNull() ?: return@find false
+                                now in start..end
+                            }
+                            if (current?.title != null) {
+                                epgTextView?.text = current.title
+                                smartEpgFiller.learnPattern(channel.streamId, channel.name, current.title!!)
+                            }
+                        } else if (epgTextView != null) {
+                            val categoryName = viewModel.categories.value
+                                .find { it.categoryId == viewModel.selectedCategoryId.value }
+                                ?.categoryName
+                            val inferred = smartEpgFiller.getSmartEpg(
+                                null, channel.streamId, channel.name, categoryName
+                            )
+                            bindEpgText(epgTextView, inferred)
+                        }
                     }
                 }
             }
@@ -274,17 +368,6 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
         viewModel.loadCategories()
 
-        // Auto-restore preview when coming back from fullscreen
-        viewModel.lastPreviewedStreamId?.let { streamId ->
-            val channel = viewModel.channels.value.find { it.streamId == streamId }
-            if (channel != null) {
-                previewingChannel = channel
-                val url = viewModel.buildStreamUrl(channel.streamId)
-                previewPlayerView.visibility = View.VISIBLE
-                previewPlaceholder.visibility = View.GONE
-                previewManager?.startPreview(previewPlayerView, url)
-            }
-        }
     }
 
     // ---- EPG Adapter ----
@@ -397,7 +480,6 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {
-        // Prepend "Favorites" as a virtual category
         val favoritesCat = CategoryItem(LiveTvViewModel.FAVORITES_ID, "Favorites")
         val apiCats = viewModel.categories.value
             .filter { searchFilter.isEmpty() || it.categoryName.lowercase().contains(searchFilter) }
@@ -407,67 +489,23 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         } else {
             apiCats
         }
-
-        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_category, parent, false)
-                return object : RecyclerView.ViewHolder(view) {}
-            }
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val cat = cats[position]
-                val root = holder.itemView as android.widget.LinearLayout
-                val name = root.findViewById<TextView>(R.id.category_name)
-                val count = root.findViewById<TextView>(R.id.category_count)
-                val emoji = root.findViewById<TextView>(R.id.category_emoji)
-                name.text = cat.name
-                count.text = if (cat.count > 0) cat.count.toString() else ""
-                emoji.text = CategoryEmoji.get(cat.name)
-
-                // Special category colored emoji
-                if (cat.id == LiveTvViewModel.FAVORITES_ID) {
-                    emoji.setTextColor(0xFFEF4444.toInt())
-                } else {
-                    emoji.setTextColor(0xFFFFFFFF.toInt())
-                }
-
-                val isSelected = viewModel.selectedCategoryId.value == cat.id
-                if (isSelected) {
-                    root.setBackgroundResource(R.drawable.bg_sidebar_item_active)
-                    name.setTextColor(0xFFFFC107.toInt())
-                } else {
-                    root.setBackgroundResource(R.drawable.bg_category_aurora)
-                    name.setTextColor(0xFF9CA3AF.toInt())
-                }
-                root.setOnFocusChangeListener { v, hasFocus ->
-                    if (hasFocus) {
-                        v.setBackgroundResource(R.drawable.bg_sidebar_item_focused_v2)
-                        v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(150).start()
-                        name.setTextColor(0xFFFFC107.toInt())
-                    } else {
-                        if (isSelected) {
-                            v.setBackgroundResource(R.drawable.bg_sidebar_item_active)
-                            name.setTextColor(0xFFFFC107.toInt())
-                        } else {
-                            v.setBackgroundResource(R.drawable.bg_category_aurora)
-                            name.setTextColor(0xFF9CA3AF.toInt())
-                        }
-                        v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
-                    }
-                }
-                holder.itemView.setOnClickListener {
-                    viewModel.selectCategory(cat.id)
-                    notifyDataSetChanged()
-                }
-            }
-            override fun getItemCount() = cats.size
-        }
+        val emojiColors = mapOf(LiveTvViewModel.FAVORITES_ID to 0xFFEF4444.toInt())
+        categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
     }
 
     private fun stopPreview() {
+        epgJob?.cancel()
+        epgJob = null
         previewJob?.cancel()
         previewJob = null
         previewManager?.release()
         previewingChannel = null
+        // Disable focus on preview panel when nothing is playing
+        view?.findViewById<FrameLayout>(R.id.preview_container)?.let {
+            it.isFocusable = false
+            it.overlay.clear()
+        }
+        view?.findViewById<TextView>(R.id.preview_focus_hint)?.visibility = View.GONE
     }
 
     override fun onPause() {
@@ -477,15 +515,70 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumePreviewIfReturning()
+    }
+
+    private fun resumePreviewIfReturning() {
+        // Priority: player's last channel (user may have switched channels in fullscreen)
+        val returnedChannel = ChannelListHolder.lastPlayedChannel
+        val returnedIndex = ChannelListHolder.lastPlayedIndex
+
+        val channel: LiveStream
+        val url: String
+
+        if (returnedChannel != null && returnedIndex >= 0) {
+            channel = returnedChannel
+            url = viewModel.buildStreamUrl(channel.streamId)
+            ChannelListHolder.lastPlayedChannel = null
+            ChannelListHolder.lastPlayedIndex = -1
+        } else if (viewModel.lastPreviewedChannel != null) {
+            channel = viewModel.lastPreviewedChannel!!
+            url = viewModel.lastPreviewedUrl ?: viewModel.buildStreamUrl(channel.streamId)
+        } else {
+            return // No channel to resume — normal fresh open
+        }
+
+        // Clear saved state so we don't re-resume on next onResume (e.g. app background→foreground)
+        viewModel.lastPreviewedChannel = null
+        viewModel.lastPreviewedUrl = null
+        viewModel.lastPreviewedIndex = -1
+
+        // Restart preview
+        val previewPlayerView = view?.findViewById<PlayerView>(R.id.preview_player_view) ?: return
+        val previewPlaceholder = view?.findViewById<TextView>(R.id.preview_placeholder)
+        val previewContainer = view?.findViewById<FrameLayout>(R.id.preview_container)
+
+        previewingChannel = channel
+        previewPlayerView.visibility = View.VISIBLE
+        previewPlaceholder?.visibility = View.GONE
+        previewManager?.startPreview(previewPlayerView, url)
+        previewContainer?.isFocusable = true
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Scroll channel list to the resumed channel and load its EPG
+        val channelsList = view?.findViewById<VerticalGridView>(R.id.channels_list)
+        channelsList?.post {
+            val listIndex = filteredChannels.indexOfFirst { it.streamId == channel.streamId }
+            if (listIndex >= 0) {
+                channelsList.selectedPosition = listIndex
+            }
+        }
+        viewModel.loadEpg(channel.streamId)
+    }
+
     private fun goFullscreen(channel: LiveStream) {
         val url = viewModel.buildStreamUrl(channel.streamId)
-        // Save preview state for restore on back
-        viewModel.lastPreviewedStreamId = channel.streamId
+        val idx = filteredChannels.indexOf(channel).coerceAtLeast(0)
+
+        // Save full preview state for restore on return (before stopPreview nulls everything)
+        viewModel.lastPreviewedChannel = channel
+        viewModel.lastPreviewedUrl = url
+        viewModel.lastPreviewedIndex = idx
+
         // Release preview player before launching fullscreen player
         stopPreview()
-
-        // Pass channel list for UP/DOWN zapping in fullscreen
-        val idx = filteredChannels.indexOf(channel).coerceAtLeast(0)
         ChannelListHolder.channels = filteredChannels
         ChannelListHolder.currentIndex = idx
 
@@ -502,9 +595,35 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             .commit()
     }
 
-    override fun onKeyEvent(keyCode: Int): Boolean = false
+    override fun onKeyEvent(keyCode: Int): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK && searchOpen) {
+            closeSearch()
+            return true
+        }
+        return false
+    }
+
+    private fun closeSearch() {
+        searchOpen = false
+        val v = view ?: return
+        v.findViewById<android.widget.EditText>(R.id.header_search_input)?.let {
+            it.setText("")
+            it.visibility = View.GONE
+        }
+        v.findViewById<android.widget.TextView>(R.id.header_title)?.visibility = View.VISIBLE
+        v.findViewById<android.widget.TextClock>(R.id.header_clock)?.visibility = View.VISIBLE
+        v.findViewById<android.widget.ImageView>(R.id.header_center_logo)?.visibility = View.VISIBLE
+    }
 
     override fun onDestroyView() {
+        // Save focus positions for restoration on back navigation
+        view?.findViewById<VerticalGridView>(R.id.channels_list)?.let {
+            viewModel.savedChannelPosition = it.selectedPosition
+        }
+        view?.findViewById<RecyclerView>(R.id.categories_list)?.let {
+            viewModel.savedCategoryPosition =
+                (it.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: -1
+        }
         activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onDestroyView()
         stopPreview()

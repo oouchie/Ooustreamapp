@@ -205,6 +205,34 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
+                <!-- For You — Live Now Section -->
+                <TextView
+                    android:id="@+id/for_you_live_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="@string/for_you_live_now"
+                    android:textColor="@color/text_accent"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@id/for_you_live_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="96dp"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
                 <!-- Browse Sections -->
                 <TextView
                     android:id="@+id/sections_label"
@@ -246,6 +274,34 @@
 
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/trending_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="240dp"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
+                <!-- Trending Series Section -->
+                <TextView
+                    android:id="@+id/trending_series_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="Trending Series"
+                    android:textColor="@color/text_accent"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/trending_series_row"
                     android:layout_width="match_parent"
                     android:layout_height="240dp"
                     android:layout_marginTop="12dp"

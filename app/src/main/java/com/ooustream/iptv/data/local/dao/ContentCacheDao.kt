@@ -41,4 +41,11 @@ interface ContentCacheDao {
 
     @Query("DELETE FROM cached_streams WHERE cachedAt < :before")
     suspend fun deleteStaleStreams(before: Long)
+
+    // Bulk delete (for playlist refresh — clears content without touching user data)
+    @Query("DELETE FROM cached_categories")
+    suspend fun deleteAllCategories()
+
+    @Query("DELETE FROM cached_streams")
+    suspend fun deleteAllStreams()
 }

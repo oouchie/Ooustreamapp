@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Top banner card -->
+    <LinearLayout
+        android:id="@+id/banner_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginHorizontal="@dimen/overscan_margin"
+        android:layout_marginTop="@dimen/overscan_margin"
+        android:background="@drawable/bg_card_rounded"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Row: logo + channel info -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/banner_logo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:scaleType="centerCrop"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+
+                <!-- Channel name + number -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/banner_channel_name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        tools:text="ESPN HD" />
+
+                    <TextView
+                        android:id="@+id/banner_channel_num"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:textColor="@color/text_muted"
+                        android:textSize="14sp"
+                        tools:text="Ch 42" />
+
+                </LinearLayout>
+
+                <!-- Now playing -->
+                <TextView
+                    android:id="@+id/banner_now_playing"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    tools:text="SportsCenter — Live" />
+
+                <!-- Next show -->
+                <TextView
+                    android:id="@+id/banner_next_show"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"
+                    tools:text="Next: NFL Live at 10:00 PM" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Program progress bar -->
+        <FrameLayout
+            android:id="@+id/banner_progress_container"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="12dp"
+            android:visibility="gone">
+
+            <!-- Track -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#26FFFFFF" />
+
+            <!-- Fill -->
+            <View
+                android:id="@+id/banner_progress_fill"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:background="@color/focus_gold" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

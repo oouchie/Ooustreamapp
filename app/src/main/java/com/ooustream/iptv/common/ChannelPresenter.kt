@@ -17,14 +17,32 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class ChannelPresenter(
+/**
+ * Presenter for channel list items in VerticalGridView.
+ *
+ * Background state is handled by StateListDrawable (bg_channel_states.xml) —
+ * the framework manages focus/unfocus transitions with cached drawables,
+ * so there are ZERO setBackgroundResource() calls during scrolling.
+ *
+ * Expensive visual effects (overlay drawables, scale animation, sound, accent bar)
+ * are debounced behind 60ms so rapid D-pad scrolling stays smooth.
+ */
+open class ChannelPresenter(
     var favoriteIds: Set<String> = emptySet()
 ) : Presenter() {
+
+    /** Throttle sound during fast scrolling — minimum 80ms between sounds */
+    private var lastSoundTime = 0L
 
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_channel, parent, false)
         view.outlineProvider = ViewOutlineProvider.BACKGROUND
         view.clipToOutline = true
+        // Pre-create focus overlay drawables once per view to avoid GC pressure
+        view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
+        view.setTag(R.id.focus_bracket_drawable, FocusBracketDrawable())
+        // Explicit focus target — bypasses geometric search which fails when scrolled
+        view.nextFocusLeftId = R.id.categories_list
         return ViewHolder(view)
     }
 
@@ -55,27 +73,42 @@ class ChannelPresenter(
         ProgressiveImageLoader.loadThumbnail(logo, iconUrl, cacheKey)
 
         root.setOnFocusChangeListener { v, hasFocus ->
-            if (hasFocus) {
-                DpadSoundManager.getInstance()?.playMove()
-                v.overlay.add(GoldGlowFocusDrawable())
-                v.overlay.add(FocusBracketDrawable())
-                v.animate().scaleX(1.06f).scaleY(1.06f).setDuration(200).start()
-                v.setBackgroundResource(R.drawable.bg_channel_aurora_focused)
-                accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.focus_gold))
+            // Cancel any pending focus effect from prior focus/unfocus
+            (v.getTag(R.id.focus_effect_job) as? Job)?.cancel()
 
-                // Debounced full-res load after 300ms sustained focus
+            if (hasFocus) {
+                // Background handled by StateListDrawable — instant, no inflation needed
+
+                // DEFERRED: all expensive effects after 60ms of sustained focus
                 val job = CoroutineScope(Dispatchers.Main).launch {
-                    delay(300)
+                    delay(60)
+                    // Sound (throttled)
+                    val now = System.currentTimeMillis()
+                    if (now - lastSoundTime > 80) {
+                        DpadSoundManager.getInstance()?.playMove()
+                        lastSoundTime = now
+                    }
+                    // Overlay drawables (reused from tags)
+                    val glow = v.getTag(R.id.focus_glow_drawable) as? GoldGlowFocusDrawable
+                    val brackets = v.getTag(R.id.focus_bracket_drawable) as? FocusBracketDrawable
+                    v.overlay.clear()
+                    glow?.let { v.overlay.add(it) }
+                    brackets?.let { v.overlay.add(it) }
+                    // Scale + accent
+                    v.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
+                    accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.focus_gold))
+
+                    // Full-res image after 300ms total
+                    delay(240)
                     ProgressiveImageLoader.loadFullRes(logo, iconUrl)
                 }
-                v.setTag(R.id.focus_load_job, job)
+                v.setTag(R.id.focus_effect_job, job)
             } else {
-                // Cancel pending full-res load
-                (v.getTag(R.id.focus_load_job) as? Job)?.cancel()
-
+                // Background handled by StateListDrawable — instant, no inflation needed
                 v.overlay.clear()
-                v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
-                v.setBackgroundResource(R.drawable.bg_channel_aurora)
+                v.animate().cancel()
+                v.scaleX = 1f
+                v.scaleY = 1f
                 accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.brand_cyan))
             }
         }
@@ -83,6 +116,7 @@ class ChannelPresenter(
 
     override fun onUnbindViewHolder(viewHolder: ViewHolder) {
         val root = viewHolder.view as LinearLayout
+        (root.getTag(R.id.focus_effect_job) as? Job)?.cancel()
         root.setOnFocusChangeListener(null)
     }
 }

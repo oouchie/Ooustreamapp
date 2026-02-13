@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="160dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginEnd="16dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:background="@drawable/bg_watch_next_card_focus"
+    android:padding="4dp">
+
+    <ImageView
+        android:id="@+id/watch_next_poster"
+        android:layout_width="152dp"
+        android:layout_height="228dp"
+        android:scaleType="centerCrop"
+        android:contentDescription="@null"
+        tools:background="#333"/>
+
+    <TextView
+        android:id="@+id/watch_next_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:paddingHorizontal="4dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp"
+        tools:text="Movie Title"/>
+
+    <TextView
+        android:id="@+id/watch_next_reason"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:paddingHorizontal="4dp"
+        android:paddingBottom="8dp"
+        tools:text="Because you watch Action"/>
+
+</LinearLayout>

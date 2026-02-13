@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Category item state selector: framework handles focus/selected transitions
+     with cached drawables — no programmatic setBackgroundResource() needed -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:drawable="@drawable/bg_sidebar_item_focused_v2" />
+    <item android:state_selected="true" android:drawable="@drawable/bg_sidebar_item_active" />
+    <item android:drawable="@drawable/bg_category_aurora" />
+</selector>

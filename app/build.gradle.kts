@@ -13,8 +13,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "2.1.0"
     }
 
     signingConfigs {
@@ -75,6 +75,8 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Room
     implementation(libs.room.runtime)
@@ -115,4 +117,7 @@ dependencies {
 
     // Palette (color extraction)
     implementation(libs.palette)
+
+    // WorkManager
+    implementation(libs.work.runtime)
 }

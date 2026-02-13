@@ -35,6 +35,7 @@ class QuickSidebar(context: Context) : FrameLayout(context) {
     var onItemSelected: ((String) -> Unit)? = null
     var isOpen: Boolean = false
         private set
+    private var previousFocus: View? = null
 
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_quick_sidebar, this, true)
@@ -115,6 +116,8 @@ class QuickSidebar(context: Context) : FrameLayout(context) {
     fun show() {
         if (isOpen) return
         isOpen = true
+        // Save the currently focused view so we can restore it on dismiss
+        previousFocus = (context as? android.app.Activity)?.currentFocus
         visibility = VISIBLE
         scrim.visibility = VISIBLE
         scrim.alpha = 0f
@@ -143,6 +146,9 @@ class QuickSidebar(context: Context) : FrameLayout(context) {
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     visibility = GONE
+                    // Restore focus to whatever was focused before sidebar opened
+                    previousFocus?.requestFocus()
+                    previousFocus = null
                 }
             })
             start()

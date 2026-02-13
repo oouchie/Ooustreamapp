@@ -80,6 +80,9 @@ class LoginFragment : Fragment() {
         // Slight dim on unfocused state to make focus more apparent
         loginButton.alpha = 0.9f
 
+        // Auto-focus the username field for D-pad users
+        usernameInput.post { usernameInput.requestFocus() }
+
         observeAuthState()
     }
 

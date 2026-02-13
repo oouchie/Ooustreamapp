@@ -86,6 +86,16 @@ class ContentCacheRepository @Inject constructor(
     }
 
     /**
+     * Clears cached categories, streams, and search index without touching user data
+     * (favorites, watch progress, analytics, EPG patterns, etc.).
+     */
+    suspend fun clearContentCache() {
+        cacheDao.deleteAllCategories()
+        cacheDao.deleteAllStreams()
+        searchIndexRepository.clearAndReset()
+    }
+
+    /**
      * Remove data older than 24 hours.
      */
     suspend fun cleanupStaleData() {

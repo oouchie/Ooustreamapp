@@ -83,6 +83,7 @@
                     android:clipToPadding="false"
                     android:clipChildren="false"
                     android:nextFocusLeft="@+id/categories_list"
+                    android:nextFocusRight="@+id/preview_container"
                     android:nextFocusUp="@+id/header_search_icon" />
             </FrameLayout>
 
@@ -95,13 +96,16 @@
                 android:orientation="vertical"
                 android:layout_marginStart="8dp">
 
-                <!-- Video Preview (55%) - Cinematic frame -->
+                <!-- Video Preview (55%) - Cinematic frame, D-pad focusable -->
                 <FrameLayout
+                    android:id="@+id/preview_container"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="55"
                     android:background="@drawable/bg_preview_frame"
-                    android:clipToOutline="true">
+                    android:clipToOutline="true"
+                    android:focusable="false"
+                    android:nextFocusLeft="@+id/channels_list">
 
                     <androidx.media3.ui.PlayerView
                         android:id="@+id/preview_player_view"
@@ -117,6 +121,20 @@
                         android:text="Select a channel to preview"
                         android:textColor="@color/text_muted"
                         android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/preview_focus_hint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:layout_marginBottom="8dp"
+                        android:background="#80000000"
+                        android:paddingHorizontal="12dp"
+                        android:paddingVertical="4dp"
+                        android:text="Press OK to watch"
+                        android:textColor="#FFC107"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
                 </FrameLayout>
 
                 <!-- EPG Programs (45%) - Glass Card -->

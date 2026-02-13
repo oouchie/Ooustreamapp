@@ -9,5 +9,10 @@
         <item name="defaultSearchBrightColor">@color/brand_cyan</item>
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
+
+        <!-- Playback controls styling -->
+        <item name="playbackProgressPrimaryColor">@color/focus_gold</item>
+        <item name="playbackProgressSecondaryColor">@color/playback_progress_buffered</item>
+        <item name="playbackControlsIconHighlightColor">@color/focus_gold</item>
     </style>
 </resources>

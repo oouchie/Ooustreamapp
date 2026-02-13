@@ -4,10 +4,14 @@ import android.graphics.Color
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
+import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.repository.ContentRepository
+import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import com.ooustream.iptv.epg.SmartEpgFiller
+import com.ooustream.iptv.recommendation.ChannelRecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,7 +41,10 @@ class HomeViewModel @Inject constructor(
     private val watchProgressRepository: WatchProgressRepository,
     private val contentRepository: ContentRepository,
     private val predictivePreFetcher: PredictivePreFetcher,
-    private val recommendationEngine: RecommendationEngine
+    private val recommendationEngine: RecommendationEngine,
+    private val channelRecommendationEngine: ChannelRecommendationEngine,
+    private val smartEpgFiller: SmartEpgFiller,
+    private val epgCacheRepository: EpgCacheRepository
 ) : BaseViewModel() {
 
     init {
@@ -48,6 +55,36 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _forYouContent.value = recommendationEngine.getRecommendations()
+            } catch (_: Exception) { }
+        }
+
+        // Load "For You — Live Now" channel recommendations
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!channelRecommendationEngine.hasEnoughData()) return@launch
+
+                // Recompute scores on Home load (fast — bounded data)
+                channelRecommendationEngine.recomputeScores()
+                val recommendations = channelRecommendationEngine.getRecommendations()
+
+                // Enrich each recommendation with smart EPG
+                val channels = recommendations.map { rec ->
+                    val nowPlaying = smartEpgFiller.getSmartEpg(
+                        realEpgTitle = null,
+                        channelId = rec.channelId,
+                        channelName = rec.channelName,
+                        categoryName = rec.categoryName
+                    )
+                    ForYouChannel(
+                        channelId = rec.channelId,
+                        channelName = rec.channelName,
+                        channelIcon = rec.channelIcon,
+                        categoryName = rec.categoryName,
+                        nowPlaying = nowPlaying,
+                        contextHint = rec.contextHint
+                    )
+                }
+                _forYouLiveNow.value = channels
             } catch (_: Exception) { }
         }
     }
@@ -61,8 +98,18 @@ class HomeViewModel @Inject constructor(
     private val _forYouContent = MutableStateFlow<List<RecommendedItem>>(emptyList())
     val forYouContent: StateFlow<List<RecommendedItem>> = _forYouContent.asStateFlow()
 
+    private val _forYouLiveNow = MutableStateFlow<List<ForYouChannel>>(emptyList())
+    val forYouLiveNow: StateFlow<List<ForYouChannel>> = _forYouLiveNow.asStateFlow()
+
     private val _trendingContent = MutableStateFlow<List<VodStream>>(emptyList())
     val trendingContent: StateFlow<List<VodStream>> = _trendingContent.asStateFlow()
+
+    private val _trendingSeries = MutableStateFlow<List<Series>>(emptyList())
+    val trendingSeries: StateFlow<List<Series>> = _trendingSeries.asStateFlow()
+
+    /** Saved focus state for restoration on back navigation */
+    var savedFocusRowId: Int = -1
+    var savedFocusPosition: Int = -1
 
     val sections = listOf(
         SectionItem("live", "Live TV", R.drawable.ic_live_tv, Color.parseColor("#1976D2"),
@@ -125,8 +172,18 @@ class HomeViewModel @Inject constructor(
             // Trending: next 20 titles
             _trendingContent.value = sorted.drop(6).take(20)
 
-            // Fetch banner/backdrop images in parallel for hero items
+            // Fetch banner/backdrop images + trending series in parallel
             coroutineScope {
+                // Trending Series: most recently updated
+                launch {
+                    try {
+                        val seriesList = contentRepository.getSeries()
+                        _trendingSeries.value = seriesList
+                            .sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
+                            .take(20)
+                    } catch (_: Exception) { }
+                }
+
                 val featuredWithBanners = heroVods.map { vod ->
                     async {
                         try {

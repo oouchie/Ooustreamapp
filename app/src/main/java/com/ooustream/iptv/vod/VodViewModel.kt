@@ -34,6 +34,10 @@ class VodViewModel @Inject constructor(
 
     val favorites = favoriteRepository.getFavoritesByType("vod")
 
+    /** Saved positions for focus restoration on back navigation */
+    var savedGridPosition: Int = -1
+    var savedCategoryPosition: Int = -1
+
     fun loadCategories() {
         viewModelScope.launch {
             _isLoading.value = true

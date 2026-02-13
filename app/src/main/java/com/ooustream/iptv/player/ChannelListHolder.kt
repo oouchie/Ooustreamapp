@@ -13,6 +13,10 @@ object ChannelListHolder {
     var channels: List<LiveStream> = emptyList()
     var currentIndex: Int = 0
 
+    /** Written by player on destroy — read by LiveTvFragment on resume */
+    var lastPlayedIndex: Int = -1
+    var lastPlayedChannel: LiveStream? = null
+
     fun consume(): Pair<List<LiveStream>, Int> {
         val result = channels to currentIndex
         channels = emptyList()

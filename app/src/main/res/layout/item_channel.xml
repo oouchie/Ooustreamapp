@@ -6,7 +6,7 @@
     android:layout_height="56dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:background="@drawable/bg_channel_aurora"
+    android:background="@drawable/bg_channel_states"
     android:clipToOutline="true"
     android:paddingHorizontal="10dp"
     android:paddingVertical="2dp"

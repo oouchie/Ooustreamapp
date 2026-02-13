@@ -29,12 +29,15 @@ import com.ooustream.iptv.common.PosterPresenter
 import com.ooustream.iptv.common.ScreenPreWarmer
 import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.common.dp
+import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.ContentType
+import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.favorites.FavoritesFragment
 import com.ooustream.iptv.livetv.LiveTvFragment
 import com.ooustream.iptv.onboarding.OnboardingOverlay
+import com.ooustream.iptv.player.ChannelListHolder
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
 import com.ooustream.iptv.recommendation.RecommendedItem
 import com.ooustream.iptv.search.SearchFragment
@@ -75,16 +78,22 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var continueWatchingRow: HorizontalGridView
     private lateinit var forYouLabel: TextView
     private lateinit var forYouRow: HorizontalGridView
+    private lateinit var forYouLiveLabel: TextView
+    private lateinit var forYouLiveRow: HorizontalGridView
     private lateinit var sectionsRow: HorizontalGridView
     private lateinit var trendingLabel: TextView
     private lateinit var trendingRow: HorizontalGridView
+    private lateinit var trendingSeriesLabel: TextView
+    private lateinit var trendingSeriesRow: HorizontalGridView
     private lateinit var auroraBackground: AuroraBackgroundView
 
     // Adapters
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
     private val forYouObjectAdapter = ArrayObjectAdapter(ForYouPresenter())
+    private val forYouLiveObjectAdapter = ArrayObjectAdapter(ForYouLivePresenter())
     private val sectionObjectAdapter = ArrayObjectAdapter(SectionCardPresenter())
     private val trendingObjectAdapter = ArrayObjectAdapter(PosterPresenter())
+    private val trendingSeriesObjectAdapter = ArrayObjectAdapter(PosterPresenter())
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -105,21 +114,118 @@ class HomeFragment : Fragment(), KeyEventHandler {
         setupTrendingRow()
         setupContinueWatchingRow()
         setupForYouRow()
+        setupForYouLiveRow()
         setupHeroClickListener()
         observeFeaturedContent()
         observeContinueWatching()
         observeForYouContent()
+        observeForYouLiveContent()
         observeTrendingContent()
+        setupTrendingSeriesRow()
+        observeTrendingSeries()
         loadFeatured()
         setupOnboarding(view)
+
+        // Restore focus to where user was before navigating away, or default to hero
+        restoreFocusState()
     }
 
     override fun onDestroyView() {
+        // Save focus position for restoration on back navigation
+        saveFocusState()
         heroRotationJob?.cancel()
         screenPreWarmer?.reset()
         screenPreWarmer = null
         onboardingOverlay = null
         super.onDestroyView()
+    }
+
+    private fun saveFocusState() {
+        val focused = view?.findFocus() ?: return
+        // Check if focus is in a HorizontalGridView row
+        var current: View? = focused
+        while (current != null) {
+            when (current.id) {
+                R.id.sections_row -> {
+                    viewModel.savedFocusRowId = R.id.sections_row
+                    viewModel.savedFocusPosition = sectionsRow.selectedPosition
+                    return
+                }
+                R.id.continue_watching_row -> {
+                    viewModel.savedFocusRowId = R.id.continue_watching_row
+                    viewModel.savedFocusPosition = continueWatchingRow.selectedPosition
+                    return
+                }
+                R.id.for_you_row -> {
+                    viewModel.savedFocusRowId = R.id.for_you_row
+                    viewModel.savedFocusPosition = forYouRow.selectedPosition
+                    return
+                }
+                R.id.for_you_live_row -> {
+                    viewModel.savedFocusRowId = R.id.for_you_live_row
+                    viewModel.savedFocusPosition = forYouLiveRow.selectedPosition
+                    return
+                }
+                R.id.trending_row -> {
+                    viewModel.savedFocusRowId = R.id.trending_row
+                    viewModel.savedFocusPosition = trendingRow.selectedPosition
+                    return
+                }
+                R.id.trending_series_row -> {
+                    viewModel.savedFocusRowId = R.id.trending_series_row
+                    viewModel.savedFocusPosition = trendingSeriesRow.selectedPosition
+                    return
+                }
+            }
+            val p = current.parent
+            current = if (p is View) p else null
+        }
+        // Hero buttons
+        if (focused.id == R.id.hero_watch_now || focused.id == R.id.hero_more_info) {
+            viewModel.savedFocusRowId = focused.id
+        }
+    }
+
+    private fun restoreFocusState() {
+        val rowId = viewModel.savedFocusRowId
+        val pos = viewModel.savedFocusPosition
+        viewModel.savedFocusRowId = -1
+        viewModel.savedFocusPosition = -1
+
+        if (rowId < 0) {
+            heroWatchNow.post { heroWatchNow.requestFocus() }
+            return
+        }
+
+        when (rowId) {
+            R.id.sections_row -> sectionsRow.post {
+                sectionsRow.selectedPosition = pos.coerceAtLeast(0)
+                sectionsRow.requestFocus()
+            }
+            R.id.continue_watching_row -> continueWatchingRow.post {
+                continueWatchingRow.selectedPosition = pos.coerceAtLeast(0)
+                continueWatchingRow.requestFocus()
+            }
+            R.id.for_you_row -> forYouRow.post {
+                forYouRow.selectedPosition = pos.coerceAtLeast(0)
+                forYouRow.requestFocus()
+            }
+            R.id.for_you_live_row -> forYouLiveRow.post {
+                forYouLiveRow.selectedPosition = pos.coerceAtLeast(0)
+                forYouLiveRow.requestFocus()
+            }
+            R.id.trending_row -> trendingRow.post {
+                trendingRow.selectedPosition = pos.coerceAtLeast(0)
+                trendingRow.requestFocus()
+            }
+            R.id.trending_series_row -> trendingSeriesRow.post {
+                trendingSeriesRow.selectedPosition = pos.coerceAtLeast(0)
+                trendingSeriesRow.requestFocus()
+            }
+            R.id.hero_watch_now -> heroWatchNow.post { heroWatchNow.requestFocus() }
+            R.id.hero_more_info -> heroMoreInfo.post { heroMoreInfo.requestFocus() }
+            else -> heroWatchNow.post { heroWatchNow.requestFocus() }
+        }
     }
 
     // ── KeyEventHandler ────────────────────────────────────────────────
@@ -168,9 +274,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
         continueWatchingRow = view.findViewById(R.id.continue_watching_row)
         forYouLabel = view.findViewById(R.id.for_you_label)
         forYouRow = view.findViewById(R.id.for_you_row)
+        forYouLiveLabel = view.findViewById(R.id.for_you_live_label)
+        forYouLiveRow = view.findViewById(R.id.for_you_live_row)
         sectionsRow = view.findViewById(R.id.sections_row)
         trendingLabel = view.findViewById(R.id.trending_label)
         trendingRow = view.findViewById(R.id.trending_row)
+        trendingSeriesLabel = view.findViewById(R.id.trending_series_label)
+        trendingSeriesRow = view.findViewById(R.id.trending_series_row)
     }
 
     // ── Aurora Background ──────────────────────────────────────────────────
@@ -353,6 +463,59 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    // ── Trending Series Row ──────────────────────────────────────────────
+
+    private fun setupTrendingSeriesRow() {
+        val bridgeAdapter = ItemBridgeAdapter(trendingSeriesObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = trendingSeriesObjectAdapter.get(position)
+                    if (item is PosterItem) {
+                        val fragment = SeriesDetailFragment.newInstance(item.id, item.title)
+                        val tx = requireActivity().supportFragmentManager.beginTransaction()
+                        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+                        tx.replace(R.id.main_container, fragment)
+                            .addToBackStack(null)
+                            .commit()
+                    }
+                }
+            }
+        })
+        trendingSeriesRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        trendingSeriesRow.adapter = bridgeAdapter
+    }
+
+    private fun observeTrendingSeries() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.trendingSeries.collect { items ->
+                    trendingSeriesObjectAdapter.clear()
+                    if (items.isNotEmpty()) {
+                        items.forEach { series ->
+                            trendingSeriesObjectAdapter.add(
+                                PosterItem(
+                                    id = series.seriesId,
+                                    title = series.name,
+                                    imageUrl = series.cover,
+                                    rating = series.rating,
+                                    extension = null,
+                                    type = "series"
+                                )
+                            )
+                        }
+                        trendingSeriesLabel.visibility = View.VISIBLE
+                        trendingSeriesRow.visibility = View.VISIBLE
+                    } else {
+                        trendingSeriesLabel.visibility = View.GONE
+                        trendingSeriesRow.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
     // ── Continue Watching Row ────────────────────────────────────────────
 
     private fun setupContinueWatchingRow() {
@@ -435,6 +598,76 @@ class HomeFragment : Fragment(), KeyEventHandler {
             forYouLabel.visibility = View.GONE
             forYouRow.visibility = View.GONE
         }
+    }
+
+    // ── For You — Live Now Row ─────────────────────────────────────────
+
+    private fun setupForYouLiveRow() {
+        val bridgeAdapter = ItemBridgeAdapter(forYouLiveObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = forYouLiveObjectAdapter.get(position)
+                    if (item is ForYouChannel) {
+                        navigateToLiveChannel(item)
+                    }
+                }
+            }
+        })
+
+        forYouLiveRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        forYouLiveRow.adapter = bridgeAdapter
+    }
+
+    private fun observeForYouLiveContent() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.forYouLiveNow.collect { channels ->
+                    forYouLiveObjectAdapter.clear()
+                    if (channels.isNotEmpty()) {
+                        channels.forEach { forYouLiveObjectAdapter.add(it) }
+                        forYouLiveLabel.visibility = View.VISIBLE
+                        forYouLiveRow.visibility = View.VISIBLE
+                    } else {
+                        forYouLiveLabel.visibility = View.GONE
+                        forYouLiveRow.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    private fun navigateToLiveChannel(channel: ForYouChannel) {
+        val url = viewModel.buildLiveStreamUrl(channel.channelId)
+
+        // Build channel list from all "For You — Live Now" recommendations
+        // so the player supports D-pad channel switching
+        val allChannels = viewModel.forYouLiveNow.value
+        val liveStreams = allChannels.map { ch ->
+            LiveStream(
+                num = null, name = ch.channelName, streamType = "live",
+                streamId = ch.channelId, streamIcon = ch.channelIcon,
+                epgChannelId = null, added = null, categoryId = null,
+                customSid = null, tvArchive = null, directSource = null,
+                tvArchiveDuration = null
+            )
+        }
+        val idx = allChannels.indexOfFirst { it.channelId == channel.channelId }.coerceAtLeast(0)
+        ChannelListHolder.channels = liveStreams
+        ChannelListHolder.currentIndex = idx
+
+        val fragment = OoustreamPlaybackFragment.newInstance(
+            streamUrl = url,
+            contentType = ContentType.LIVE,
+            streamId = channel.channelId.toString(),
+            streamName = channel.channelName
+        )
+        val tx = requireActivity().supportFragmentManager.beginTransaction()
+        FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+        tx.replace(R.id.main_container, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     // ── Hero / Featured Content ──────────────────────────────────────────
@@ -590,7 +823,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
             contentType = contentType,
             streamId = item.streamId,
             streamName = item.name,
-            streamIcon = item.icon ?: ""
+            streamIcon = item.icon ?: "",
+            seriesId = item.seriesId ?: 0,
+            seasonNum = item.seasonNum ?: 0,
+            episodeNum = item.episodeNum ?: 0
         )
         val tx = requireActivity().supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.PLAYER)

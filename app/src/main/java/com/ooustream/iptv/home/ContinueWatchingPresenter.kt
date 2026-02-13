@@ -37,6 +37,21 @@ class ContinueWatchingPresenter : Presenter() {
         title.text = progress.name
         progressBar.progress = (progress.progressPercent * 100).toInt()
 
+        // Series subtitle: "S1 E2 · Up Next" or "S1 E2 · Resume"
+        val isSeries = progress.type == "series" && progress.seasonNum != null
+        val isUpNext = isSeries && progress.position == 0L
+        if (isSeries) {
+            resumeText.text = if (isUpNext) {
+                "S${progress.seasonNum} E${progress.episodeNum} \u00B7 Up Next"
+            } else {
+                "S${progress.seasonNum} E${progress.episodeNum} \u00B7 Resume"
+            }
+            resumeText.visibility = View.VISIBLE
+        } else {
+            resumeText.text = "Resume"
+            resumeText.visibility = View.GONE
+        }
+
         progress.icon?.let { url ->
             if (url.isNotBlank()) {
                 image.load(url) {
@@ -55,7 +70,7 @@ class ContinueWatchingPresenter : Presenter() {
             } else {
                 v.overlay.clear()
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
-                resumeText.visibility = View.GONE
+                if (!isSeries) resumeText.visibility = View.GONE
             }
         }
     }

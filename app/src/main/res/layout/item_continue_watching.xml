@@ -41,14 +41,15 @@
             android:textColor="@color/text_accent"
             android:textSize="12sp"
             android:visibility="gone" />
-
-        <ProgressBar
-            android:id="@+id/cw_progress"
-            style="@android:style/Widget.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="4dp"
-            android:layout_marginTop="4dp"
-            android:max="100"
-            android:progressDrawable="@drawable/progress_continue_watching" />
     </LinearLayout>
+
+    <!-- Progress bar overlays the bottom edge of the poster -->
+    <ProgressBar
+        android:id="@+id/cw_progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom"
+        android:max="100"
+        android:progressDrawable="@drawable/progress_continue_watching" />
 </FrameLayout>

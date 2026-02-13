@@ -39,8 +39,14 @@ class LiveTvViewModel @Inject constructor(
 
     val favorites = favoriteRepository.getAllFavorites()
 
-    /** Stream ID of last previewed channel, used to restore preview when coming back from fullscreen */
-    var lastPreviewedStreamId: Int? = null
+    /** Full preview state — saved before fullscreen, consumed on return to restart preview */
+    var lastPreviewedChannel: LiveStream? = null
+    var lastPreviewedUrl: String? = null
+    var lastPreviewedIndex: Int = -1
+
+    /** Saved positions for focus restoration on back navigation */
+    var savedChannelPosition: Int = -1
+    var savedCategoryPosition: Int = -1
 
     fun loadCategories() {
         viewModelScope.launch {

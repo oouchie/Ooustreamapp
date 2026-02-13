@@ -25,7 +25,7 @@ data class PosterItem(
     val type: String // "vod" or "series"
 )
 
-class PosterPresenter : Presenter() {
+open class PosterPresenter : Presenter() {
 
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_poster_card, parent, false)

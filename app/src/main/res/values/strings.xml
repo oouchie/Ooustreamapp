@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Ooustream</string>
+    <string name="app_name">Ooustream IPTV</string>
     <string name="default_server_url">https://flarecoral.com</string>
 
     <!-- Sections -->
@@ -98,6 +98,7 @@
 
     <!-- Hero / Home -->
     <string name="watch_now">Watch Now</string>
+    <string name="watch_trailer">Trailer</string>
     <string name="featured">Featured</string>
     <string name="resume">Resume</string>
 
@@ -108,7 +109,13 @@
     <!-- Binge Mode -->
     <string name="next_episode_in">Next episode in %ds</string>
     <string name="watch_next">Watch Next</string>
+    <string name="watch_next_title">You Might Also Like</string>
     <string name="binge_cancel">Stay on this episode</string>
+    <string name="series_complete_title">Series Complete</string>
+    <string name="series_complete_subtitle">You\'ve watched every episode!</string>
+    <string name="series_replay">Replay Series</string>
+    <string name="series_exit">Exit</string>
+    <string name="no_more_episodes">No more episodes</string>
 
     <!-- Sleep Timer -->
     <string name="sleep_timer">Sleep Timer</string>
@@ -122,6 +129,7 @@
     <!-- Remote Hints -->
     <string name="hint_player_live">UP/DOWN: Channels \u2022 OK: Controls \u2022 BACK: Exit</string>
     <string name="hint_player_vod">LEFT/RIGHT: Seek \u2022 OK: Controls \u2022 BACK: Exit</string>
+    <string name="hint_player_series">LEFT/RIGHT: Seek \u2022 UP: Next Episode \u2022 OK: Controls \u2022 BACK: Exit</string>
     <string name="hint_browse">OK: Select \u2022 BACK: Home</string>
 
     <!-- Crash Recovery -->
@@ -139,4 +147,18 @@
     <string name="recently_added">Recently Added</string>
     <string name="continue_watching">Continue Watching</string>
     <string name="for_you">For You</string>
+    <string name="for_you_live_now">For You — Live Now</string>
+
+    <!-- Exit Confirmation -->
+    <string name="exit_title">Exit Ooustream?</string>
+    <string name="exit_message">Are you sure you want to exit?</string>
+    <string name="exit">Exit</string>
+
+    <!-- Search -->
+    <string name="no_results">No results found</string>
+
+    <!-- Favorites -->
+    <string name="remove_favorite_title">Remove Favorite</string>
+    <string name="remove_favorite_message">Remove \"%s\" from favorites?</string>
+    <string name="remove">Remove</string>
 </resources>

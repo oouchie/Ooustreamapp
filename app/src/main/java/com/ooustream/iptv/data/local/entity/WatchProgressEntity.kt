@@ -13,5 +13,10 @@ data class WatchProgressEntity(
     val duration: Long,                    // milliseconds
     val progressPercent: Float,            // 0.0 - 1.0
     val lastWatched: Long = System.currentTimeMillis(),
-    val extra: String?                     // series: episode info JSON
+    val extra: String?,                    // stream URL for resume
+    val seriesId: Int? = null,             // series context for binge-watch
+    val seasonNum: Int? = null,
+    val episodeNum: Int? = null,
+    val completed: Boolean = false,        // true when progress > 95% or STATE_ENDED
+    val dismissed: Boolean = false         // true when user manually removes from CW
 )

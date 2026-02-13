@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="focus_load_job" type="id"/>
+    <item name="focus_glow_drawable" type="id"/>
+    <item name="focus_bracket_drawable" type="id"/>
+    <item name="focus_effect_job" type="id"/>
+    <item name="for_you_live_row" type="id"/>
 </resources>

@@ -106,4 +106,9 @@ class SearchIndexRepository @Inject constructor(
     }
 
     suspend fun isIndexBuilt(): Boolean = searchIndexDao.getCount() > 0
+
+    suspend fun clearAndReset() {
+        searchIndexDao.clearAll()
+        prefs.edit().putLong("last_indexed", 0).apply()
+    }
 }

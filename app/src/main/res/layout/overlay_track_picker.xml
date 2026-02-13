@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Semi-transparent scrim -->
+    <View
+        android:id="@+id/track_picker_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000" />
+
+    <!-- Right-side panel -->
+    <ScrollView
+        android:id="@+id/track_picker_panel"
+        android:layout_width="320dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#E6141414"
+        android:translationX="320dp"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="32dp"
+            android:paddingBottom="32dp">
+
+            <!-- Audio Section Header -->
+            <TextView
+                android:id="@+id/audio_section_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="Audio"
+                android:textColor="#FFC107"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Audio tracks added programmatically -->
+            <LinearLayout
+                android:id="@+id/audio_tracks_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp" />
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/track_picker_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                android:layout_marginStart="24dp"
+                android:layout_marginEnd="24dp"
+                android:background="#33FFFFFF" />
+
+            <!-- Subtitles Section Header -->
+            <TextView
+                android:id="@+id/subtitle_section_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="Subtitles"
+                android:textColor="#FFC107"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Subtitle tracks added programmatically -->
+            <LinearLayout
+                android:id="@+id/subtitle_tracks_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>

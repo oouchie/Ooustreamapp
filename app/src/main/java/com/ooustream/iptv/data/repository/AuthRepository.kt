@@ -29,6 +29,18 @@ class AuthRepository @Inject constructor(
             } else {
                 Result.failure(Exception("Invalid credentials"))
             }
+        } catch (e: retrofit2.HttpException) {
+            val code = e.code()
+            val message = when {
+                code == 401 || code == 403 || code == 512 -> "Invalid username or password"
+                code in 500..599 -> "Server error ($code). Try again later."
+                else -> "Connection failed (HTTP $code)"
+            }
+            Result.failure(Exception(message))
+        } catch (e: java.net.UnknownHostException) {
+            Result.failure(Exception("Server not found. Check the URL."))
+        } catch (e: java.net.SocketTimeoutException) {
+            Result.failure(Exception("Connection timed out. Try again."))
         } catch (e: Exception) {
             Result.failure(e)
         }

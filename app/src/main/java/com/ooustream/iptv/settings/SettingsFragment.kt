@@ -33,6 +33,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_CLEAR_CACHE = 6L
         private const val ACTION_ABOUT = 7L
         private const val ACTION_LOGOUT = 8L
+        private const val ACTION_REFRESH_PLAYLIST = 9L
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -98,6 +99,15 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Update Playlist
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_REFRESH_PLAYLIST)
+                .title("Update Playlist")
+                .description("Refresh channels and content from server")
+                .build()
+        )
+
         // Clear Cache
         actions.add(
             GuidedAction.Builder(requireContext())
@@ -134,6 +144,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_BACKUP -> navigateToFragment(BackupFragment())
             ACTION_SPEED_TEST -> navigateToFragment(SpeedTestFragment())
             ACTION_UPDATE -> navigateToFragment(UpdateFragment())
+            ACTION_REFRESH_PLAYLIST -> refreshPlaylist()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
             ACTION_LOGOUT -> showLogoutConfirmation()
         }
@@ -160,11 +171,16 @@ class SettingsFragment : GuidedStepSupportFragment() {
                             is SettingsViewModel.SettingsEvent.CacheCleared -> {
                                 Toast.makeText(requireContext(), "Cache cleared", Toast.LENGTH_SHORT).show()
                             }
+                            is SettingsViewModel.SettingsEvent.PlaylistRefreshed -> {
+                                resetPlaylistAction()
+                                Toast.makeText(requireContext(), "Playlist updated", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
                 launch {
                     viewModel.error.collect { message ->
+                        resetPlaylistAction()
                         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -181,6 +197,27 @@ class SettingsFragment : GuidedStepSupportFragment() {
             .replace(R.id.main_container, fragment)
             .addToBackStack(null)
             .commit()
+    }
+
+    // endregion
+
+    // region Playlist Refresh
+
+    private fun refreshPlaylist() {
+        val pos = findActionPositionById(ACTION_REFRESH_PLAYLIST)
+        if (pos >= 0) {
+            findActionById(ACTION_REFRESH_PLAYLIST)?.description = "Refreshing\u2026"
+            notifyActionChanged(pos)
+        }
+        viewModel.refreshPlaylist()
+    }
+
+    private fun resetPlaylistAction() {
+        val pos = findActionPositionById(ACTION_REFRESH_PLAYLIST)
+        if (pos >= 0) {
+            findActionById(ACTION_REFRESH_PLAYLIST)?.description = "Refresh channels and content from server"
+            notifyActionChanged(pos)
+        }
     }
 
     // endregion

@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/controls_overlay_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Top gradient for status info readability -->
+    <View
+        android:id="@+id/gradient_top"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:layout_gravity="top"
+        android:background="@drawable/gradient_controls_top" />
+
+    <!-- Bottom gradient for controls readability -->
+    <View
+        android:id="@+id/gradient_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_controls_bottom" />
+
+    <!-- Top-right info bar: LIVE badge, quality badge, clock -->
+    <LinearLayout
+        android:id="@+id/top_info_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="24dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- LIVE badge (Live TV only) -->
+        <LinearLayout
+            android:id="@+id/live_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_live_badge"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/live_dot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/bg_live_dot" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:text="LIVE"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Quality badge -->
+        <TextView
+            android:id="@+id/quality_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="3dp"
+            android:textColor="@android:color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Clock -->
+        <TextClock
+            android:id="@+id/player_clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:format12Hour="h:mm a"
+            android:format24Hour="HH:mm"
+            android:textColor="#CCFFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Bottom controls bar -->
+    <LinearLayout
+        android:id="@+id/bottom_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:layout_marginBottom="24dp"
+        android:orientation="vertical">
+
+        <!-- ROW 1: Play/Pause + Logo/Poster + Info + SeekBar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Play/Pause button -->
+            <ImageView
+                android:id="@+id/btn_play_pause"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_play_pause_circle"
+                android:contentDescription="Play/Pause"
+                android:focusable="true"
+                android:padding="10dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_pause_24" />
+
+            <!-- Content identity: Logo (Live) or Poster (VOD/Series) -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp">
+
+                <!-- Channel logo (Live TV) -->
+                <ImageView
+                    android:id="@+id/channel_logo"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone" />
+
+                <!-- Content poster (VOD/Series) -->
+                <ImageView
+                    android:id="@+id/content_poster"
+                    android:layout_width="48dp"
+                    android:layout_height="72dp"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone" />
+
+                <!-- Initials fallback -->
+                <TextView
+                    android:id="@+id/content_initials"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="@drawable/bg_play_pause_circle"
+                    android:gravity="center"
+                    android:textColor="@android:color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <!-- Info block -->
+            <LinearLayout
+                android:id="@+id/content_info_block"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- Title -->
+                <TextView
+                    android:id="@+id/info_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="1"
+                    android:shadowDy="1"
+                    android:shadowRadius="3"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- Subtitle (Now: program / genre / S5 E14) -->
+                <TextView
+                    android:id="@+id/info_subtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
+
+                <!-- Seek / Progress bar -->
+                <SeekBar
+                    android:id="@+id/controls_seek_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:focusable="true"
+                    android:maxHeight="3dp"
+                    android:progressDrawable="@drawable/seek_bar_progress_gold"
+                    android:splitTrack="false"
+                    android:thumb="@drawable/seek_bar_thumb_gold"
+                    android:thumbOffset="0dp" />
+
+                <!-- Time info row -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp">
+
+                    <TextView
+                        android:id="@+id/info_time_left"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/info_time_right"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="12sp" />
+                </RelativeLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ROW 2: Action buttons (populated programmatically) -->
+        <LinearLayout
+            android:id="@+id/action_buttons_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:orientation="horizontal" />
+    </LinearLayout>
+
+</FrameLayout>

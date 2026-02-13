@@ -8,18 +8,23 @@ import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import com.ooustream.iptv.recommendation.RecommendationEngine
+import com.ooustream.iptv.recommendation.RecommendedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val watchProgressRepository: WatchProgressRepository,
-    private val watchAnalyticsRepository: WatchAnalyticsRepository
+    private val watchAnalyticsRepository: WatchAnalyticsRepository,
+    private val recommendationEngine: RecommendationEngine
 ) : BaseViewModel() {
 
     var hasResumed = false
@@ -48,9 +53,9 @@ class PlayerViewModel @Inject constructor(
 
     fun switchChannel(direction: Int): LiveStream? {
         val list = _channels.value
-        if (list.isEmpty()) return null
-        val newIndex = (_currentChannelIndex.value + direction).coerceIn(0, list.lastIndex)
-        if (newIndex == _currentChannelIndex.value) return null
+        if (list.size < 2) return null
+        val raw = _currentChannelIndex.value + direction
+        val newIndex = ((raw % list.size) + list.size) % list.size  // wrap around
         _currentChannelIndex.value = newIndex
         return list[newIndex]
     }
@@ -58,7 +63,7 @@ class PlayerViewModel @Inject constructor(
     fun getResumePosition(callback: (Long) -> Unit) {
         viewModelScope.launch {
             val progress = watchProgressRepository.getProgress(streamId)
-            if (progress != null && progress.progressPercent in 0.05f..0.95f) {
+            if (progress != null && !progress.completed && progress.progressPercent > 0.05f) {
                 callback(progress.position)
             }
         }
@@ -67,19 +72,60 @@ class PlayerViewModel @Inject constructor(
     fun saveProgress(position: Long, duration: Long, percent: Float) {
         if (contentType == ContentType.LIVE) return
         viewModelScope.launch {
-            watchProgressRepository.saveProgress(
-                WatchProgressEntity(
-                    streamId = streamId,
-                    type = if (contentType == ContentType.VOD) "vod" else "series",
-                    name = streamName,
-                    icon = streamIcon.ifBlank { null },
-                    position = position,
-                    duration = duration,
-                    progressPercent = percent,
-                    extra = streamUrl.ifBlank { null }
+            withContext(NonCancellable) {
+                watchProgressRepository.saveProgress(
+                    WatchProgressEntity(
+                        streamId = streamId,
+                        type = if (contentType == ContentType.VOD) "vod" else "series",
+                        name = streamName,
+                        icon = streamIcon.ifBlank { null },
+                        position = position,
+                        duration = duration,
+                        progressPercent = percent,
+                        extra = streamUrl.ifBlank { null },
+                        seriesId = if (contentType == ContentType.SERIES && seriesId > 0) seriesId else null,
+                        seasonNum = if (contentType == ContentType.SERIES) seasonNum else null,
+                        episodeNum = if (contentType == ContentType.SERIES) episodeNum else null,
+                        completed = percent >= 0.95f
+                    )
                 )
-            )
+            }
         }
+    }
+
+    fun markCompleted() {
+        if (contentType == ContentType.LIVE) return
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                watchProgressRepository.markCompleted(streamId)
+            }
+        }
+    }
+
+    /**
+     * Mark current series episode as completed and insert the next episode
+     * as an "Up Next" entry in watch_progress so it appears in Continue Watching.
+     */
+    suspend fun advanceSeriesOnCompletion() {
+        if (contentType != ContentType.SERIES || seriesId == 0) return
+        watchProgressRepository.markCompleted(streamId)
+        val next = resolveNextEpisode() ?: return
+        watchProgressRepository.saveProgress(
+            WatchProgressEntity(
+                streamId = next.episodeId,
+                type = "series",
+                name = next.name,
+                icon = streamIcon.ifBlank { null },
+                position = 0,
+                duration = 1,
+                progressPercent = 0.06f,
+                extra = next.url,
+                seriesId = seriesId,
+                seasonNum = next.season,
+                episodeNum = next.episodeNum,
+                completed = false
+            )
+        )
     }
 
     fun recordPlayStart(categoryId: String? = null) {
@@ -96,6 +142,21 @@ class PlayerViewModel @Inject constructor(
 
     fun buildLiveUrl(stream: LiveStream): String {
         return contentRepository.buildLiveStreamUrl(stream.streamId)
+    }
+
+    fun buildVodStreamUrl(streamId: Int, ext: String): String {
+        return contentRepository.buildVodStreamUrl(streamId, ext)
+    }
+
+    suspend fun getWatchNextSuggestions(): List<RecommendedItem> {
+        return try {
+            recommendationEngine.getRecommendations(20)
+                .filter { it.type == "vod" }
+                .filter { it.streamId.toString() != streamId }
+                .take(6)
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     /**

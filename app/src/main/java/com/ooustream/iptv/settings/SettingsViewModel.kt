@@ -3,6 +3,7 @@ package com.ooustream.iptv.settings
 import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.local.OoustreamDatabase
+import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.CredentialStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -15,12 +16,14 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val credentialStore: CredentialStore,
-    private val database: OoustreamDatabase
+    private val database: OoustreamDatabase,
+    private val contentCacheRepository: ContentCacheRepository
 ) : BaseViewModel() {
 
     sealed class SettingsEvent {
         object LoggedOut : SettingsEvent()
         object CacheCleared : SettingsEvent()
+        object PlaylistRefreshed : SettingsEvent()
     }
 
     private val _event = MutableSharedFlow<SettingsEvent>()
@@ -48,6 +51,20 @@ class SettingsViewModel @Inject constructor(
                 _event.emit(SettingsEvent.CacheCleared)
             } catch (e: Exception) {
                 _error.emit("Failed to clear cache: ${e.message}")
+            }
+        }
+    }
+
+    fun refreshPlaylist() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                contentCacheRepository.clearContentCache()
+                contentCacheRepository.getCategories("live").collect {}
+                contentCacheRepository.getCategories("vod").collect {}
+                contentCacheRepository.getCategories("series").collect {}
+                _event.emit(SettingsEvent.PlaylistRefreshed)
+            } catch (e: Exception) {
+                _error.emit("Playlist update failed: ${e.message}")
             }
         }
     }

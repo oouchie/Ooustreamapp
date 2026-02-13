@@ -1,21 +1,18 @@
 package com.ooustream.iptv
 
-import android.app.PictureInPictureParams
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
-import android.util.Rational
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.auth.LoginFragment
-import com.ooustream.iptv.common.CrashRecoveryManager
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QuickSidebar
@@ -45,7 +42,6 @@ interface KeyEventHandler {
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
 
-    @Inject lateinit var crashRecoveryManager: CrashRecoveryManager
     @Inject lateinit var networkMonitor: NetworkMonitor
     @Inject lateinit var credentialStore: CredentialStore
     @Inject lateinit var contentRepository: ContentRepository
@@ -65,38 +61,20 @@ class MainActivity : FragmentActivity() {
             // Start with intro splash
             val splash = IntroSplashFragment()
             splash.onFinished = {
-                supportFragmentManager.beginTransaction()
-                    .replace(R.id.main_container, LoginFragment())
-                    .commit()
+                // Skip login if already authenticated
+                if (credentialStore.load() != null) {
+                    navigateToHome()
+                } else {
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.main_container, LoginFragment())
+                        .commit()
+                }
             }
             supportFragmentManager.beginTransaction()
                 .replace(R.id.main_container, splash)
                 .commit()
         }
 
-        // Check for crash recovery — auto-resume playback if app crashed during stream
-        lifecycleScope.launch {
-            val recovery = crashRecoveryManager.getRecoveryState()
-            if (recovery != null) {
-                crashRecoveryManager.clearState()
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.restoring_playback),
-                    Toast.LENGTH_SHORT
-                ).show()
-                val fragment = OoustreamPlaybackFragment.newInstance(
-                    streamUrl = recovery.streamUrl,
-                    contentType = ContentType.valueOf(recovery.contentType),
-                    streamId = recovery.streamId,
-                    streamName = recovery.streamName
-                )
-                val tx = supportFragmentManager.beginTransaction()
-                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                tx.replace(R.id.main_container, fragment)
-                    .addToBackStack(null)
-                    .commit()
-            }
-        }
     }
 
     private fun setupSidebar() {
@@ -116,7 +94,8 @@ class MainActivity : FragmentActivity() {
             }
         }
 
-        // Observe network state for connection status indicator
+        // Observe network state for connection status indicator + user toast
+        var wasConnected = true
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 networkMonitor.state.collect { networkState ->
@@ -124,6 +103,15 @@ class MainActivity : FragmentActivity() {
                         isConnected = networkState.isConnected,
                         isWifi = networkState.isWifi
                     )
+                    // Toast on connectivity change (skip player — it has its own handling)
+                    val currentFragment = supportFragmentManager.findFragmentById(R.id.main_container)
+                    val isPlayerActive = currentFragment is OoustreamPlaybackFragment
+                    if (!networkState.isConnected && wasConnected && !isPlayerActive) {
+                        Toast.makeText(this@MainActivity, R.string.error_network, Toast.LENGTH_LONG).show()
+                    } else if (networkState.isConnected && !wasConnected && !isPlayerActive) {
+                        Toast.makeText(this@MainActivity, "Connection restored", Toast.LENGTH_SHORT).show()
+                    }
+                    wasConnected = networkState.isConnected
                 }
             }
         }
@@ -189,6 +177,28 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
+
+        // Never let Back exit during intro splash
+        if (fragment is IntroSplashFragment) return
+
+        // Exit confirmation on Home screen
+        if (fragment is HomeFragment && supportFragmentManager.backStackEntryCount == 0) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.exit_title)
+                .setMessage(R.string.exit_message)
+                .setPositiveButton(R.string.exit) { _, _ -> finish() }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
             // If sidebar is open, let it handle the key event first
@@ -224,19 +234,6 @@ class MainActivity : FragmentActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val currentFragment = supportFragmentManager.findFragmentById(R.id.main_container)
-            if (currentFragment is OoustreamPlaybackFragment) {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                enterPictureInPictureMode(params)
-            }
-        }
     }
 
     override fun onNewIntent(intent: Intent?) {
