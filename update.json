@@ -1,7 +1,7 @@
 {
-  "version_name": "2.1.0",
-  "version_code": 3,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.0/app-release.apk",
-  "changelog": "v2.1.0\n\n• Audio & Subtitle Track Picker — slide-in panel for switching audio/subtitle tracks\n• Trending Series row on Home screen\n• D-pad seek fix — Left/Right seeks on progress bar, navigates on action buttons\n• Track picker always shows available tracks with Default/Off fallbacks\n• App name updated to Ooustream IPTV\n• Bug fixes and performance improvements",
+  "version_name": "2.1.1",
+  "version_code": 4,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.1/app-release.apk",
+  "changelog": "v2.1.1\n\n• Fixed OTA Update system — Check for Updates now properly shows available updates and download button\n• Fixed Speed Test — accurate download measurement using full channel data instead of tiny payload\n• All future updates can be installed directly from Settings",
   "mandatory": false
 }

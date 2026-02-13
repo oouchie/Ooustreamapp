@@ -1,6 +1,5 @@
 package com.ooustream.iptv.update
 
-import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.viewModels
@@ -23,11 +22,9 @@ class UpdateFragment : GuidedStepSupportFragment() {
     lateinit var updateService: UpdateService
 
     companion object {
-        private const val ACTION_CHECK = 1L
-        private const val ACTION_DOWNLOAD = 2L
-        private const val ACTION_INSTALL = 3L
-        private const val ACTION_RETRY = 4L
-        private const val ACTION_INFO = 5L
+        // Fixed 2-slot layout: info row + action row (GuidedStep doesn't support item count changes)
+        private const val ACTION_INFO = 1L
+        private const val ACTION_BUTTON = 2L
 
         fun newInstance(): UpdateFragment = UpdateFragment()
     }
@@ -36,13 +33,29 @@ class UpdateFragment : GuidedStepSupportFragment() {
         return GuidanceStylist.Guidance(
             "Software Update",
             "Manage application updates",
-            "OOUStream IPTV",
+            "Ooustream IPTV",
             null
         )
     }
 
     override fun onCreateActions(actions: MutableList<GuidedAction>, savedInstanceState: Bundle?) {
-        buildActionsForState(actions, viewModel.updateState.value)
+        val ctx = requireContext()
+        // Always create exactly 2 actions — update their content dynamically
+        actions.add(
+            GuidedAction.Builder(ctx)
+                .id(ACTION_INFO)
+                .title("Checking...")
+                .description("Contacting update server")
+                .enabled(false)
+                .build()
+        )
+        actions.add(
+            GuidedAction.Builder(ctx)
+                .id(ACTION_BUTTON)
+                .title(" ")
+                .enabled(false)
+                .build()
+        )
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -51,7 +64,7 @@ class UpdateFragment : GuidedStepSupportFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.updateState.collect { state ->
-                    rebuildActions(state)
+                    updateActions(state)
                 }
             }
         }
@@ -61,151 +74,92 @@ class UpdateFragment : GuidedStepSupportFragment() {
     }
 
     override fun onGuidedActionClicked(action: GuidedAction) {
-        when (action.id) {
-            ACTION_CHECK -> {
+        if (action.id != ACTION_BUTTON) return
+
+        when (val state = viewModel.updateState.value) {
+            is UpdateViewModel.UpdateState.Idle,
+            is UpdateViewModel.UpdateState.UpToDate,
+            is UpdateViewModel.UpdateState.Error -> {
                 viewModel.checkForUpdate()
             }
-            ACTION_DOWNLOAD -> {
-                val state = viewModel.updateState.value
-                if (state is UpdateViewModel.UpdateState.UpdateAvailable) {
-                    viewModel.downloadUpdate(state.manifest.downloadUrl)
-                }
+            is UpdateViewModel.UpdateState.UpdateAvailable -> {
+                viewModel.downloadUpdate(state.manifest.downloadUrl)
             }
-            ACTION_INSTALL -> {
-                val state = viewModel.updateState.value
-                if (state is UpdateViewModel.UpdateState.DownloadComplete) {
-                    viewModel.installUpdate(state.file)
-                }
+            is UpdateViewModel.UpdateState.DownloadComplete -> {
+                viewModel.installUpdate(state.file)
             }
-            ACTION_RETRY -> {
-                viewModel.checkForUpdate()
-            }
+            else -> { /* Checking/Downloading — ignore clicks */ }
         }
     }
 
-    private fun rebuildActions(state: UpdateViewModel.UpdateState) {
-        val actions = mutableListOf<GuidedAction>()
-        buildActionsForState(actions, state)
-
-        // Replace current actions with the new list
-        val currentActions = this.actions
-        if (currentActions != null) {
-            currentActions.clear()
-            currentActions.addAll(actions)
-            // Notify adapter of changes for each position
-            for (i in actions.indices) {
-                notifyActionChanged(i)
-            }
-        }
-    }
-
-    private fun buildActionsForState(
-        actions: MutableList<GuidedAction>,
-        state: UpdateViewModel.UpdateState
-    ) {
-        val context = context ?: return
+    /** Updates the fixed 2-action layout in place — no item count changes, just content. */
+    private fun updateActions(state: UpdateViewModel.UpdateState) {
+        val infoAction = findActionById(ACTION_INFO) ?: return
+        val buttonAction = findActionById(ACTION_BUTTON) ?: return
 
         when (state) {
             is UpdateViewModel.UpdateState.Idle -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_CHECK)
-                        .title("Check for Updates")
-                        .description("Current version: ${updateService.getCurrentVersion()}")
-                        .build()
-                )
+                infoAction.title = "Current version: ${updateService.getCurrentVersion()}"
+                infoAction.description = "Press below to check for updates"
+                buttonAction.title = "Check for Updates"
+                buttonAction.description = null
+                buttonAction.isEnabled = true
             }
 
             is UpdateViewModel.UpdateState.Checking -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INFO)
-                        .title("Checking...")
-                        .description("Contacting update server")
-                        .enabled(false)
-                        .build()
-                )
+                infoAction.title = "Checking..."
+                infoAction.description = "Contacting update server"
+                buttonAction.title = "Please wait"
+                buttonAction.description = null
+                buttonAction.isEnabled = false
             }
 
             is UpdateViewModel.UpdateState.UpToDate -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INFO)
-                        .title("App is up to date")
-                        .description("Current version: ${updateService.getCurrentVersion()}")
-                        .enabled(false)
-                        .build()
-                )
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_CHECK)
-                        .title("Check Again")
-                        .build()
-                )
+                infoAction.title = "App is up to date"
+                infoAction.description = "Current version: ${updateService.getCurrentVersion()}"
+                buttonAction.title = "Check Again"
+                buttonAction.description = null
+                buttonAction.isEnabled = true
             }
 
             is UpdateViewModel.UpdateState.UpdateAvailable -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INFO)
-                        .title("Update Available: v${state.manifest.versionName}")
-                        .description(state.manifest.changelog)
-                        .multilineDescription(true)
-                        .enabled(false)
-                        .build()
-                )
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_DOWNLOAD)
-                        .title("Download Update")
-                        .description(
-                            "Current: v${updateService.getCurrentVersion()} \u2192 New: v${state.manifest.versionName}" +
-                                if (state.manifest.mandatory) " (Required)" else ""
-                        )
-                        .build()
-                )
+                infoAction.title = "Update Available: v${state.manifest.versionName}"
+                infoAction.description = state.manifest.changelog
+                buttonAction.title = "Download Update"
+                buttonAction.description =
+                    "Current: v${updateService.getCurrentVersion()} \u2192 New: v${state.manifest.versionName}" +
+                        if (state.manifest.mandatory) " (Required)" else ""
+                buttonAction.isEnabled = true
             }
 
             is UpdateViewModel.UpdateState.Downloading -> {
                 val percent = (state.progress * 100).toInt()
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INFO)
-                        .title("Downloading... $percent%")
-                        .description("Please wait while the update is downloaded")
-                        .enabled(false)
-                        .build()
-                )
+                infoAction.title = "Downloading... $percent%"
+                infoAction.description = "Please wait while the update is downloaded"
+                buttonAction.title = "Downloading..."
+                buttonAction.description = null
+                buttonAction.isEnabled = false
             }
 
             is UpdateViewModel.UpdateState.DownloadComplete -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INSTALL)
-                        .title("Install Update")
-                        .description("Download complete. Press to install.")
-                        .build()
-                )
+                infoAction.title = "Download Complete"
+                infoAction.description = "Ready to install"
+                buttonAction.title = "Install Update"
+                buttonAction.description = "Press to install the update"
+                buttonAction.isEnabled = true
             }
 
             is UpdateViewModel.UpdateState.Error -> {
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_INFO)
-                        .title("Update Error")
-                        .description(state.message)
-                        .multilineDescription(true)
-                        .enabled(false)
-                        .build()
-                )
-                actions.add(
-                    GuidedAction.Builder(context)
-                        .id(ACTION_RETRY)
-                        .title("Retry")
-                        .description("Try checking for updates again")
-                        .build()
-                )
+                infoAction.title = "Update Error"
+                infoAction.description = state.message
+                buttonAction.title = "Retry"
+                buttonAction.description = "Try checking for updates again"
+                buttonAction.isEnabled = true
             }
         }
+
+        // Safe: always 2 items, no structural change — notifyActionChanged works
+        notifyActionChanged(findActionPositionById(ACTION_INFO))
+        notifyActionChanged(findActionPositionById(ACTION_BUTTON))
     }
 }

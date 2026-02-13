@@ -54,8 +54,9 @@ class SpeedTestService @Inject constructor(
     }
 
     /**
-     * Downloads the live categories endpoint and measures throughput in Mbps.
-     * Uses the Xtream Codes API format: /player_api.php?username=X&password=Y&action=get_live_categories
+     * Downloads the full live streams list and measures throughput in Mbps.
+     * Uses get_live_streams (large payload, typically hundreds of KB to several MB)
+     * for accurate speed measurement.
      */
     suspend fun runDownloadTest(
         serverUrl: String,
@@ -63,7 +64,8 @@ class SpeedTestService @Inject constructor(
         password: String
     ): Float = withContext(Dispatchers.IO) {
         val baseUrl = serverUrl.trimEnd('/')
-        val url = "$baseUrl/player_api.php?username=$username&password=$password&action=get_live_categories"
+        // Use get_live_streams — large payload for accurate measurement
+        val url = "$baseUrl/player_api.php?username=$username&password=$password&action=get_live_streams"
 
         val request = Request.Builder()
             .url(url)
@@ -71,19 +73,25 @@ class SpeedTestService @Inject constructor(
             .build()
 
         val start = System.nanoTime()
-        val response = okHttpClient.newCall(request).execute()
-        val bytes = response.use { it.body?.bytes() }
+        var totalBytes = 0L
+        okHttpClient.newCall(request).execute().use { response ->
+            response.body?.byteStream()?.use { stream ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (stream.read(buffer).also { bytesRead = it } != -1) {
+                    totalBytes += bytesRead
+                }
+            }
+        }
         val elapsedNs = System.nanoTime() - start
-
-        val bytesReceived = bytes?.size?.toLong() ?: 0L
         val elapsedSeconds = elapsedNs / 1_000_000_000.0
 
-        if (elapsedSeconds <= 0.0 || bytesReceived == 0L) {
+        if (elapsedSeconds <= 0.0 || totalBytes == 0L) {
             return@withContext 0f
         }
 
         // Convert bytes/second to megabits/second: (bytes * 8) / (seconds * 1_000_000)
-        val mbps = (bytesReceived * 8.0) / (elapsedSeconds * 1_000_000.0)
+        val mbps = (totalBytes * 8.0) / (elapsedSeconds * 1_000_000.0)
         mbps.toFloat()
     }
 
