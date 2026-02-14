@@ -20,6 +20,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import com.ooustream.iptv.R
+import android.widget.Toast
 import java.util.Locale
 
 /**
@@ -219,8 +220,12 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
                 .setTrackTypeDisabled(track.type, true)
                 .build()
         } else {
-            // Re-enable track type if disabled, then apply override
-            val group = player.currentTracks.groups[track.groupIndex]
+            // Guard against stale group indices (track groups can shift during rebuffer)
+            val groups = player.currentTracks.groups
+            if (track.groupIndex >= groups.size) return
+            val group = groups[track.groupIndex]
+            if (track.trackIndex >= group.length) return
+
             val override = TrackSelectionOverride(group.mediaTrackGroup, track.trackIndex)
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
@@ -272,7 +277,11 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
             addView(nameText)
 
             setOnClickListener {
-                applyTrackSelection(player, track)
+                try {
+                    applyTrackSelection(player, track)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Unable to switch track", Toast.LENGTH_SHORT).show()
+                }
                 dismiss()
             }
 

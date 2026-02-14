@@ -1,7 +1,7 @@
 {
-  "version_name": "2.1.1",
-  "version_code": 4,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.1/app-release.apk",
-  "changelog": "v2.1.1\n\n• Fixed OTA Update system — Check for Updates now properly shows available updates and download button\n• Fixed Speed Test — accurate download measurement using full channel data instead of tiny payload\n• All future updates can be installed directly from Settings",
+  "version_name": "2.1.2",
+  "version_code": 5,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.2/app-release.apk",
+  "changelog": "v2.1.2\n\n• Default English audio — automatically selects English audio track on all content\n• Fixed crash when switching audio tracks on some streams\n• Auto-selects first audio track if none picked (fixes no-sound issue)\n• Track picker crash guard with bounds checking",
   "mandatory": false
 }

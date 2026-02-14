@@ -20,6 +20,8 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -94,6 +96,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player = ExoPlayer.Builder(requireContext())
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build()
+
+        // Prefer English audio tracks by default
+        player!!.trackSelectionParameters = player!!.trackSelectionParameters
+            .buildUpon()
+            .setPreferredAudioLanguage("en")
             .build()
 
         // [Fix 2.2] Audio focus: ExoPlayer handles pause/duck/resume automatically
@@ -666,6 +674,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         }
                     }
                     Player.STATE_IDLE -> { /* no-op */ }
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                // Auto-select audio track if none is selected (fixes no-sound on some streams)
+                // Prefer English, fall back to first available
+                val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                val hasSelectedAudio = audioGroups.any { group ->
+                    (0 until group.length).any { group.isTrackSelected(it) }
+                }
+                if (!hasSelectedAudio && audioGroups.isNotEmpty()) {
+                    // Try to find an English track first
+                    val englishGroup = audioGroups.firstOrNull { group ->
+                        (0 until group.length).any { i ->
+                            val lang = group.getTrackFormat(i).language?.lowercase()
+                            lang == "en" || lang == "eng" || lang?.startsWith("en") == true
+                        }
+                    }
+                    val targetGroup = englishGroup ?: audioGroups[0]
+                    val override = TrackSelectionOverride(targetGroup.mediaTrackGroup, 0)
+                    player?.trackSelectionParameters = player?.trackSelectionParameters
+                        ?.buildUpon()
+                        ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        ?.setOverrideForType(override)
+                        ?.build() ?: return
                 }
             }
 
