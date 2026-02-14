@@ -2,7 +2,10 @@ package com.ooustream.iptv.settings
 
 import android.os.Bundle
 import android.view.View
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.viewModels
 import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
@@ -13,6 +16,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.MainActivity
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.account.AccountDashboardFragment
 import com.ooustream.iptv.backup.BackupFragment
 import com.ooustream.iptv.parental.ParentalPinFragment
@@ -34,6 +38,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_ABOUT = 7L
         private const val ACTION_LOGOUT = 8L
         private const val ACTION_REFRESH_PLAYLIST = 9L
+        private const val ACTION_CRASH_LOG = 10L
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -117,6 +122,17 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Crash Logs (only if a crash has been recorded)
+        if (CrashLogger.hasCrashLog(requireContext())) {
+            actions.add(
+                GuidedAction.Builder(requireContext())
+                    .id(ACTION_CRASH_LOG)
+                    .title("Crash Logs")
+                    .description("View recent crash reports for troubleshooting")
+                    .build()
+            )
+        }
+
         // About (non-actionable)
         actions.add(
             GuidedAction.Builder(requireContext())
@@ -145,6 +161,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_SPEED_TEST -> navigateToFragment(SpeedTestFragment())
             ACTION_UPDATE -> navigateToFragment(UpdateFragment())
             ACTION_REFRESH_PLAYLIST -> refreshPlaylist()
+            ACTION_CRASH_LOG -> showCrashLog()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
             ACTION_LOGOUT -> showLogoutConfirmation()
         }
@@ -218,6 +235,33 @@ class SettingsFragment : GuidedStepSupportFragment() {
             findActionById(ACTION_REFRESH_PLAYLIST)?.description = "Refresh channels and content from server"
             notifyActionChanged(pos)
         }
+    }
+
+    // endregion
+
+    // region Crash Log
+
+    private fun showCrashLog() {
+        val crashText = CrashLogger.getLastCrash(requireContext()) ?: "No crash data available."
+        val textView = TextView(requireContext()).apply {
+            text = crashText
+            textSize = 12f
+            setTextColor(0xFFCCCCCC.toInt())
+            setPadding(32, 24, 32, 24)
+            setTextIsSelectable(true)
+        }
+        val scrollView = ScrollView(requireContext()).apply {
+            addView(textView)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Crash Logs")
+            .setView(scrollView)
+            .setPositiveButton("Close", null)
+            .setNegativeButton("Clear Logs") { _, _ ->
+                CrashLogger.clearCrashLog(requireContext())
+                Toast.makeText(requireContext(), "Crash logs cleared", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     // endregion

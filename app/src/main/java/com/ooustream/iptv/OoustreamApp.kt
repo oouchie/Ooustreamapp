@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.ProgressiveImageLoader
 import com.ooustream.iptv.common.QualityPolicy
@@ -28,6 +29,7 @@ class OoustreamApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLogger.install(this)
         dpadSoundManager.initialize()
         DpadSoundManager.setInstance(dpadSoundManager)
         ProgressiveImageLoader.setQualityPolicy(qualityPolicy)

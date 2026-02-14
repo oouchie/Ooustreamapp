@@ -67,6 +67,12 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Continue Watching completion fix** — `completed` column in watch_progress, save at all percentages (removed 0.95 guard), auto-mark completed at >95% or STATE_ENDED, series "Up Next" insertion on episode completion
 - **Movie Trailer Button** — "Trailer" button on ContentInfoOverlay (long-press info sheet), launches YouTube app via ACTION_VIEW intent using `youtube_trailer` field from Xtream Codes API. Only shown when trailer data available.
 - **Back button controls dismiss fix** — Back key now dismisses player controls overlay without exiting content. Fixed ACTION_UP leak via `backConsumedOnDown` flag in `OoustreamPlaybackGlue.onKey()`.
+- **Audio & Subtitle Track Picker** — Right-side slide-in panel for switching audio/subtitle tracks during playback. D-pad navigable, radio-button selection, always shows Default audio + Off subtitles as fallbacks. Triggered from "Tracks" button on controls bar. (`player/TrackPickerOverlay.kt`, `res/layout/overlay_track_picker.xml`)
+- **Trending Series row** — Home screen row showing recently updated series sorted by `lastModified`, using PosterPresenter. Click navigates to SeriesDetailFragment.
+- **D-pad seek fix** — Left/Right only seeks when progress bar/play button focused; navigates between action buttons when action row focused. `!actionButtonsRow.hasFocus()` guard in `PlayerControlsBar.dispatchKeyEvent()`.
+- **OTA Update system fix** — UpdateFragment rewritten with fixed 2-slot action layout (info + button). GuidedStepSupportFragment doesn't support dynamic action count changes — `notifyActionChanged()` only works for in-place content updates, not structural changes.
+- **Speed Test accuracy fix** — Download test uses `get_live_streams` (large payload) instead of `get_live_categories` (tiny ~1KB) for accurate throughput measurement.
+- **Update Playlist** — Settings option to refresh all channels/content from server on demand.
 
 ### Phase 5 — AI Features
 - **"For You — Live Now"** — Personalized Home screen row surfacing live channels the user watches, ranked by time-of-day + day-of-week patterns. On-device only, no cloud. Data: `channel_watch_log` (raw sessions) → `ChannelRecommendationEngine` (frequency × recency × duration scoring) → `channel_scores` (precomputed). WatchSessionLogger logs LIVE sessions >30s. WorkManager refreshes scores every 6h. Row hidden until 3+ unique channels watched. (`recommendation/WatchSessionLogger.kt`, `recommendation/ChannelRecommendationEngine.kt`, `recommendation/ScoreRefreshWorker.kt`, `home/ForYouLivePresenter.kt`)
@@ -129,15 +135,19 @@ These features were scoped but deferred for a future release:
 8. `LiveTvFragment.kt` — category/channel lists, debounced EPG loading, preview player, SmartEpgFiller for channel EPG text
 9. `VodFragment.kt` / `SeriesFragment.kt` — ContentInfoHelper for long-press info overlay
 10. `common/ContentInfoHelper.kt` — reusable long-press info overlay wiring for any fragment
-11. `epg/SmartEpgFiller.kt` — 3-tier EPG resolution (real → pattern → rule), pattern learning
-12. `epg/ChannelNameParser.kt` — 60+ network recognition, content type inference from channel names
-13. `recommendation/ChannelRecommendationEngine.kt` — on-device channel scoring (frequency × recency × duration)
-14. `recommendation/WatchSessionLogger.kt` — silent Live TV session logging (>30s threshold)
+11. `player/TrackPickerOverlay.kt` — audio/subtitle track picker slide-in panel
+12. `player/PlayerControlsBar.kt` — custom controls bar with action buttons (Tracks, Aspect, External Player, etc.)
+13. `update/UpdateFragment.kt` — OTA update screen (fixed 2-slot GuidedStep layout)
+14. `speedtest/SpeedTestService.kt` — ping + download speed test against IPTV server
+15. `epg/SmartEpgFiller.kt` — 3-tier EPG resolution (real → pattern → rule), pattern learning
+16. `epg/ChannelNameParser.kt` — 60+ network recognition, content type inference from channel names
+17. `recommendation/ChannelRecommendationEngine.kt` — on-device channel scoring (frequency × recency × duration)
+18. `recommendation/WatchSessionLogger.kt` — silent Live TV session logging (>30s threshold)
 
 ## Deployment
 - **ADB**: `adb connect <firestick-ip>:5555 && adb install -r app/build/outputs/apk/debug/app-debug.apk`
-- **GitHub Auto-Update**: v2.0.0 release system — app checks GitHub releases for updates
-- **Primary test device**: Fire TV Stick at 192.168.1.82
+- **GitHub Auto-Update**: App fetches `update.json` from repo root (`raw.githubusercontent.com`), compares `versionCode`, downloads APK via `UpdateService`. OTA UI fixed in v2.1.1.
+- **Primary test devices**: Fire TV Stick at 192.168.1.82, 192.168.1.84
 
 ## Memory Constraints
 Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves memory by disabling video decoder.

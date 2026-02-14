@@ -99,10 +99,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .build()
 
         // Prefer English audio tracks by default
-        player!!.trackSelectionParameters = player!!.trackSelectionParameters
-            .buildUpon()
-            .setPreferredAudioLanguage("en")
-            .build()
+        try {
+            player!!.trackSelectionParameters = player!!.trackSelectionParameters
+                .buildUpon()
+                .setPreferredAudioLanguage("en")
+                .build()
+        } catch (_: Exception) { /* Safe to ignore — falls back to default track selection */ }
 
         // [Fix 2.2] Audio focus: ExoPlayer handles pause/duck/resume automatically
         player!!.setAudioAttributes(
@@ -680,26 +682,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             override fun onTracksChanged(tracks: Tracks) {
                 // Auto-select audio track if none is selected (fixes no-sound on some streams)
                 // Prefer English, fall back to first available
-                val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                val hasSelectedAudio = audioGroups.any { group ->
-                    (0 until group.length).any { group.isTrackSelected(it) }
-                }
-                if (!hasSelectedAudio && audioGroups.isNotEmpty()) {
-                    // Try to find an English track first
-                    val englishGroup = audioGroups.firstOrNull { group ->
-                        (0 until group.length).any { i ->
-                            val lang = group.getTrackFormat(i).language?.lowercase()
-                            lang == "en" || lang == "eng" || lang?.startsWith("en") == true
-                        }
+                try {
+                    val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                    val hasSelectedAudio = audioGroups.any { group ->
+                        (0 until group.length).any { group.isTrackSelected(it) }
                     }
-                    val targetGroup = englishGroup ?: audioGroups[0]
-                    val override = TrackSelectionOverride(targetGroup.mediaTrackGroup, 0)
-                    player?.trackSelectionParameters = player?.trackSelectionParameters
-                        ?.buildUpon()
-                        ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                        ?.setOverrideForType(override)
-                        ?.build() ?: return
-                }
+                    if (!hasSelectedAudio && audioGroups.isNotEmpty()) {
+                        val englishGroup = audioGroups.firstOrNull { group ->
+                            (0 until group.length).any { i ->
+                                val lang = group.getTrackFormat(i).language?.lowercase()
+                                lang == "en" || lang == "eng" || lang?.startsWith("en") == true
+                            }
+                        }
+                        val targetGroup = englishGroup ?: audioGroups[0]
+                        val override = TrackSelectionOverride(targetGroup.mediaTrackGroup, 0)
+                        player?.trackSelectionParameters = player?.trackSelectionParameters
+                            ?.buildUpon()
+                            ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                            ?.setOverrideForType(override)
+                            ?.build() ?: return
+                    }
+                } catch (_: Exception) { /* Safe to ignore — player will use default track selection */ }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
