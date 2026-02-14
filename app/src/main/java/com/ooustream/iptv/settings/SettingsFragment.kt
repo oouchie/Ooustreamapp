@@ -122,16 +122,18 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
-        // Crash Logs (only if a crash has been recorded)
-        if (CrashLogger.hasCrashLog(requireContext())) {
-            actions.add(
-                GuidedAction.Builder(requireContext())
-                    .id(ACTION_CRASH_LOG)
-                    .title("Crash Logs")
-                    .description("View recent crash reports for troubleshooting")
-                    .build()
-            )
-        }
+        // Crash Logs
+        val crashDesc = if (CrashLogger.hasCrashLog(requireContext()))
+            "View recent crash reports for troubleshooting"
+        else
+            "No crashes recorded"
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_CRASH_LOG)
+                .title("Crash Logs")
+                .description(crashDesc)
+                .build()
+        )
 
         // About (non-actionable)
         actions.add(
