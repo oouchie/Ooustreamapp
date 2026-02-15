@@ -23,12 +23,15 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
+import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.RemoteHintOverlay
@@ -68,6 +71,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var seriesCompleteOverlay: SeriesCompleteOverlay? = null
     private var seekFeedback: SeekFeedbackOverlay? = null
     private var trackPickerOverlay: TrackPickerOverlay? = null
+    private var audioStatusOverlay: AudioStatusOverlay? = null
+    private var trackSelector: DefaultTrackSelector? = null
     private var isAudioOnly = false
     private var bingeShown = false
 
@@ -93,20 +98,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             viewModel.contentType, qualityPolicy.tier.value
         )
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+
+        // DefaultTrackSelector: English audio preference, subtitles off by default
+        trackSelector = DefaultTrackSelector(requireContext()).apply {
+            setParameters(
+                buildUponParameters()
+                    .setPreferredAudioLanguage("en")
+                    .setPreferredTextLanguage("en")
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            )
+        }
+
         player = ExoPlayer.Builder(requireContext())
+            .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
 
-        // Prefer English audio tracks by default
-        try {
-            player!!.trackSelectionParameters = player!!.trackSelectionParameters
-                .buildUpon()
-                .setPreferredAudioLanguage("en")
-                .build()
-        } catch (_: Exception) { /* Safe to ignore — falls back to default track selection */ }
-
-        // [Fix 2.2] Audio focus: ExoPlayer handles pause/duck/resume automatically
+        // Audio focus: ExoPlayer handles pause/duck/resume automatically
         player!!.setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -114,6 +123,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 .build(),
             /* handleAudioFocus = */ true
         )
+        AudioLogger.logPlayerCreated(hasTrackSelector = true, hasAudioAttributes = true)
 
         // [Fix 2.1] MediaSession: tells system media is active (screensaver defense + Now Playing)
         mediaSession = MediaSession.Builder(requireContext(), player!!)
@@ -359,6 +369,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             controlsManager?.resumeAutoHide()
         }
         trackPickerOverlay = trackPicker
+
+        // Audio status indicator (no audio track, unsupported codec)
+        val audioStatus = AudioStatusOverlay(requireContext())
+        (view as? ViewGroup)?.addView(
+            audioStatus,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        audioStatusOverlay = audioStatus
 
         // Watch Next overlay for VOD end-of-movie suggestions
         if (viewModel.contentType == ContentType.VOD) {
@@ -624,6 +645,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // [Fix 1.2 + 3.2] Comprehensive player listener: error retry, buffering, dynamic keepScreenOn
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                AudioLogger.logAudioError(error)
+                // Audio-specific errors: show indicator (video may still play)
+                when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+                    PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
+                        audioStatusOverlay?.showCodecUnsupported()
+                }
                 if (retryCount < MAX_AUTO_RETRIES) {
                     val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 5_000L }
                     retryCount++
@@ -680,21 +708,49 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                // Auto-select audio track if none is selected (fixes no-sound on some streams)
-                // Prefer English, fall back to first available
+                AudioLogger.logTrackSelection(tracks)
                 try {
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+
+                    // Show status overlay if stream has no audio tracks
+                    if (audioGroups.isEmpty()) {
+                        AudioLogger.logNoAudioTracks()
+                        audioStatusOverlay?.showNoAudio()
+                        return
+                    }
+                    audioStatusOverlay?.dismiss()
+
                     val hasSelectedAudio = audioGroups.any { group ->
                         (0 until group.length).any { group.isTrackSelected(it) }
                     }
-                    if (!hasSelectedAudio && audioGroups.isNotEmpty()) {
-                        val englishGroup = audioGroups.firstOrNull { group ->
+
+                    // If audio is already selected AND it's English, nothing to do
+                    if (hasSelectedAudio) {
+                        val selectedIsEnglish = audioGroups.any { group ->
                             (0 until group.length).any { i ->
-                                val lang = group.getTrackFormat(i).language?.lowercase()
-                                lang == "en" || lang == "eng" || lang?.startsWith("en") == true
+                                group.isTrackSelected(i) && isEnglishTrack(group.getTrackFormat(i))
                             }
                         }
+                        if (selectedIsEnglish) {
+                            AudioLogger.logLanguageSelected("en", null, fallback = false, "already English")
+                            return
+                        }
+                    }
+
+                    // Find English track by language code OR label
+                    val englishGroup = audioGroups.firstOrNull { group ->
+                        (0 until group.length).any { i -> isEnglishTrack(group.getTrackFormat(i)) }
+                    }
+
+                    // Select English if found, or first track if nothing selected
+                    if (!hasSelectedAudio || englishGroup != null) {
                         val targetGroup = englishGroup ?: audioGroups[0]
+                        val targetFormat = targetGroup.getTrackFormat(0)
+                        val fallback = englishGroup == null
+                        AudioLogger.logLanguageSelected(
+                            targetFormat.language, targetFormat.label, fallback,
+                            if (fallback) "no English, using first" else "English found"
+                        )
                         val override = TrackSelectionOverride(targetGroup.mediaTrackGroup, 0)
                         player?.trackSelectionParameters = player?.trackSelectionParameters
                             ?.buildUpon()
@@ -702,7 +758,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             ?.setOverrideForType(override)
                             ?.build() ?: return
                     }
-                } catch (_: Exception) { /* Safe to ignore — player will use default track selection */ }
+                } catch (_: Exception) { /* Safe to ignore — player uses default track selection */ }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -736,6 +792,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     // --- Playback Hardening Helpers ---
+
+    /** Matches English audio tracks by language code or label. */
+    private fun isEnglishTrack(format: Format): Boolean {
+        val lang = format.language?.lowercase()
+        if (lang == "en" || lang == "eng" || lang?.startsWith("en") == true) return true
+        val label = format.label?.lowercase() ?: return false
+        return label.contains("english") || label.contains("eng")
+    }
 
     private fun showBufferingOverlay(show: Boolean) {
         if (show) {
@@ -1020,6 +1084,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         seekFeedback = null
         trackPickerOverlay?.dismiss()
         trackPickerOverlay = null
+        audioStatusOverlay?.dismiss()
+        audioStatusOverlay = null
         bufferingOverlay = null
         // Release MediaSession before player
         mediaSession?.release()
@@ -1027,6 +1093,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Release player last
         player?.release()
         player = null
+        trackSelector = null
         glue = null
         super.onDestroyView()
     }

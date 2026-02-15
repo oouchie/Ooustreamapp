@@ -74,6 +74,15 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Speed Test accuracy fix** — Download test uses `get_live_streams` (large payload) instead of `get_live_categories` (tiny ~1KB) for accurate throughput measurement.
 - **Update Playlist** — Settings option to refresh all channels/content from server on demand.
 
+### Phase 4b — Audio System Hardening (v2.2.0)
+- **DefaultTrackSelector** — Proper ExoPlayer track selector with English audio preference, English subtitle preference, subtitles disabled by default. Stored as field for runtime access. (`player/OoustreamPlaybackFragment.kt`)
+- **Label-based English fallback** — `isEnglishTrack()` helper matches by language code (`en`, `eng`) AND label (`English`, `eng`). `onTracksChanged` switches to English even if wrong language was auto-selected.
+- **Audio status indicator** — Top-right overlay shown when stream has no audio tracks or unsupported codec. Persistent for no-audio, auto-dismiss for transient issues. (`player/AudioStatusOverlay.kt`)
+- **Audio-specific error handling** — `ERROR_CODE_AUDIO_TRACK_INIT_FAILED` and `ERROR_CODE_AUDIO_TRACK_WRITE_FAILED` show codec unsupported indicator (video keeps playing).
+- **Preview player audio hardening** — `LivePreviewManager` now sets AudioAttributes with `handleAudioFocus=true` and `setPreferredAudioLanguage("en")`.
+- **Audio diagnostic logging** — `AudioLogger` with `OOUSTREAM_AUDIO` tag, `BuildConfig.DEBUG`-guarded. Logs track selection, language decisions, volume changes, errors. (`common/AudioLogger.kt`)
+- **Crash logger** — Global uncaught exception handler saves crash traces to file. Settings > Crash Logs shows traces for customer troubleshooting. (`common/CrashLogger.kt`)
+
 ### Phase 5 — AI Features
 - **"For You — Live Now"** — Personalized Home screen row surfacing live channels the user watches, ranked by time-of-day + day-of-week patterns. On-device only, no cloud. Data: `channel_watch_log` (raw sessions) → `ChannelRecommendationEngine` (frequency × recency × duration scoring) → `channel_scores` (precomputed). WatchSessionLogger logs LIVE sessions >30s. WorkManager refreshes scores every 6h. Row hidden until 3+ unique channels watched. (`recommendation/WatchSessionLogger.kt`, `recommendation/ChannelRecommendationEngine.kt`, `recommendation/ScoreRefreshWorker.kt`, `home/ForYouLivePresenter.kt`)
 - **Smart EPG Gap Filler** — 3-tier EPG resolution when data is missing/garbage: (1) Real EPG → use as-is, learn pattern; (2) Pattern cache → historical match from `epg_pattern_cache` table; (3) Rule-based → infer from channel name (60+ networks mapped) + time of day. Styling: real=normal white, pattern=italic light blue #90CAF9, rule=italic dim white 47%. Integrated into ChannelBannerOverlay, PlayerControlsBar, LiveTvFragment channel cards, and Home "For You — Live Now" cards. (`epg/ChannelNameParser.kt`, `epg/SmartEpgFiller.kt`)
@@ -143,6 +152,9 @@ These features were scoped but deferred for a future release:
 16. `epg/ChannelNameParser.kt` — 60+ network recognition, content type inference from channel names
 17. `recommendation/ChannelRecommendationEngine.kt` — on-device channel scoring (frequency × recency × duration)
 18. `recommendation/WatchSessionLogger.kt` — silent Live TV session logging (>30s threshold)
+19. `common/AudioLogger.kt` — debug-only audio diagnostic logging (OOUSTREAM_AUDIO tag)
+20. `player/AudioStatusOverlay.kt` — top-right audio status indicator (no audio, unsupported codec)
+21. `common/CrashLogger.kt` — global crash logger, saves traces to file for customer troubleshooting
 
 ## Deployment
 - **ADB**: `adb connect <firestick-ip>:5555 && adb install -r app/build/outputs/apk/debug/app-debug.apk`

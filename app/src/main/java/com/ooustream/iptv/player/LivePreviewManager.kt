@@ -1,12 +1,15 @@
 package com.ooustream.iptv.player
 
 import android.content.Context
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.data.model.ContentType
 import okhttp3.OkHttpClient
 
@@ -44,8 +47,20 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
         }
 
         player = builder.build().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true
+            )
+            trackSelectionParameters = trackSelectionParameters
+                .buildUpon()
+                .setPreferredAudioLanguage("en")
+                .build()
             setMediaItem(MediaItem.fromUri(streamUrl))
             volume = 0.15f
+            AudioLogger.logVolume("PREVIEW_START", 0.15f)
             prepare()
             play()
         }

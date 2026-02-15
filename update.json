@@ -1,7 +1,7 @@
 {
-  "version_name": "2.1.3",
-  "version_code": 6,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.1.3/app-release.apk",
-  "changelog": "v2.1.3\n\n• Crash protection — defensive wrapping around audio track selection\n• Crash logger — saves crash traces for troubleshooting (Settings > Crash Logs)\n• Stability improvements for playback initialization",
+  "version_name": "2.2.0",
+  "version_code": 7,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.2.0/app-release.apk",
+  "changelog": "v2.2.0 — Audio System Overhaul\n\n• DefaultTrackSelector with English audio preference (proper ExoPlayer integration)\n• Label-based English fallback for streams with missing language metadata\n• Audio status indicator — shows when stream has no audio or unsupported codec\n• Audio-specific error handling for codec failures\n• Preview player audio focus + English preference\n• Audio diagnostic logging (debug builds only)\n• Subtitles disabled by default (enable via track picker)",
   "mandatory": false
 }
