@@ -86,6 +86,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var bufferingOverlay: View? = null
     private var retryCount = 0
     private var retryJob: Job? = null
+    private var stallDetectorJob: Job? = null
     private var channelSwitchJob: Job? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -652,8 +653,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
                         audioStatusOverlay?.showCodecUnsupported()
                 }
-                if (retryCount < MAX_AUTO_RETRIES) {
-                    val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 5_000L }
+                val maxRetries = maxRetriesForContent(viewModel.contentType)
+                if (retryCount < maxRetries) {
+                    val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
                     retryCount++
                     retryJob?.cancel()
                     retryJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -671,13 +673,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
-                    Player.STATE_BUFFERING -> showBufferingOverlay(true)
+                    Player.STATE_BUFFERING -> {
+                        showBufferingOverlay(true)
+                        startStallDetector()
+                    }
                     Player.STATE_READY -> {
                         showBufferingOverlay(false)
+                        stallDetectorJob?.cancel()
                         retryCount = 0
                     }
                     Player.STATE_ENDED -> {
                         showBufferingOverlay(false)
+                        stallDetectorJob?.cancel()
                         if (viewModel.contentType != ContentType.LIVE) {
                             val p = player
                             val dur = p?.duration ?: 0
@@ -792,6 +799,47 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     // --- Playback Hardening Helpers ---
+
+    private fun maxRetriesForContent(contentType: ContentType): Int = when (contentType) {
+        ContentType.LIVE -> MAX_RETRIES_LIVE
+        ContentType.VOD -> MAX_RETRIES_VOD
+        ContentType.SERIES -> MAX_RETRIES_SERIES
+    }
+
+    private fun stallTimeoutForContent(contentType: ContentType): Long = when (contentType) {
+        ContentType.LIVE -> STALL_TIMEOUT_LIVE_MS
+        ContentType.VOD, ContentType.SERIES -> STALL_TIMEOUT_VOD_MS
+    }
+
+    /** Watchdog: if player stays in STATE_BUFFERING longer than the timeout, force a retry. */
+    private fun startStallDetector() {
+        stallDetectorJob?.cancel()
+        stallDetectorJob = viewLifecycleOwner.lifecycleScope.launch {
+            val timeout = stallTimeoutForContent(viewModel.contentType)
+            delay(timeout)
+            // Still buffering after timeout — force recovery
+            val p = player ?: return@launch
+            if (p.playbackState == Player.STATE_BUFFERING) {
+                val maxRetries = maxRetriesForContent(viewModel.contentType)
+                if (retryCount < maxRetries) {
+                    val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
+                    retryCount++
+                    retryJob?.cancel()
+                    p.stop()
+                    delay(delayMs)
+                    p.prepare()
+                    p.play()
+                } else {
+                    showBufferingOverlay(false)
+                    showErrorDialog(PlaybackException(
+                        "Stream stalled — no data received",
+                        null,
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                    ))
+                }
+            }
+        }
+    }
 
     /** Matches English audio tracks by language code or label. */
     private fun isEnglishTrack(format: Format): Boolean {
@@ -1087,6 +1135,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         audioStatusOverlay?.dismiss()
         audioStatusOverlay = null
         bufferingOverlay = null
+        stallDetectorJob?.cancel()
+        stallDetectorJob = null
+        retryJob?.cancel()
+        retryJob = null
         // Release MediaSession before player
         mediaSession?.release()
         mediaSession = null
@@ -1099,8 +1151,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     companion object {
-        private const val MAX_AUTO_RETRIES = 3
-        private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000)
+        private const val MAX_RETRIES_LIVE = 3
+        private const val MAX_RETRIES_SERIES = 5
+        private const val MAX_RETRIES_VOD = 6
+        private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000, 8_000, 12_000, 15_000)
+        private const val STALL_TIMEOUT_LIVE_MS = 15_000L
+        private const val STALL_TIMEOUT_VOD_MS = 30_000L
 
         fun newInstance(
             streamUrl: String,

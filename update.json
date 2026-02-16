@@ -1,7 +1,7 @@
 {
-  "version_name": "2.2.1",
-  "version_code": 8,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.2.1/app-release.apk",
-  "changelog": "v2.2.1 — Content Info Overlay D-pad Fix\n\n• Fixed D-pad navigation in long-press info overlay (Play/Favorite/Trailer buttons now navigable)\n• Back key properly dismisses info overlay instead of exiting the screen\n• Focus trapped within overlay — D-pad can no longer escape to grid behind\n• Removed focusableInTouchMode from overlay buttons (TV best practice)\n• Fixed overlay memory leak on fragment destroy",
+  "version_name": "2.3.0",
+  "version_code": 9,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.0/app-release.apk",
+  "changelog": "v2.3.0 — Playback Stability Hardening\n\n• Movies now retry up to 6 times before showing error (was 3)\n• Series episodes retry up to 5 times, live channels stay at 3\n• Retry delays extended: 1s, 3s, 5s, 8s, 12s, 15s\n• NEW: Stall detector — if buffering hangs silently (no error), automatically forces a reconnect\n• VOD/Series stall timeout: 30 seconds, Live: 15 seconds\n• Fixes reports of movies stopping mid-playback",
   "mandatory": false
 }
