@@ -2,6 +2,7 @@ package com.ooustream.iptv.common
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.util.AttributeSet
 import android.view.KeyEvent
@@ -62,6 +63,38 @@ class ContentInfoOverlay @JvmOverloads constructor(
             onFavorite?.invoke()
         }
         backdropDim.setOnClickListener { dismiss() }
+
+        // Focus highlighting — gold border + scale on focused button
+        val focusListener = OnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                v.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 6f * resources.displayMetrics.density
+                    setStroke((2f * resources.displayMetrics.density).toInt(), 0xFFFFC107.toInt())
+                    setColor(0x33FFC107)
+                }
+                v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(150).start()
+            } else {
+                v.background = if (v == playBtn) {
+                    GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 6f * resources.displayMetrics.density
+                        orientation = GradientDrawable.Orientation.LEFT_RIGHT
+                        colors = intArrayOf(0xFF00B4D8.toInt(), 0xFF0077B6.toInt())
+                    }
+                } else {
+                    GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 8f * resources.displayMetrics.density
+                        setColor(0xFF1A2332.toInt())
+                    }
+                }
+                v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+            }
+        }
+        playBtn.onFocusChangeListener = focusListener
+        favoriteBtn.onFocusChangeListener = focusListener
+        trailerBtn.onFocusChangeListener = focusListener
     }
 
     data class ContentData(
