@@ -250,9 +250,11 @@ class SettingsFragment : GuidedStepSupportFragment() {
             textSize = 12f
             setTextColor(0xFFCCCCCC.toInt())
             setPadding(32, 24, 32, 24)
-            setTextIsSelectable(true)
         }
         val scrollView = ScrollView(requireContext()).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
+            isScrollbarFadingEnabled = false
             addView(textView)
         }
         AlertDialog.Builder(requireContext())

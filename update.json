@@ -1,7 +1,7 @@
 {
-  "version_name": "2.3.1",
-  "version_code": 10,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.1/app-release.apk",
-  "changelog": "v2.3.1 — Crash Fix\n\n• Fixed crash when opening Crash Logs in Settings\n• Fixed same AlertDialog crash in player error dialog, favorites, track picker, and exit confirmation\n• All dialogs now use platform AlertDialog compatible with Leanback theme",
+  "version_name": "2.3.2",
+  "version_code": 11,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.2/app-release.apk",
+  "changelog": "v2.3.2 — Crash Log Scroll Fix\n\n• Crash log dialog now scrollable with D-pad up/down\n• Scrollbar stays visible so users know there's more content",
   "mandatory": false
 }
