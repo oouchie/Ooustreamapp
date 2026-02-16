@@ -1,7 +1,7 @@
 {
-  "version_name": "2.2.0",
-  "version_code": 7,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.2.0/app-release.apk",
-  "changelog": "v2.2.0 — Audio System Overhaul\n\n• DefaultTrackSelector with English audio preference (proper ExoPlayer integration)\n• Label-based English fallback for streams with missing language metadata\n• Audio status indicator — shows when stream has no audio or unsupported codec\n• Audio-specific error handling for codec failures\n• Preview player audio focus + English preference\n• Audio diagnostic logging (debug builds only)\n• Subtitles disabled by default (enable via track picker)",
+  "version_name": "2.2.1",
+  "version_code": 8,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.2.1/app-release.apk",
+  "changelog": "v2.2.1 — Content Info Overlay D-pad Fix\n\n• Fixed D-pad navigation in long-press info overlay (Play/Favorite/Trailer buttons now navigable)\n• Back key properly dismisses info overlay instead of exiting the screen\n• Focus trapped within overlay — D-pad can no longer escape to grid behind\n• Removed focusableInTouchMode from overlay buttons (TV best practice)\n• Fixed overlay memory leak on fragment destroy",
   "mandatory": false
 }

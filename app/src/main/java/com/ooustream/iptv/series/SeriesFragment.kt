@@ -274,13 +274,18 @@ class SeriesFragment : Fragment(), KeyEventHandler {
             viewModel.savedCategoryPosition =
                 (it.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: -1
         }
+        contentInfoHelper?.cleanup()
+        contentInfoHelper = null
         super.onDestroyView()
     }
 
     override fun onKeyEvent(keyCode: Int): Boolean {
-        if (keyCode == android.view.KeyEvent.KEYCODE_BACK && searchOpen) {
-            closeSearch()
-            return true
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+            if (contentInfoHelper?.dismiss() == true) return true
+            if (searchOpen) {
+                closeSearch()
+                return true
+            }
         }
         return false
     }

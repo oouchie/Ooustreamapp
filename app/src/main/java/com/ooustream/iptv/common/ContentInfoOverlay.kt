@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.AttributeSet
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.FrameLayout
@@ -158,4 +159,49 @@ class ContentInfoOverlay @JvmOverloads constructor(
     }
 
     val isShowing: Boolean get() = visibility == VISIBLE
+
+    // ─── D-pad Focus Trapping ─────────────────────────────────────────
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isShowing) {
+            // Back closes the overlay
+            if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (event.action == KeyEvent.ACTION_DOWN) dismiss()
+                return true
+            }
+            // Block vertical D-pad to prevent focus escaping to grid behind
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                return true
+            }
+            // Manual left/right focus movement between visible buttons
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                if (event.action == KeyEvent.ACTION_DOWN) moveFocusPrev()
+                return true
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (event.action == KeyEvent.ACTION_DOWN) moveFocusNext()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun getVisibleButtons(): List<View> = buildList {
+        if (playBtn.visibility == VISIBLE) add(playBtn)
+        if (favoriteBtn.visibility == VISIBLE) add(favoriteBtn)
+        if (trailerBtn.visibility == VISIBLE) add(trailerBtn)
+    }
+
+    private fun moveFocusPrev() {
+        val buttons = getVisibleButtons()
+        val idx = buttons.indexOfFirst { it.isFocused }
+        if (idx > 0) buttons[idx - 1].requestFocus()
+    }
+
+    private fun moveFocusNext() {
+        val buttons = getVisibleButtons()
+        val idx = buttons.indexOfFirst { it.isFocused }
+        if (idx >= 0 && idx < buttons.size - 1) buttons[idx + 1].requestFocus()
+    }
 }
