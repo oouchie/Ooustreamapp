@@ -1,7 +1,7 @@
 package com.ooustream.iptv.player
 
 import android.content.Context
-import androidx.appcompat.app.AlertDialog
+import android.app.AlertDialog
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.Player

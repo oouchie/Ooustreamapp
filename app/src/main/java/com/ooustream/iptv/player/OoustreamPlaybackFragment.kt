@@ -9,7 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
+import android.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.viewModels
 import androidx.leanback.app.VideoSupportFragment
