@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -106,10 +107,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
-        // DefaultTrackSelector: English audio preference, subtitles off by default
+        // DefaultTrackSelector: never select unsupported codecs, prefer AAC, English audio
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(
                 buildUponParameters()
+                    .setExceedRendererCapabilitiesIfNecessary(false)
+                    .setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_AC3)
                     .setPreferredAudioLanguage("en")
                     .setPreferredTextLanguage("en")
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -946,11 +949,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     private fun showErrorDialog(error: PlaybackException) {
         val ctx = context ?: return
+        val message = friendlyErrorMessage(error)
         AlertDialog.Builder(ctx)
             .setTitle(R.string.error_stream)
-            .setMessage(error.message ?: getString(R.string.error_general))
+            .setMessage(message)
             .setPositiveButton(R.string.retry) { _, _ ->
                 retryCount = 0
+                audioFallbackAttempted = false
+                trackSelector?.setParameters(
+                    trackSelector!!.buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                )
                 player?.prepare()
                 player?.play()
             }
@@ -959,6 +969,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
             .setCancelable(false)
             .show()
+    }
+
+    private fun friendlyErrorMessage(error: PlaybackException): String = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+            "Unable to connect to the stream. Check your internet connection and try again."
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+            "This stream is currently unavailable. It may be temporarily offline."
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+            "Stream not found. The content may have been removed."
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED ->
+            if (isAudioDecoderError(error))
+                "Audio format not supported on this device. Try a different stream."
+            else
+                "Video format not supported on this device."
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
+            "Audio format not supported on this device."
+        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
+            "Live stream fell behind. Reconnecting..."
+        PlaybackException.ERROR_CODE_TIMEOUT ->
+            "Stream timed out. The server may be slow or overloaded."
+        else ->
+            "Playback error. Please try again or choose a different stream."
     }
 
     /** Skip to the next episode in a series. */

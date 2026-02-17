@@ -1,7 +1,7 @@
 {
-  "version_name": "2.3.4",
-  "version_code": 13,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.4/app-release.apk",
-  "changelog": "v2.3.4 — Smart Audio Fallback\n\n• When AC3/Dolby audio fails, app now tries alternate audio tracks (e.g. English AAC) before disabling audio\n• Fixes movies with multiple audio languages selecting an unsupported track\n• Only disables audio as last resort if no supported tracks exist",
+  "version_name": "2.3.5",
+  "version_code": 14,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.5/app-release.apk",
+  "changelog": "v2.3.5 — AC3 Audio Root Fix\n\n• Prevents ExoPlayer from selecting audio codecs your device can't decode (AC3/Dolby Digital)\n• Prefers universally-supported AAC audio over AC3/EAC3\n• User-friendly error messages instead of raw technical dumps\n• Retry button now resets audio state for a fresh attempt",
   "mandatory": false
 }
