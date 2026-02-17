@@ -87,6 +87,14 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **"For You — Live Now"** — Personalized Home screen row surfacing live channels the user watches, ranked by time-of-day + day-of-week patterns. On-device only, no cloud. Data: `channel_watch_log` (raw sessions) → `ChannelRecommendationEngine` (frequency × recency × duration scoring) → `channel_scores` (precomputed). WatchSessionLogger logs LIVE sessions >30s. WorkManager refreshes scores every 6h. Row hidden until 3+ unique channels watched. (`recommendation/WatchSessionLogger.kt`, `recommendation/ChannelRecommendationEngine.kt`, `recommendation/ScoreRefreshWorker.kt`, `home/ForYouLivePresenter.kt`)
 - **Smart EPG Gap Filler** — 3-tier EPG resolution when data is missing/garbage: (1) Real EPG → use as-is, learn pattern; (2) Pattern cache → historical match from `epg_pattern_cache` table; (3) Rule-based → infer from channel name (60+ networks mapped) + time of day. Styling: real=normal white, pattern=italic light blue #90CAF9, rule=italic dim white 47%. Integrated into ChannelBannerOverlay, PlayerControlsBar, LiveTvFragment channel cards, and Home "For You — Live Now" cards. (`epg/ChannelNameParser.kt`, `epg/SmartEpgFiller.kt`)
 
+### Hotfixes (v2.3.x)
+- **Playback stall detector** (v2.3.0) — Content-aware retries (LIVE=3, SERIES=5, VOD=6) with escalating delays (1s→15s). Watchdog detects silent buffering hangs (15s LIVE, 30s VOD/SERIES) and forces recovery.
+- **AppCompat AlertDialog crash fix** (v2.3.1) — ALL AlertDialogs use `android.app.AlertDialog` (not `androidx.appcompat.app.AlertDialog`) because Leanback theme is not AppCompat-compatible. Fixed in: SettingsFragment, OoustreamPlaybackFragment, MainActivity, FavoritesFragment, TrackSelectionHelper.
+- **Crash log scroll fix** (v2.3.2) — ScrollView needs `isFocusable = true` + `isFocusableInTouchMode = true` for D-pad scrolling on TV. `setTextIsSelectable(true)` steals focus from ScrollView — don't use it.
+- **Low-memory buffer sizing** (v2.3.3) — `ActivityManager.memoryClass <= 128` triggers `BufferConfigs.forLowMemory()` with capped buffers (30s max VOD instead of 90-120s) to prevent OOM on 1GB Fire Sticks.
+- **Smart audio fallback** (v2.3.4) — Two-stage recovery when audio decoder fails: (1) `findSupportedAudioTrack()` searches for non-AC3/EAC3 tracks preferring English via `TrackSelectionOverride`, (2) disables all audio as last resort. `audioFallbackAttempted` flag prevents infinite loop.
+- **AC3 audio root fix** (v2.3.5) — `setExceedRendererCapabilitiesIfNecessary(false)` on DefaultTrackSelector prevents ExoPlayer from selecting codecs the device can't decode. `setPreferredAudioMimeTypes(AAC, E-AC3, AC3)` makes AAC preferred over AC3. User-friendly error messages via `friendlyErrorMessage()` replace raw ExoPlayer dumps. Retry button resets audio state (re-enables audio, clears overrides).
+
 ## Deferred Features (Future Updates)
 
 These features were scoped but deferred for a future release:
@@ -136,7 +144,7 @@ These features were scoped but deferred for a future release:
 ## Key Files (Most Modified)
 1. `MainActivity.kt` — sidebar, transitions, deep links
 2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming
-3. `OoustreamPlaybackFragment.kt` — audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller
+3. `OoustreamPlaybackFragment.kt` — audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, AC3 audio fallback, low-memory buffers, friendly error messages
 4. `OoustreamPlaybackGlue.kt` — ALL key handling (DPAD, media buttons, channel zap, seek, back), gold-tinted action icons, Back-dismisses-controls fix
 5. `OoustreamDatabase.kt` — v8, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern entities
 6. `PlayerViewModel.kt` — analytics recording, stream URL building, Watch Next suggestions (RecommendationEngine), NonCancellable saveProgress
