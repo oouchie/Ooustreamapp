@@ -1,7 +1,7 @@
 {
-  "version_name": "2.3.5",
-  "version_code": 14,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.5/app-release.apk",
-  "changelog": "v2.3.5 — AC3 Audio Root Fix\n\n• Prevents ExoPlayer from selecting audio codecs your device can't decode (AC3/Dolby Digital)\n• Prefers universally-supported AAC audio over AC3/EAC3\n• User-friendly error messages instead of raw technical dumps\n• Retry button now resets audio state for a fresh attempt",
+  "version_name": "2.4.0",
+  "version_code": 15,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.4.0/app-release.apk",
+  "changelog": "v2.4.0 — Zero Audio Limitations\n\n• Auto-switches to VLC player when your device can't decode audio (DTS, AC3, etc.)\n• Every audio codec now plays — no more missing audio or wrong track selection\n• Improved track picker shows codec info (DTS 5.1, AAC Stereo, etc.)\n• Smart device capability detection for optimal audio passthrough",
   "mandatory": false
 }
