@@ -1,7 +1,7 @@
 {
-  "version_name": "2.4.0",
-  "version_code": 15,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.4.0/app-release.apk",
-  "changelog": "v2.4.0 — Zero Audio Limitations\n\n• Auto-switches to VLC player when your device can't decode audio (DTS, AC3, etc.)\n• Every audio codec now plays — no more missing audio or wrong track selection\n• Improved track picker shows codec info (DTS 5.1, AAC Stereo, etc.)\n• Smart device capability detection for optimal audio passthrough",
+  "version_name": "2.4.1",
+  "version_code": 16,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.4.1/app-release.apk",
+  "changelog": "v2.4.1 — Hotfix\n\n• Fixed crash when opening sleep timer\n• All audio codec improvements from v2.4.0 included",
   "mandatory": false
 }
