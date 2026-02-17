@@ -1,7 +1,7 @@
 {
-  "version_name": "2.3.2",
-  "version_code": 11,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.2/app-release.apk",
-  "changelog": "v2.3.2 — Crash Log Scroll Fix\n\n• Crash log dialog now scrollable with D-pad up/down\n• Scrollbar stays visible so users know there's more content",
+  "version_name": "2.3.3",
+  "version_code": 12,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.3/app-release.apk",
+  "changelog": "v2.3.3 — Audio Codec Fix + Memory Optimization\n\n• Streams with unsupported audio (AC3/Dolby Digital) now play video without audio instead of crashing\n• Shows 'Unsupported codec' indicator when audio can't be decoded\n• Reduced buffer sizes on low-RAM devices to prevent out-of-memory crashes\n• Fixes playback failures on older Fire TV Sticks with limited memory",
   "mandatory": false
 }

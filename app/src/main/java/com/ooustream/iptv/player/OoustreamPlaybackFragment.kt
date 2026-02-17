@@ -1,5 +1,7 @@
 package com.ooustream.iptv.player
 
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.view.WindowManager
@@ -95,9 +97,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Keep screen on during playback (dynamically toggled by player listener)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val loadControl = BufferConfigs.forContentTypeAndQuality(
-            viewModel.contentType, qualityPolicy.tier.value
-        )
+        val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val loadControl = if (am.memoryClass <= 128) {
+            BufferConfigs.forLowMemory(viewModel.contentType)
+        } else {
+            BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
+        }
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
         // DefaultTrackSelector: English audio preference, subtitles off by default
@@ -647,6 +652,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
+                // Audio decoder unsupported (e.g. AC3/EAC3): disable audio and replay
+                if (isAudioDecoderError(error)) {
+                    audioStatusOverlay?.showCodecUnsupported()
+                    trackSelector?.setParameters(
+                        trackSelector!!.buildUponParameters()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    )
+                    player?.prepare()
+                    player?.play()
+                    return
+                }
                 // Audio-specific errors: show indicator (video may still play)
                 when (error.errorCode) {
                     PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
@@ -799,6 +815,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     // --- Playback Hardening Helpers ---
+
+    /** Detect audio decoder errors (e.g. AC3/EAC3 unsupported) vs video decoder errors. */
+    private fun isAudioDecoderError(error: PlaybackException): Boolean {
+        val code = error.errorCode
+        if (code == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+            code == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED) return true
+        if (code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+            // Check cause chain for audio renderer references
+            var cause: Throwable? = error.cause
+            while (cause != null) {
+                val msg = cause.toString().lowercase()
+                if (msg.contains("audio") || msg.contains("ac3") || msg.contains("eac3")) return true
+                cause = cause.cause
+            }
+        }
+        return false
+    }
 
     private fun maxRetriesForContent(contentType: ContentType): Int = when (contentType) {
         ContentType.LIVE -> MAX_RETRIES_LIVE

@@ -44,4 +44,14 @@ object BufferConfigs {
             }
         }
     }
+
+    /** Capped buffers for low-RAM devices (<=128MB heap) to prevent OOM in video decoder. */
+    fun forLowMemory(type: ContentType): DefaultLoadControl = when (type) {
+        ContentType.LIVE -> DefaultLoadControl.Builder()
+            .setBufferDurationsMs(3_000, 8_000, 1_000, 1_000)
+            .build()
+        ContentType.VOD, ContentType.SERIES -> DefaultLoadControl.Builder()
+            .setBufferDurationsMs(10_000, 30_000, 1_500, 2_000)
+            .build()
+    }
 }
