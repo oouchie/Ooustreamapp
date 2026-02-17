@@ -81,7 +81,7 @@ class SleepTimerManager(private val activity: FragmentActivity) {
             if (it == 0) "Off" else "$it minutes"
         }.toTypedArray()
 
-        androidx.appcompat.app.AlertDialog.Builder(activity)
+        android.app.AlertDialog.Builder(activity)
             .setTitle(activity.getString(R.string.sleep_timer))
             .setItems(labels) { _, which ->
                 setTimer(options[which])
