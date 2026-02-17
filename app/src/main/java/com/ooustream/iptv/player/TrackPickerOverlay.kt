@@ -185,6 +185,8 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         for ((groupIndex, group) in currentTracks.groups.withIndex()) {
             if (group.type != trackType) continue
             for (trackIndex in 0 until group.length) {
+                // Hide audio tracks the device truly cannot play (no decoder, no passthrough)
+                if (trackType == C.TRACK_TYPE_AUDIO && !group.isTrackSupported(trackIndex)) continue
                 val format = group.getTrackFormat(trackIndex)
                 val name = buildTrackName(format, trackType, result.size + 1)
                 val isSelected = group.isTrackSelected(trackIndex)
@@ -195,19 +197,42 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun buildTrackName(format: Format, trackType: Int, index: Int): String {
-        val label = format.label
-        val language = format.language
-        return when {
-            !label.isNullOrBlank() -> label
-            !language.isNullOrBlank() -> {
-                val locale = Locale(language)
-                locale.displayLanguage
-            }
+        val baseName = when {
+            !format.label.isNullOrBlank() -> format.label!!
+            !format.language.isNullOrBlank() -> Locale(format.language!!).displayLanguage
             else -> {
                 val typeLabel = if (trackType == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitle"
                 "$typeLabel Track $index"
             }
         }
+        if (trackType == C.TRACK_TYPE_AUDIO) {
+            val parts = listOfNotNull(
+                formatCodecLabel(format.sampleMimeType),
+                formatChannelLabel(format.channelCount)
+            )
+            if (parts.isNotEmpty()) return "$baseName (${parts.joinToString(" ")})"
+        }
+        return baseName
+    }
+
+    private fun formatCodecLabel(mime: String?): String? = when (mime) {
+        "audio/ac3" -> "AC3"
+        "audio/eac3" -> "E-AC3"
+        "audio/mp4a-latm" -> "AAC"
+        "audio/mpeg" -> "MP3"
+        "audio/vnd.dts" -> "DTS"
+        "audio/vnd.dts.hd" -> "DTS-HD"
+        "audio/opus" -> "Opus"
+        else -> null
+    }
+
+    private fun formatChannelLabel(channelCount: Int): String? = when {
+        channelCount <= 0 -> null
+        channelCount == 1 -> "Mono"
+        channelCount == 2 -> "Stereo"
+        channelCount == 6 -> "5.1"
+        channelCount == 8 -> "7.1"
+        else -> "${channelCount}ch"
     }
 
     // ─── Track Selection ──────────────────────────────────────────────

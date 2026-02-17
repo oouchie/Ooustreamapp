@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.audio.AudioCapabilities
 import com.ooustream.iptv.BuildConfig
 
 /**
@@ -16,7 +17,7 @@ object AudioLogger {
 
     fun logPlayerCreated(hasTrackSelector: Boolean, hasAudioAttributes: Boolean) {
         if (!BuildConfig.DEBUG) return
-        Log.d(TAG, "Player created: trackSelector=$hasTrackSelector audioAttrs=$hasAudioAttributes")
+        Log.w(TAG, "Player created: trackSelector=$hasTrackSelector audioAttrs=$hasAudioAttributes")
     }
 
     fun logTrackSelection(tracks: Tracks) {
@@ -26,13 +27,13 @@ object AudioLogger {
             Log.w(TAG, "TRACKS: 0 audio groups (no audio in stream)")
             return
         }
-        Log.d(TAG, "TRACKS: ${audioGroups.size} audio group(s)")
+        Log.w(TAG, "TRACKS: ${audioGroups.size} audio group(s)")
         for ((gi, group) in audioGroups.withIndex()) {
             for (i in 0 until group.length) {
                 val f = group.getTrackFormat(i)
                 val sel = if (group.isTrackSelected(i)) "SEL" else "   "
                 val sup = if (group.isTrackSupported(i)) "OK" else "UNSUPPORTED"
-                Log.d(TAG, "  [$sel] g$gi/t$i lang=${f.language ?: "?"} " +
+                Log.w(TAG, "  [$sel] g$gi/t$i lang=${f.language ?: "?"} " +
                     "label=${f.label ?: "?"} codec=${f.codecs ?: "?"} " +
                     "ch=${f.channelCount} mime=${f.sampleMimeType} $sup")
             }
@@ -41,12 +42,12 @@ object AudioLogger {
 
     fun logLanguageSelected(lang: String?, label: String?, fallback: Boolean, reason: String) {
         if (!BuildConfig.DEBUG) return
-        Log.d(TAG, "LANG: selected lang=$lang label=$label fallback=$fallback ($reason)")
+        Log.w(TAG, "LANG: selected lang=$lang label=$label fallback=$fallback ($reason)")
     }
 
     fun logVolume(context: String, volume: Float) {
         if (!BuildConfig.DEBUG) return
-        Log.d(TAG, "VOL [$context] volume=$volume")
+        Log.w(TAG, "VOL [$context] volume=$volume")
     }
 
     fun logAudioError(error: PlaybackException) {
@@ -59,8 +60,20 @@ object AudioLogger {
         Log.w(TAG, "DIAG: Stream has no audio tracks")
     }
 
+    fun logAudioCapabilities(caps: AudioCapabilities) {
+        if (!BuildConfig.DEBUG) return
+        val supported = mutableListOf<String>()
+        if (caps.supportsEncoding(C.ENCODING_AC3)) supported.add("AC3")
+        if (caps.supportsEncoding(C.ENCODING_E_AC3)) supported.add("E-AC3")
+        if (caps.supportsEncoding(C.ENCODING_DTS)) supported.add("DTS")
+        if (caps.supportsEncoding(C.ENCODING_DTS_HD)) supported.add("DTS-HD")
+        if (caps.supportsEncoding(C.ENCODING_DOLBY_TRUEHD)) supported.add("TrueHD")
+        if (caps.supportsEncoding(C.ENCODING_AC4)) supported.add("AC4")
+        Log.w(TAG, "CAPS: maxCh=${caps.maxChannelCount} passthrough=[${supported.joinToString()}]")
+    }
+
     fun logAudioStatus(status: String) {
         if (!BuildConfig.DEBUG) return
-        Log.d(TAG, "STATUS: $status")
+        Log.w(TAG, "STATUS: $status")
     }
 }

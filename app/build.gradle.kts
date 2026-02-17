@@ -13,8 +13,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.3.5"
+        versionCode = 15
+        versionName = "2.4.0"
     }
 
     signingConfigs {
@@ -98,6 +98,9 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.datasource)
     implementation(libs.media3.datasource.okhttp)
+
+    // libVLC (FFmpeg-based fallback player for unsupported codecs like DTS)
+    implementation("org.videolan.android:libvlc-all:3.6.0")
 
     // Image Loading
     implementation(libs.coil)
