@@ -89,6 +89,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var retryCount = 0
     private var retryJob: Job? = null
     private var stallDetectorJob: Job? = null
+    private var audioFallbackAttempted = false
     private var channelSwitchJob: Job? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -652,8 +653,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
-                // Audio decoder unsupported (e.g. AC3/EAC3): disable audio and replay
+                // Audio decoder unsupported (e.g. AC3/EAC3): try alternate track, then disable audio
                 if (isAudioDecoderError(error)) {
+                    if (!audioFallbackAttempted) {
+                        // First attempt: find a non-AC3/EAC3 audio track and force-select it
+                        audioFallbackAttempted = true
+                        val altTrack = findSupportedAudioTrack()
+                        if (altTrack != null) {
+                            trackSelector?.setParameters(
+                                trackSelector!!.buildUponParameters()
+                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                    .addOverride(altTrack)
+                            )
+                            player?.prepare()
+                            player?.play()
+                            return
+                        }
+                    }
+                    // No supported audio tracks: disable audio entirely, play video only
                     audioStatusOverlay?.showCodecUnsupported()
                     trackSelector?.setParameters(
                         trackSelector!!.buildUponParameters()
@@ -832,6 +849,30 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
         }
         return false
+    }
+
+    /** Find a non-AC3/EAC3 audio track to fall back to. Prefers English. */
+    private fun findSupportedAudioTrack(): TrackSelectionOverride? {
+        val tracks = player?.currentTracks ?: return null
+        val unsupportedMimes = setOf("audio/ac3", "audio/eac3", "audio/ac4")
+        var bestGroup: Tracks.Group? = null
+        var bestIndex = 0
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                if (format.sampleMimeType in unsupportedMimes) continue
+                // Found a non-AC3 track — prefer English
+                if (bestGroup == null || isEnglishTrack(format)) {
+                    bestGroup = group
+                    bestIndex = i
+                    if (isEnglishTrack(format)) break
+                }
+            }
+            if (bestGroup != null && isEnglishTrack(bestGroup.getTrackFormat(bestIndex))) break
+        }
+        if (bestGroup == null) return null
+        return TrackSelectionOverride(bestGroup.mediaTrackGroup, listOf(bestIndex))
     }
 
     private fun maxRetriesForContent(contentType: ContentType): Int = when (contentType) {

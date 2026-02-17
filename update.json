@@ -1,7 +1,7 @@
 {
-  "version_name": "2.3.3",
-  "version_code": 12,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.3/app-release.apk",
-  "changelog": "v2.3.3 — Audio Codec Fix + Memory Optimization\n\n• Streams with unsupported audio (AC3/Dolby Digital) now play video without audio instead of crashing\n• Shows 'Unsupported codec' indicator when audio can't be decoded\n• Reduced buffer sizes on low-RAM devices to prevent out-of-memory crashes\n• Fixes playback failures on older Fire TV Sticks with limited memory",
+  "version_name": "2.3.4",
+  "version_code": 13,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.3.4/app-release.apk",
+  "changelog": "v2.3.4 — Smart Audio Fallback\n\n• When AC3/Dolby audio fails, app now tries alternate audio tracks (e.g. English AAC) before disabling audio\n• Fixes movies with multiple audio languages selecting an unsupported track\n• Only disables audio as last resort if no supported tracks exist",
   "mandatory": false
 }
