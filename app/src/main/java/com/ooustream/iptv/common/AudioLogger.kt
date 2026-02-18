@@ -4,7 +4,6 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
-import androidx.media3.exoplayer.audio.AudioCapabilities
 import com.ooustream.iptv.BuildConfig
 
 /**
@@ -60,16 +59,10 @@ object AudioLogger {
         Log.w(TAG, "DIAG: Stream has no audio tracks")
     }
 
-    fun logAudioCapabilities(caps: AudioCapabilities) {
+    /** Log which decoder initialized for audio. "libffmpeg" = FFmpeg extension, "OMX."/"c2." = hardware. */
+    fun logDecoderInitialized(decoderName: String, initDurationMs: Long) {
         if (!BuildConfig.DEBUG) return
-        val supported = mutableListOf<String>()
-        if (caps.supportsEncoding(C.ENCODING_AC3)) supported.add("AC3")
-        if (caps.supportsEncoding(C.ENCODING_E_AC3)) supported.add("E-AC3")
-        if (caps.supportsEncoding(C.ENCODING_DTS)) supported.add("DTS")
-        if (caps.supportsEncoding(C.ENCODING_DTS_HD)) supported.add("DTS-HD")
-        if (caps.supportsEncoding(C.ENCODING_DOLBY_TRUEHD)) supported.add("TrueHD")
-        if (caps.supportsEncoding(C.ENCODING_AC4)) supported.add("AC4")
-        Log.w(TAG, "CAPS: maxCh=${caps.maxChannelCount} passthrough=[${supported.joinToString()}]")
+        Log.w(TAG, "DECODER: $decoderName (init ${initDurationMs}ms)")
     }
 
     fun logAudioStatus(status: String) {

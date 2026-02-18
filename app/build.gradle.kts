@@ -44,6 +44,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -99,8 +100,8 @@ dependencies {
     implementation(libs.media3.datasource)
     implementation(libs.media3.datasource.okhttp)
 
-    // libVLC (FFmpeg-based fallback player for unsupported codecs like DTS)
-    implementation("org.videolan.android:libvlc-all:3.6.0")
+    // FFmpeg audio decoder extension (DTS, AC3, EAC3 software decoding via ExoPlayer)
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1")
 
     // Image Loading
     implementation(libs.coil)
@@ -123,4 +124,7 @@ dependencies {
 
     // WorkManager
     implementation(libs.work.runtime)
+
+    // Core library desugaring (required by media3-ffmpeg-decoder)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

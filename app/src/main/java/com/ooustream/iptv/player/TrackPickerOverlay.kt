@@ -185,8 +185,6 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         for ((groupIndex, group) in currentTracks.groups.withIndex()) {
             if (group.type != trackType) continue
             for (trackIndex in 0 until group.length) {
-                // Hide audio tracks the device truly cannot play (no decoder, no passthrough)
-                if (trackType == C.TRACK_TYPE_AUDIO && !group.isTrackSupported(trackIndex)) continue
                 val format = group.getTrackFormat(trackIndex)
                 val name = buildTrackName(format, trackType, result.size + 1)
                 val isSelected = group.isTrackSelected(trackIndex)

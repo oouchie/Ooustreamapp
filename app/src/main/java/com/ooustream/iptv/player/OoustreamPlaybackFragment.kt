@@ -30,7 +30,7 @@ import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
@@ -78,7 +78,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var trackPickerOverlay: TrackPickerOverlay? = null
     private var audioStatusOverlay: AudioStatusOverlay? = null
     private var trackSelector: DefaultTrackSelector? = null
-    private var audioCapabilities: AudioCapabilities? = null
     private var isAudioOnly = false
     private var bingeShown = false
 
@@ -94,7 +93,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var retryJob: Job? = null
     private var stallDetectorJob: Job? = null
     private var audioFallbackAttempted = false
-    private var vlcFallbackChecked = false
     private var channelSwitchJob: Job? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -111,15 +109,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
-        // Query device audio capabilities (HDMI passthrough support for surround)
-        audioCapabilities = AudioCapabilities.getCapabilities(requireContext())
-        AudioLogger.logAudioCapabilities(audioCapabilities!!)
-
-        // DefaultTrackSelector: prefer surround when passthrough available, else AAC
+        // DefaultTrackSelector: prefer surround formats (FFmpeg decodes all codecs)
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(
                 buildUponParameters()
-                    .setPreferredAudioMimeTypes(*buildPreferredAudioMimeTypes(audioCapabilities!!))
+                    .setPreferredAudioMimeTypes(
+                        MimeTypes.AUDIO_E_AC3,
+                        MimeTypes.AUDIO_AC3,
+                        MimeTypes.AUDIO_DTS,
+                        MimeTypes.AUDIO_DTS_HD,
+                        MimeTypes.AUDIO_AAC,
+                    )
                     .setPreferredAudioLanguage("en")
                     .setPreferredTextLanguage("en")
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -147,6 +147,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             /* handleAudioFocus = */ true
         )
         AudioLogger.logPlayerCreated(hasTrackSelector = true, hasAudioAttributes = true)
+
+        // Log which decoder handles each audio stream (verify FFmpeg extension is working)
+        // "libffmpeg" = FFmpeg software decode, "OMX."/"c2." = hardware MediaCodec
+        player!!.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                AudioLogger.logDecoderInitialized(decoderName, initializationDurationMs)
+            }
+        })
 
         // [Fix 2.1] MediaSession: tells system media is active (screensaver defense + Now Playing)
         mediaSession = MediaSession.Builder(requireContext(), player!!)
@@ -669,12 +682,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
-                // Audio decoder unsupported (e.g. AC3/EAC3): try alternate track, then disable audio
+                // Audio decoder error: try alternate track as fallback
                 if (isAudioDecoderError(error)) {
                     if (!audioFallbackAttempted) {
-                        // First attempt: find a non-AC3/EAC3 audio track and force-select it
                         audioFallbackAttempted = true
-                        val altTrack = findSupportedAudioTrack()
+                        val altTrack = findAlternateAudioTrack()
                         if (altTrack != null) {
                             trackSelector?.setParameters(
                                 trackSelector!!.buildUponParameters()
@@ -686,9 +698,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             return
                         }
                     }
-                    // No supported audio tracks: switch to VLC (FFmpeg can decode anything)
-                    switchToVlc()
-                    return
                 }
                 // Audio-specific errors: show indicator (video may still play)
                 when (error.errorCode) {
@@ -769,28 +778,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         return
                     }
                     audioStatusOverlay?.dismiss()
-
-                    // Auto-switch to VLC if a better English track is unsupported
-                    // (e.g. DTS 5.1 English is unsupported, ExoPlayer fell back to AC3 commentary)
-                    if (!vlcFallbackChecked) {
-                        vlcFallbackChecked = true
-                        val selectedChannels = audioGroups.flatMap { group ->
-                            (0 until group.length).filter { group.isTrackSelected(it) }
-                                .map { group.getTrackFormat(it).channelCount }
-                        }.maxOrNull() ?: 0
-                        val hasUnsupportedBetterTrack = audioGroups.any { group ->
-                            (0 until group.length).any { i ->
-                                !group.isTrackSupported(i) &&
-                                    isEnglishTrack(group.getTrackFormat(i)) &&
-                                    group.getTrackFormat(i).channelCount > selectedChannels
-                            }
-                        }
-                        if (hasUnsupportedBetterTrack) {
-                            AudioLogger.logAudioStatus("Better English track unsupported — switching to VLC")
-                            switchToVlc()
-                            return
-                        }
-                    }
 
                     val hasSelectedAudio = audioGroups.any { group ->
                         (0 until group.length).any { group.isTrackSelected(it) }
@@ -883,34 +870,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         return false
     }
 
-    /** Build preferred MIME type order based on device passthrough capabilities. */
-    private fun buildPreferredAudioMimeTypes(caps: AudioCapabilities): Array<String> {
-        val mimes = mutableListOf<String>()
-        if (caps.supportsEncoding(C.ENCODING_E_AC3)) mimes.add(MimeTypes.AUDIO_E_AC3)
-        if (caps.supportsEncoding(C.ENCODING_AC3)) mimes.add(MimeTypes.AUDIO_AC3)
-        if (caps.supportsEncoding(C.ENCODING_DTS_HD)) mimes.add(MimeTypes.AUDIO_DTS_HD)
-        if (caps.supportsEncoding(C.ENCODING_DTS)) mimes.add(MimeTypes.AUDIO_DTS)
-        mimes.add(MimeTypes.AUDIO_AAC)
-        return mimes.toTypedArray()
-    }
-
-    /** Find a playable audio track to fall back to. Skips formats without decoder or passthrough. */
-    private fun findSupportedAudioTrack(): TrackSelectionOverride? {
+    /** Find an alternate audio track (preferring English). Used as fallback when current track fails. */
+    private fun findAlternateAudioTrack(): TrackSelectionOverride? {
         val tracks = player?.currentTracks ?: return null
-        val caps = audioCapabilities ?: AudioCapabilities.getCapabilities(requireContext())
-        // Only exclude formats the device truly can't handle (no decoder AND no passthrough)
-        val unsupportedMimes = mutableSetOf<String>()
-        if (!caps.supportsEncoding(C.ENCODING_AC3)) unsupportedMimes.add("audio/ac3")
-        if (!caps.supportsEncoding(C.ENCODING_E_AC3)) unsupportedMimes.add("audio/eac3")
-        if (!caps.supportsEncoding(C.ENCODING_DTS)) unsupportedMimes.add("audio/vnd.dts")
-        unsupportedMimes.add("audio/ac4") // No Fire TV passthrough
+        val selectedMime = tracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { g -> (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it).sampleMimeType } }
+            .firstOrNull()
         var bestGroup: Tracks.Group? = null
         var bestIndex = 0
         for (group in tracks.groups) {
             if (group.type != C.TRACK_TYPE_AUDIO) continue
             for (i in 0 until group.length) {
+                if (group.isTrackSelected(i)) continue // Skip the currently-failing track
                 val format = group.getTrackFormat(i)
-                if (format.sampleMimeType in unsupportedMimes) continue
+                // Prefer a different codec than the one that failed
+                if (format.sampleMimeType == selectedMime && bestGroup != null) continue
                 if (bestGroup == null || isEnglishTrack(format)) {
                     bestGroup = group
                     bestIndex = i
@@ -1001,20 +976,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setPositiveButton(R.string.retry) { _, _ ->
                 retryCount = 0
                 audioFallbackAttempted = false
-                // Re-query capabilities (HDMI state may have changed)
-                audioCapabilities = AudioCapabilities.getCapabilities(ctx)
-                val preferredMimes = buildPreferredAudioMimeTypes(audioCapabilities!!)
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                         .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                        .setPreferredAudioMimeTypes(*preferredMimes)
                 )
                 player?.prepare()
                 player?.play()
-            }
-            .setNeutralButton("Try VLC") { _, _ ->
-                switchToVlc()
             }
             .setNegativeButton(R.string.cancel) { _, _ ->
                 activity?.onBackPressedDispatcher?.onBackPressed()
@@ -1174,33 +1142,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val p = player ?: return
         controlsManager?.pauseAutoHide()
         trackPickerOverlay?.show(p)
-    }
-
-    /** Switch to VLC player (FFmpeg decoders) when ExoPlayer can't handle the audio codec. */
-    private fun switchToVlc() {
-        val pos = player?.currentPosition ?: 0L
-        // Pass channel list to VLC fragment via static holder
-        if (viewModel.contentType == ContentType.LIVE) {
-            ChannelListHolder.channels = viewModel.channels.value
-            ChannelListHolder.currentIndex = viewModel.currentChannelIndex.value
-        }
-        val vlcFrag = VlcPlaybackFragment.newInstance(
-            streamUrl = viewModel.streamUrl,
-            contentType = viewModel.contentType,
-            streamId = viewModel.streamId,
-            streamName = viewModel.streamName,
-            streamIcon = viewModel.streamIcon,
-            seriesId = viewModel.seriesId,
-            seasonNum = viewModel.seasonNum,
-            episodeNum = viewModel.episodeNum,
-            resumePositionMs = pos,
-            isCodecFallback = true
-        )
-        requireActivity().supportFragmentManager.popBackStack()
-        requireActivity().supportFragmentManager.beginTransaction()
-            .replace(R.id.main_container, vlcFrag)
-            .addToBackStack(null)
-            .commit()
     }
 
     private fun showExternalPlayerDialog() {
