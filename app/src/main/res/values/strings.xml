@@ -156,6 +156,15 @@
 
     <!-- Search -->
     <string name="no_results">No results found</string>
+    <string name="search_hint">Search movies, channels, series\u2026</string>
+    <string name="recent_searches_title">Recent Searches</string>
+    <string name="trending_now_title">Trending Now</string>
+    <string name="voice_search_prompt">Search for movies, channels, or series</string>
+    <string name="search_nav_hints">BACK: Clear/Exit  \u2022  OK: Select  \u2022  Long Press: Info</string>
+    <string name="no_results_message">No results found for \"%s\"</string>
+    <string name="search_live_tv">Live TV</string>
+    <string name="search_movies">Movies</string>
+    <string name="search_series">Series</string>
 
     <!-- Favorites -->
     <string name="remove_favorite_title">Remove Favorite</string>

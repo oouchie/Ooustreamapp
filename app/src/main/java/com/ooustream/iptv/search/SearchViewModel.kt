@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.ooustream.iptv.data.model.VodStream
 import javax.inject.Inject
 
 @HiltViewModel
@@ -32,6 +33,12 @@ class SearchViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    private val _activeFilter = MutableStateFlow("All")
+    val activeFilter: StateFlow<String> = _activeFilter.asStateFlow()
+
+    private val _trendingContent = MutableStateFlow<List<VodStream>>(emptyList())
+    val trendingContent: StateFlow<List<VodStream>> = _trendingContent.asStateFlow()
+
     val recentSearches: StateFlow<List<SearchHistoryEntity>> = searchHistoryDao.getRecent()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -42,6 +49,22 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 searchIndexRepository.rebuildIndex()
+            } catch (_: Exception) { }
+        }
+        // Load trending content
+        loadTrending()
+    }
+
+    fun setActiveFilter(filter: String) {
+        _activeFilter.value = filter
+    }
+
+    private fun loadTrending() {
+        viewModelScope.launch {
+            try {
+                val vod = contentRepository.getVodStreams()
+                val sorted = vod.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                _trendingContent.value = sorted.take(15)
             } catch (_: Exception) { }
         }
     }
@@ -59,22 +82,23 @@ class SearchViewModel @Inject constructor(
             delay(300L)
             _isSearching.value = true
             try {
-                // Try FTS local search first
-                if (searchIndexRepository.isIndexBuilt()) {
-                    val ftsResults = searchIndexRepository.search(query)
-                    if (ftsResults.isNotEmpty()) {
-                        _searchResults.value = mapFtsToSearchResults(ftsResults)
-                        searchHistoryDao.insert(SearchHistoryEntity(query = query.trim()))
-                        return@launch
-                    }
-                }
-
-                // Fallback to API search if index is empty or no results
+                // Try API search first (returns full objects with images)
                 val results = contentRepository.search(query)
                 _searchResults.value = results
                 searchHistoryDao.insert(SearchHistoryEntity(query = query.trim()))
-            } catch (e: Exception) {
-                _error.emit(e.message ?: "Search failed")
+            } catch (_: Exception) {
+                // Offline fallback: use FTS local search (no images, but functional)
+                try {
+                    if (searchIndexRepository.isIndexBuilt()) {
+                        val ftsResults = searchIndexRepository.search(query)
+                        if (ftsResults.isNotEmpty()) {
+                            _searchResults.value = mapFtsToSearchResults(ftsResults)
+                            searchHistoryDao.insert(SearchHistoryEntity(query = query.trim()))
+                        }
+                    }
+                } catch (e: Exception) {
+                    _error.emit(e.message ?: "Search failed")
+                }
             } finally {
                 _isSearching.value = false
             }
@@ -82,9 +106,8 @@ class SearchViewModel @Inject constructor(
     }
 
     /**
-     * Map FTS SearchIndexEntity results back into the SearchResults format
-     * used by the UI. Since FTS entries are lightweight (no icons/covers),
-     * we create minimal model objects with just the data we have.
+     * Map FTS SearchIndexEntity results back into the SearchResults format.
+     * Used as offline fallback — images may be null.
      */
     private fun mapFtsToSearchResults(entries: List<SearchIndexEntity>): SearchResults {
         val live = entries.filter { it.type == "live" }.map { entry ->

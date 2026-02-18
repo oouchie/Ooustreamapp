@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/aurora_bg_deep">
+
+    <!-- Layer 0: Animated aurora background orbs -->
+    <com.ooustream.iptv.common.AuroraBackgroundView
+        android:id="@+id/aurora_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Layer 1: Main content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingTop="52dp"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp">
+
+        <!-- Search input bar (48dp pill) -->
+        <LinearLayout
+            android:id="@+id/search_input_bar"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_search_input"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+
+            <!-- Search icon -->
+            <ImageView
+                android:id="@+id/search_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_search"
+                android:tint="#6B7280"
+                android:contentDescription="Search"
+                tools:ignore="UseAppTint" />
+
+            <!-- Search text input -->
+            <EditText
+                android:id="@+id/search_edit_text"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:background="@null"
+                android:hint="@string/search_hint"
+                android:textColorHint="#6B7280"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:singleLine="true"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:textCursorDrawable="@drawable/bg_gold_cursor"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                tools:ignore="Autofill,LabelFor" />
+
+            <!-- Voice search button -->
+            <ImageView
+                android:id="@+id/voice_btn"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_mic_24"
+                android:tint="#9CA3AF"
+                android:padding="2dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:visibility="gone"
+                android:contentDescription="Voice search"
+                tools:ignore="UseAppTint"
+                tools:visibility="visible" />
+
+            <!-- Clear button -->
+            <ImageView
+                android:id="@+id/clear_btn"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_close_24"
+                android:tint="#9CA3AF"
+                android:padding="2dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:visibility="gone"
+                android:contentDescription="Clear search"
+                tools:ignore="UseAppTint"
+                tools:visibility="visible" />
+
+        </LinearLayout>
+
+        <!-- Filter tabs row -->
+        <LinearLayout
+            android:id="@+id/filter_tabs_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal" />
+
+        <!-- Content area (empty state / results / no results / loading) -->
+        <FrameLayout
+            android:id="@+id/search_content_area"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp">
+
+            <!-- Empty state: recent + trending -->
+            <LinearLayout
+                android:id="@+id/empty_state_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <!-- Recent Searches label -->
+                <TextView
+                    android:id="@+id/recent_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/recent_searches_title"
+                    android:textColor="@color/focus_gold"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <!-- Recent chips row -->
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/recent_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <!-- Trending Now label -->
+                <TextView
+                    android:id="@+id/trending_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/trending_now_title"
+                    android:textColor="@color/focus_gold"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <!-- Trending row -->
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/trending_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="260dp"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+            </LinearLayout>
+
+            <!-- Search results (scrollable) -->
+            <ScrollView
+                android:id="@+id/results_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scrollbars="none"
+                android:visibility="gone"
+                android:focusable="false">
+
+                <LinearLayout
+                    android:id="@+id/results_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingBottom="16dp" />
+
+            </ScrollView>
+
+            <!-- No results state -->
+            <LinearLayout
+                android:id="@+id/no_results_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/no_results_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/no_results"
+                    android:textColor="@color/text_muted"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+            <!-- Loading spinner -->
+            <ProgressBar
+                android:id="@+id/search_loading"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminateTint="@color/focus_gold" />
+
+        </FrameLayout>
+
+        <!-- Nav hints bar -->
+        <TextView
+            android:id="@+id/nav_hints"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_nav_hints_aurora"
+            android:gravity="center"
+            android:paddingVertical="6dp"
+            android:text="@string/search_nav_hints"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+
+    <!-- Layer 2: Frosted header overlay -->
+    <LinearLayout
+        android:id="@+id/frosted_header"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_frosted_header"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="32dp">
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/logo_full"
+            android:contentDescription="Ooustream logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text=" / Search"
+            android:textColor="@color/focus_gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextClock
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:format12Hour="h:mm a"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+</FrameLayout>

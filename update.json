@@ -1,7 +1,7 @@
 {
-  "version_name": "2.4.1",
-  "version_code": 16,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.4.1/app-release.apk",
-  "changelog": "v2.4.1 — Hotfix\n\n• Fixed crash when opening sleep timer\n• All audio codec improvements from v2.4.0 included",
+  "version_name": "2.5.0",
+  "version_code": 17,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.0/app-release.apk",
+  "changelog": "v2.5.0 — Aurora Cinema Search\n\n• Completely redesigned Search page with Aurora Cinema design\n• Animated aurora background with frosted glass header\n• Gold-glow animated search bar\n• Filter tabs: All, Live TV, Movies, Series\n• Trending Now row with ranked poster cards\n• Recent searches as stylish chips\n• Categorized results with poster art and channel logos\n• Voice search support\n• Long-press for content info overlay\n• Search images now display correctly (API-first with offline fallback)",
   "mandatory": false
 }

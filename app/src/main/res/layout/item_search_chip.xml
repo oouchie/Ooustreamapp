@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recent search chip: focusable pill with glass background -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="32dp"
+    android:background="@drawable/bg_search_chip"
+    android:gravity="center"
+    android:paddingHorizontal="16dp"
+    android:textColor="@color/text_secondary"
+    android:textSize="13sp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:layout_marginEnd="8dp"
+    tools:text="ESPN" />
