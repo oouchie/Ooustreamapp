@@ -144,9 +144,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Only affects 5.1/7.1 content — stereo/mono passes through unchanged.
         AudioLogger.log("Stereo downmix enabled (multichannel → stereo)")
 
-        // PREFER = FFmpeg decoders tried first (AC3/DTS always software-decoded)
-        // ON = FFmpeg available alongside hardware (less reliable for unsupported codecs)
-        // Custom buildAudioSink adds stereo downmix processor on devices that need it
+        // ON = hardware decoders first, FFmpeg as fallback for codecs hardware can't handle
+        // (AC3/DTS/EAC3 → FFmpeg software decode, AAC → hardware). PREFER breaks live TV
+        // because FFmpeg handles ALL codecs and AudioSink rejects its PCM output on some streams.
+        // Custom buildAudioSink adds stereo downmix processor for multichannel content.
         val renderersFactory = object : DefaultRenderersFactory(requireContext()) {
             override fun buildAudioSink(
                 context: Context,
@@ -154,6 +155,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink? {
                 val downmixer = ChannelMixingAudioProcessor()
+                // Passthrough for mono and stereo (processor throws if no matrix for channel count)
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
                 // ITU-R BS.775 5.1→stereo: L=FL+0.707*C+0.707*SL, R=FR+0.707*C+0.707*SR
                 downmixer.putChannelMixingMatrix(
                     ChannelMixingMatrix(6, 2, floatArrayOf(
@@ -177,10 +181,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     .build()
             }
         }.apply {
-            setExtensionRendererMode(
-                if (ffmpegAvailable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-            )
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableAudioTrackPlaybackParams(true)
         }
 

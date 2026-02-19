@@ -1,7 +1,7 @@
 {
-  "version_name": "2.5.1",
-  "version_code": 18,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.1/app-release.apk",
-  "changelog": "v2.5.1 — Audio Fix for Movies\n\n• Fixed movies with 5.1 surround audio (EAC3/AC3/DTS) failing on Ooustick\n• Stereo downmix: 5.1/7.1 surround audio automatically converted to stereo\n• FFmpeg decoder verification and diagnostic logging\n• Audio Decoder status visible in Settings\n• Upgraded to EXTENSION_RENDERER_MODE_PREFER for reliable FFmpeg decoding",
+  "version_name": "2.5.2",
+  "version_code": 19,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.2/app-release.apk",
+  "changelog": "v2.5.2 — Live TV Audio Fix\n\n• Fixed live TV streams with 2-channel AC3 audio crashing\n• Added stereo/mono passthrough matrices for ChannelMixingAudioProcessor\n• Switched to EXTENSION_RENDERER_MODE_ON (hardware first, FFmpeg fallback)\n• Hardware handles AAC/MP3, FFmpeg handles AC3/DTS/EAC3",
   "mandatory": true
 }

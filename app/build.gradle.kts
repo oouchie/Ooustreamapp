@@ -13,8 +13,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 18
-        versionName = "2.5.1"
+        versionCode = 19
+        versionName = "2.5.2"
     }
 
     signingConfigs {
