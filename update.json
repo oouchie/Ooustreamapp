@@ -1,7 +1,7 @@
 {
-  "version_name": "2.5.0",
-  "version_code": 17,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.0/app-release.apk",
-  "changelog": "v2.5.0 — Aurora Cinema Search\n\n• Completely redesigned Search page with Aurora Cinema design\n• Animated aurora background with frosted glass header\n• Gold-glow animated search bar\n• Filter tabs: All, Live TV, Movies, Series\n• Trending Now row with ranked poster cards\n• Recent searches as stylish chips\n• Categorized results with poster art and channel logos\n• Voice search support\n• Long-press for content info overlay\n• Search images now display correctly (API-first with offline fallback)",
-  "mandatory": false
+  "version_name": "2.5.1",
+  "version_code": 18,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.1/app-release.apk",
+  "changelog": "v2.5.1 — Audio Fix for Movies\n\n• Fixed movies with 5.1 surround audio (EAC3/AC3/DTS) failing on Ooustick\n• Stereo downmix: 5.1/7.1 surround audio automatically converted to stereo\n• FFmpeg decoder verification and diagnostic logging\n• Audio Decoder status visible in Settings\n• Upgraded to EXTENSION_RENDERER_MODE_PREFER for reliable FFmpeg decoding",
+  "mandatory": true
 }

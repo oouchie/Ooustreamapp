@@ -69,4 +69,40 @@ object AudioLogger {
         if (!BuildConfig.DEBUG) return
         Log.w(TAG, "STATUS: $status")
     }
+
+    /** Log general info (e.g. FFmpeg availability). */
+    fun log(message: String) {
+        if (!BuildConfig.DEBUG) return
+        Log.w(TAG, message)
+    }
+
+    /** Check if FFmpeg native library is available via reflection. */
+    fun isFfmpegAvailable(): Boolean {
+        return try {
+            val clazz = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegLibrary")
+            val method = clazz.getMethod("isAvailable")
+            method.invoke(null) as Boolean
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Log which FFmpeg audio codecs are supported. Debug-only. */
+    fun logFfmpegCodecs() {
+        if (!BuildConfig.DEBUG) return
+        val codecs = listOf("audio/ac3", "audio/eac3", "audio/vnd.dts", "audio/vnd.dts.hd",
+            "audio/mp4a-latm", "audio/mpeg", "audio/flac", "audio/vorbis", "audio/opus", "audio/truehd")
+        for (mime in codecs) {
+            try {
+                val clazz = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegLibrary")
+                val method = clazz.getMethod("supportsFormat", String::class.java)
+                val supported = method.invoke(null, mime) as Boolean
+                val shortName = mime.removePrefix("audio/")
+                Log.w(TAG, "FFmpeg codec $shortName: ${if (supported) "YES" else "NO"}")
+            } catch (_: Exception) {
+                val shortName = mime.removePrefix("audio/")
+                Log.w(TAG, "FFmpeg codec $shortName: UNAVAILABLE")
+            }
+        }
+    }
 }

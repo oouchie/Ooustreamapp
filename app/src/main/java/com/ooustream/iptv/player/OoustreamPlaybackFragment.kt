@@ -31,7 +31,11 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import com.ooustream.iptv.R
@@ -109,6 +113,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
+        // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
+        val ffmpegAvailable = AudioLogger.isFfmpegAvailable()
+        AudioLogger.log("FFmpeg available: $ffmpegAvailable")
+        if (ffmpegAvailable) {
+            AudioLogger.logFfmpegCodecs()
+        } else {
+            AudioLogger.log("WARNING: FFmpeg not loaded — AC3/DTS will use hardware decoder only")
+        }
+
         // DefaultTrackSelector: prefer surround formats (FFmpeg decodes all codecs)
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(
@@ -126,8 +139,48 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             )
         }
 
-        val renderersFactory = DefaultRenderersFactory(requireContext()).apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        // Always downmix multichannel audio to stereo — budget sticks (Ooustick) can't output
+        // 6-channel PCM. Detection via AudioTrack.Builder is unreliable (test succeeds, real fails).
+        // Only affects 5.1/7.1 content — stereo/mono passes through unchanged.
+        AudioLogger.log("Stereo downmix enabled (multichannel → stereo)")
+
+        // PREFER = FFmpeg decoders tried first (AC3/DTS always software-decoded)
+        // ON = FFmpeg available alongside hardware (less reliable for unsupported codecs)
+        // Custom buildAudioSink adds stereo downmix processor on devices that need it
+        val renderersFactory = object : DefaultRenderersFactory(requireContext()) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink? {
+                val downmixer = ChannelMixingAudioProcessor()
+                // ITU-R BS.775 5.1→stereo: L=FL+0.707*C+0.707*SL, R=FR+0.707*C+0.707*SR
+                downmixer.putChannelMixingMatrix(
+                    ChannelMixingMatrix(6, 2, floatArrayOf(
+                        1f, 0f, 0.707f, 0f, 0.707f, 0f,
+                        0f, 1f, 0.707f, 0f, 0f, 0.707f
+                    ))
+                )
+                // 7.1→stereo downmix
+                downmixer.putChannelMixingMatrix(
+                    ChannelMixingMatrix(8, 2, floatArrayOf(
+                        1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
+                        0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f
+                    ))
+                )
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessorChain(
+                        DefaultAudioSink.DefaultAudioProcessorChain(downmixer)
+                    )
+                    .build()
+            }
+        }.apply {
+            setExtensionRendererMode(
+                if (ffmpegAvailable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            )
             setEnableAudioTrackPlaybackParams(true)
         }
 

@@ -16,6 +16,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.MainActivity
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.account.AccountDashboardFragment
 import com.ooustream.iptv.backup.BackupFragment
@@ -39,6 +40,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_LOGOUT = 8L
         private const val ACTION_REFRESH_PLAYLIST = 9L
         private const val ACTION_CRASH_LOG = 10L
+        private const val ACTION_AUDIO_DECODER = 11L
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -132,6 +134,21 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .id(ACTION_CRASH_LOG)
                 .title("Crash Logs")
                 .description(crashDesc)
+                .build()
+        )
+
+        // Audio Decoder info (non-actionable)
+        val ffmpegAvailable = AudioLogger.isFfmpegAvailable()
+        val decoderDesc = if (ffmpegAvailable)
+            "FFmpeg (AC3, DTS, EAC3, AAC, FLAC)"
+        else
+            "Hardware Only"
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_AUDIO_DECODER)
+                .title("Audio Decoder")
+                .description(decoderDesc)
+                .focusable(false)
                 .build()
         )
 
