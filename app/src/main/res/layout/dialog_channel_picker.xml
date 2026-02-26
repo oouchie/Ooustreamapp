@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#D9060A0A"
+    android:clickable="true"
+    android:focusable="false">
+
+    <!-- Card sized via margins for ~85% width, ~85% height -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="48dp"
+        android:layout_marginEnd="48dp"
+        android:layout_marginTop="36dp"
+        android:layout_marginBottom="36dp"
+        android:orientation="vertical"
+        android:background="@drawable/bg_channel_picker_dialog"
+        android:paddingTop="20dp"
+        android:paddingBottom="16dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <!-- Header section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/picker_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select Channel"
+                android:textColor="#FFD700"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/picker_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="Slot 1"
+                android:textColor="#66FFFFFF"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif" />
+        </LinearLayout>
+
+        <!-- Gold divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26FFD700"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Dual-pane: categories left (30%) + channels right (70%) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <!-- Categories pane (30%) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="30"
+                android:orientation="vertical"
+                android:background="@drawable/bg_glass_panel"
+                android:padding="6dp"
+                android:layout_marginEnd="8dp"
+                android:clipToPadding="false">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Categories"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="10sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:paddingStart="6dp"
+                    android:paddingBottom="6dp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/picker_categories_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:nextFocusRight="@+id/channels_list" />
+            </LinearLayout>
+
+            <!-- Channels pane (70%) -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="70"
+                android:background="@drawable/bg_glass_panel"
+                android:padding="6dp"
+                android:clipToPadding="false">
+
+                <!-- Loading spinner (centered) -->
+                <ProgressBar
+                    android:id="@+id/loading_spinner"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center"
+                    android:indeterminateTint="#FFD700"
+                    android:visibility="gone" />
+
+                <!-- Channel list -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/channels_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="vertical"
+                    android:fadeScrollbars="false"
+                    android:clipToPadding="false"
+                    android:nextFocusLeft="@+id/picker_categories_list" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cleartext (HTTP) must remain allowed: Xtream Codes IPTV servers
+        deliver live .ts and VOD .mp4 streams over HTTP. The server URL
+        is user-provided — we cannot control the protocol. Blocking
+        cleartext would break playback for most IPTV providers.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

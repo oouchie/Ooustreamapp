@@ -7,7 +7,7 @@
     android:background="#99000000"
     android:gravity="center"
     android:paddingVertical="8dp"
-    android:paddingHorizontal="48dp"
+    android:paddingHorizontal="@dimen/overscan_horizontal"
     android:visibility="gone">
 
     <TextView

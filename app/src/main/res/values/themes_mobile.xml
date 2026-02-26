@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Ooustream.Mobile" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowBackground">@color/aurora_bg_deep</item>
+        <item name="colorPrimary">@color/brand_cyan</item>
+        <item name="colorSecondary">@color/focus_gold</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="android:colorAccent">@color/brand_cyan</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:statusBarColor">@color/aurora_bg_deep</item>
+        <item name="android:navigationBarColor">@color/aurora_bg_deep</item>
+    </style>
+</resources>

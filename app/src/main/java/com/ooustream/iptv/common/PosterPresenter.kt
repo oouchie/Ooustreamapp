@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,8 +67,10 @@ open class PosterPresenter : Presenter() {
         root.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 DpadSoundManager.getInstance()?.playMove()
-                v.overlay.add(GoldGlowFocusDrawable())
-                v.overlay.add(FocusBracketDrawable())
+                if (DeviceUtils.isTV(v.context)) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                    v.overlay.add(FocusBracketDrawable())
+                }
                 v.animate().scaleX(1.06f).scaleY(1.06f).setDuration(250).start()
                 v.setBackgroundResource(R.drawable.bg_poster_card_aurora_focused)
 

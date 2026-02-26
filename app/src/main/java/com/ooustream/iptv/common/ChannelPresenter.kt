@@ -39,8 +39,10 @@ open class ChannelPresenter(
         view.outlineProvider = ViewOutlineProvider.BACKGROUND
         view.clipToOutline = true
         // Pre-create focus overlay drawables once per view to avoid GC pressure
-        view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
-        view.setTag(R.id.focus_bracket_drawable, FocusBracketDrawable())
+        if (DeviceUtils.isTV(parent.context)) {
+            view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
+            view.setTag(R.id.focus_bracket_drawable, FocusBracketDrawable())
+        }
         // Explicit focus target — bypasses geometric search which fails when scrolled
         view.nextFocusLeftId = R.id.categories_list
         return ViewHolder(view)

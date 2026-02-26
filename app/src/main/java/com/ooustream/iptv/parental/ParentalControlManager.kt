@@ -8,7 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.security.MessageDigest
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,9 +62,24 @@ class ParentalControlManager @Inject constructor(
      */
     fun verifyPin(pin: String): Boolean {
         val storedHash = prefs.getString(KEY_PIN_HASH, null) ?: return false
-        val inputHash = hashPin(pin)
 
-        return if (inputHash == storedHash) {
+        val matches = if (storedHash.contains(":")) {
+            // New PBKDF2 format: "saltHex:hashHex"
+            verifyPbkdf2Pin(pin, storedHash)
+        } else {
+            // Legacy SHA-256 format (no colon) — verify and auto-migrate
+            val legacyHash = legacyHashPin(pin)
+            if (legacyHash == storedHash) {
+                // Auto-migrate to PBKDF2 on successful verification
+                val newHash = hashPin(pin)
+                prefs.edit().putString(KEY_PIN_HASH, newHash).apply()
+                true
+            } else {
+                false
+            }
+        }
+
+        return if (matches) {
             resetFailedAttempts()
             true
         } else {
@@ -170,7 +186,30 @@ class ParentalControlManager @Inject constructor(
     }
 
     private fun hashPin(pin: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
+        val salt = ByteArray(16)
+        java.security.SecureRandom().nextBytes(salt)
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        val saltHex = salt.joinToString("") { "%02x".format(it) }
+        val hashHex = hash.joinToString("") { "%02x".format(it) }
+        return "$saltHex:$hashHex"
+    }
+
+    private fun verifyPbkdf2Pin(pin: String, storedHash: String): Boolean {
+        val parts = storedHash.split(":")
+        if (parts.size != 2) return false
+        val salt = parts[0].chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        val hashHex = hash.joinToString("") { "%02x".format(it) }
+        return hashHex == parts[1]
+    }
+
+    /** Legacy SHA-256 hash for migration from old format. */
+    private fun legacyHashPin(pin: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(pin.toByteArray(Charsets.UTF_8))
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
@@ -183,5 +222,6 @@ class ParentalControlManager @Inject constructor(
         private const val KEY_LAST_FAILED_TIME = "last_failed_time"
         private const val MAX_FAILED_ATTEMPTS = 3
         private const val LOCKOUT_DURATION_MS = 30_000L // 30 seconds
+        private const val PBKDF2_ITERATIONS = 100_000
     }
 }

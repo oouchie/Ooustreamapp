@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
@@ -33,8 +34,10 @@ class TrendingRankPresenter : Presenter() {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_trending_rank, parent, false)
         // Cache focus drawables per view
-        view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
-        view.setTag(R.id.focus_bracket_drawable, FocusBracketDrawable())
+        if (DeviceUtils.isTV(parent.context)) {
+            view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
+            view.setTag(R.id.focus_bracket_drawable, FocusBracketDrawable())
+        }
         return ViewHolder(view)
     }
 

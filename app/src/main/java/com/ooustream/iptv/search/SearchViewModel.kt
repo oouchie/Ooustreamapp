@@ -7,7 +7,10 @@ import com.ooustream.iptv.data.local.entity.SearchHistoryEntity
 import com.ooustream.iptv.data.local.entity.SearchIndexEntity
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.SearchIndexRepository
+import com.ooustream.iptv.data.repository.FavoriteRepository
 import com.ooustream.iptv.data.repository.SearchResults
+import com.ooustream.iptv.data.local.entity.FavoriteEntity
+import com.ooustream.iptv.common.PosterItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +27,8 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val searchHistoryDao: SearchHistoryDao,
-    private val searchIndexRepository: SearchIndexRepository
+    private val searchIndexRepository: SearchIndexRepository,
+    private val favoriteRepository: FavoriteRepository
 ) : BaseViewModel() {
 
     private val _searchResults = MutableStateFlow<SearchResults?>(null)
@@ -174,5 +178,28 @@ class SearchViewModel @Inject constructor(
 
     fun buildVodStreamUrl(streamId: Int, ext: String): String {
         return contentRepository.buildVodStreamUrl(streamId, ext)
+    }
+
+    fun toggleFavorite(item: PosterItem) {
+        viewModelScope.launch {
+            val id = "${item.type}_${item.id}"
+            if (favoriteRepository.isFavorite(id)) {
+                favoriteRepository.removeFavorite(id)
+                _toastEvent.emit("Removed from Favorites")
+            } else {
+                favoriteRepository.addFavorite(
+                    FavoriteEntity(
+                        id = id,
+                        streamId = item.id,
+                        type = item.type,
+                        name = item.title,
+                        icon = item.imageUrl,
+                        categoryId = null,
+                        extra = item.extension
+                    )
+                )
+                _toastEvent.emit("Added to Favorites")
+            }
+        }
     }
 }

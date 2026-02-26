@@ -167,7 +167,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/continue_watching_row"
                     android:layout_width="match_parent"
-                    android:layout_height="200dp"
+                    android:layout_height="@dimen/row_continue_watching_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -195,7 +195,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/for_you_row"
                     android:layout_width="match_parent"
-                    android:layout_height="200dp"
+                    android:layout_height="@dimen/row_for_you_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -223,7 +223,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@id/for_you_live_row"
                     android:layout_width="match_parent"
-                    android:layout_height="96dp"
+                    android:layout_height="@dimen/row_for_you_live_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -249,7 +249,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/sections_row"
                     android:layout_width="match_parent"
-                    android:layout_height="160dp"
+                    android:layout_height="@dimen/row_sections_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -275,7 +275,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/trending_row"
                     android:layout_width="match_parent"
-                    android:layout_height="240dp"
+                    android:layout_height="@dimen/row_trending_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -303,7 +303,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/trending_series_row"
                     android:layout_width="match_parent"
-                    android:layout_height="240dp"
+                    android:layout_height="@dimen/row_trending_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"

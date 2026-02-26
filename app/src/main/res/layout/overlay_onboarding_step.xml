@@ -10,7 +10,7 @@
         android:layout_gravity="center"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="48dp">
+        android:padding="@dimen/overscan_horizontal">
 
         <!-- Step indicator (e.g., "1 of 4") -->
         <TextView

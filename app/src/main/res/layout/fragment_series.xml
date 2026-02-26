@@ -18,7 +18,7 @@
         android:paddingStart="@dimen/overscan_margin"
         android:paddingEnd="@dimen/overscan_margin"
         android:paddingBottom="@dimen/overscan_margin"
-        android:paddingTop="56dp">
+        android:paddingTop="@dimen/screen_top_clearance">
 
         <LinearLayout
             android:layout_width="match_parent"

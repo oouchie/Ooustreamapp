@@ -58,14 +58,12 @@ class SpeedTestService @Inject constructor(
      * Uses get_live_streams (large payload, typically hundreds of KB to several MB)
      * for accurate speed measurement.
      */
-    suspend fun runDownloadTest(
-        serverUrl: String,
-        username: String,
-        password: String
-    ): Float = withContext(Dispatchers.IO) {
+    suspend fun runDownloadTest(serverUrl: String): Float = withContext(Dispatchers.IO) {
+        val creds = credentialStore.load()
+            ?: throw IllegalStateException("No credentials")
         val baseUrl = serverUrl.trimEnd('/')
         // Use get_live_streams — large payload for accurate measurement
-        val url = "$baseUrl/player_api.php?username=$username&password=$password&action=get_live_streams"
+        val url = "$baseUrl/player_api.php?username=${creds.username}&password=${creds.password}&action=get_live_streams"
 
         val request = Request.Builder()
             .url(url)
@@ -104,11 +102,7 @@ class SpeedTestService @Inject constructor(
             ?: throw IllegalStateException("No server credentials found. Please log in first.")
 
         val pingMs = runPingTest(credentials.serverUrl)
-        val downloadMbps = runDownloadTest(
-            credentials.serverUrl,
-            credentials.username,
-            credentials.password
-        )
+        val downloadMbps = runDownloadTest(credentials.serverUrl)
         val rating = calculateRating(downloadMbps)
 
         return SpeedResult(

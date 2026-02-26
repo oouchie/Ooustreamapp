@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="200dp"
+    android:layout_height="60dp"
+    android:layout_marginEnd="8dp"
+    android:background="@drawable/bg_score_card"
+    android:orientation="vertical"
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp"
+    android:focusable="true">
+
+    <!-- Top row: channel name + quarter badge -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/score_channel_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#66FFFFFF"
+            android:textSize="10sp"
+            tools:text="ESPN" />
+
+        <TextView
+            android:id="@+id/score_quarter_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_category_badge"
+            android:paddingHorizontal="5dp"
+            android:paddingVertical="1dp"
+            android:textColor="@color/focus_gold"
+            android:textSize="8sp"
+            android:fontFamily="monospace"
+            android:visibility="gone"
+            tools:text="Q4 3:12"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+    <!-- Score text -->
+    <TextView
+        android:id="@+id/score_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:fontFamily="monospace"
+        android:fontWeight="700"
+        tools:text="110 - 105" />
+
+</LinearLayout>

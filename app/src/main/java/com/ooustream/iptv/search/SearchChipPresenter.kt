@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
 
@@ -17,7 +18,9 @@ class SearchChipPresenter : Presenter() {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_search_chip, parent, false)
         // Cache focus drawable per view
-        view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
+        if (DeviceUtils.isTV(parent.context)) {
+            view.setTag(R.id.focus_glow_drawable, GoldGlowFocusDrawable())
+        }
         return ViewHolder(view)
     }
 

@@ -42,6 +42,7 @@ import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.SearchResults
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
 import com.ooustream.iptv.series.SeriesDetailFragment
+import android.widget.Toast
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -390,6 +391,9 @@ class SearchFragment : Fragment(), KeyEventHandler {
             navigateToContent(item)
         }
         infoHelper.attach(root)
+        infoHelper.setOnFavorite { item ->
+            viewModel.toggleFavorite(item)
+        }
         contentInfoHelper = infoHelper
     }
 
@@ -455,6 +459,13 @@ class SearchFragment : Fragment(), KeyEventHandler {
                     viewModel.activeFilter.collect {
                         // Re-display results with new filter when results exist
                         viewModel.searchResults.value?.let { displaySearchResults(it) }
+                    }
+                }
+
+                // Toast events (favorites, errors)
+                launch {
+                    viewModel.toastEvent.collect { msg ->
+                        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                     }
                 }
             }

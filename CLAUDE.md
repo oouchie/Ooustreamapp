@@ -5,9 +5,10 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 
 - **Package**: `com.ooustream.iptv`
 - **Server**: `https://flarecoral.com` (Xtream Codes API)
-- **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, Hilt, Room, Retrofit, Coil
+- **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
+- **Current Version**: 2.6.0 (versionCode 20)
 
 ## Build
 ```bash
@@ -17,12 +18,30 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Architecture
 - **DI**: Hilt (`@AndroidEntryPoint`, `@HiltViewModel`, `@Singleton`)
-- **Database**: Room v8 with FTS4 (not FTS5 — minSdk 21 compat)
-- **Background**: WorkManager (periodic score refresh for recommendations)
+- **Database**: Room v8 with FTS4 (not FTS5 — minSdk 21 compat), 13 entities, 11 DAOs
+- **Background**: WorkManager (periodic score refresh for recommendations every 6h)
 - **Navigation**: Manual FragmentManager (no NavGraph)
 - **State**: StateFlow / MutableStateFlow
-- **Images**: Coil with progressive loading + dominant color placeholders
-- **Player**: Media3 ExoPlayer with Leanback PlaybackTransportControlGlue
+- **Images**: Coil with progressive loading + dominant color placeholders (Palette)
+- **Player**: Media3 ExoPlayer with Leanback PlaybackTransportControlGlue + Jellyfin FFmpeg audio decoder extension for DTS/AC3/EAC3 software decoding
+- **Audio Pipeline**: ExoPlayer → FFmpeg decode (AC3/DTS/EAC3) or hardware decode (AAC/MP3) → ChannelMixingAudioProcessor (5.1/7.1→stereo downmix) → DefaultAudioSink → AudioTrack
+- **External Players**: Intent-based launch to VLC app, MX Player, Kodi, or system default (via `ExternalPlayerLauncher.kt`)
+- **Security**: androidx.security.crypto EncryptedSharedPreferences for credentials
+
+## Dependencies
+- **Media3 ExoPlayer** 1.2.1 (core, HLS, UI, Leanback, Session, DataSource, OkHttp)
+- **FFmpeg Decoder**: `org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1` (pre-built native .so files for all ABIs)
+- **Core Library Desugaring**: `com.android.tools:desugar_jdk_libs:2.0.4` (required by FFmpeg decoder)
+- **Hilt** 2.50 (DI framework + WorkManager integration)
+- **Room** 2.6.1 (database + KSP compiler)
+- **Retrofit** 2.9.0 + OkHttp 4.12.0 (networking)
+- **Coil** 2.5.0 (image loading)
+- **Leanback** 1.0.0 (TV UI framework)
+- **ConstraintLayout** 2.1.4 (MultiView grid layouts)
+- **ZXing** 3.5.2 (QR code generation for upgrade flow)
+- **Shimmer** 0.5.0 (loading skeletons)
+- **Palette** 1.0.0 (color extraction)
+- **WorkManager** 2.9.0 (background tasks)
 
 ## Completed Features
 
@@ -53,7 +72,7 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Watch Next Suggestions** — End-of-movie overlay with AI-recommended movies (RecommendationEngine), HorizontalGridView poster cards, no auto-play (`player/WatchNextOverlay.kt`)
 - **Channel Banner** — Pre-roll top banner on live TV showing channel name/number/logo, current + next EPG program with progress bar, auto-hides after 5s (`player/ChannelBannerOverlay.kt`)
 - **Series Complete** — End-of-series overlay with Replay/Exit options when no more episodes (`player/SeriesCompleteOverlay.kt`)
-- **Seek Feedback** — On-screen "▶▶ +10s" / "◀◀ -10s" text on DPAD seek, auto-dismiss after 800ms (`player/SeekFeedbackOverlay.kt`)
+- **Seek Feedback** — On-screen "+10s" / "-10s" text on DPAD seek, auto-dismiss after 800ms (`player/SeekFeedbackOverlay.kt`)
 - **Content Info Overlay** — Long-press info sheet on VOD/Series poster cards showing metadata, plot, Play/Favorite buttons (`common/ContentInfoOverlay.kt`, `common/ContentInfoHelper.kt`)
 - **Continue Watching fix** — Time-based filter (last 60s excluded) instead of percentage; 100% progress saved on STATE_ENDED
 - **Gold progress bars** — Continue Watching card progress bars changed from cyan to gold (#FFC107), Netflix-style overlay on poster bottom edge
@@ -80,12 +99,20 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Audio status indicator** — Top-right overlay shown when stream has no audio tracks or unsupported codec. Persistent for no-audio, auto-dismiss for transient issues. (`player/AudioStatusOverlay.kt`)
 - **Audio-specific error handling** — `ERROR_CODE_AUDIO_TRACK_INIT_FAILED` and `ERROR_CODE_AUDIO_TRACK_WRITE_FAILED` show codec unsupported indicator (video keeps playing).
 - **Preview player audio hardening** — `LivePreviewManager` now sets AudioAttributes with `handleAudioFocus=true` and `setPreferredAudioLanguage("en")`.
-- **Audio diagnostic logging** — `AudioLogger` with `OOUSTREAM_AUDIO` tag, `BuildConfig.DEBUG`-guarded. Logs track selection, language decisions, volume changes, errors. (`common/AudioLogger.kt`)
+- **Audio diagnostic logging** — `AudioLogger` with `OOUSTREAM_AUDIO` tag, `Log.w()` for Fire TV visibility (suppresses `Log.d()`). Logs track selection, language decisions, volume changes, errors. (`common/AudioLogger.kt`)
 - **Crash logger** — Global uncaught exception handler saves crash traces to file. Settings > Crash Logs shows traces for customer troubleshooting. (`common/CrashLogger.kt`)
 
 ### Phase 5 — AI Features
 - **"For You — Live Now"** — Personalized Home screen row surfacing live channels the user watches, ranked by time-of-day + day-of-week patterns. On-device only, no cloud. Data: `channel_watch_log` (raw sessions) → `ChannelRecommendationEngine` (frequency × recency × duration scoring) → `channel_scores` (precomputed). WatchSessionLogger logs LIVE sessions >30s. WorkManager refreshes scores every 6h. Row hidden until 3+ unique channels watched. (`recommendation/WatchSessionLogger.kt`, `recommendation/ChannelRecommendationEngine.kt`, `recommendation/ScoreRefreshWorker.kt`, `home/ForYouLivePresenter.kt`)
 - **Smart EPG Gap Filler** — 3-tier EPG resolution when data is missing/garbage: (1) Real EPG → use as-is, learn pattern; (2) Pattern cache → historical match from `epg_pattern_cache` table; (3) Rule-based → infer from channel name (60+ networks mapped) + time of day. Styling: real=normal white, pattern=italic light blue #90CAF9, rule=italic dim white 47%. Integrated into ChannelBannerOverlay, PlayerControlsBar, LiveTvFragment channel cards, and Home "For You — Live Now" cards. (`epg/ChannelNameParser.kt`, `epg/SmartEpgFiller.kt`)
+
+### Phase 6 — Aurora Cinema UI + FFmpeg Audio (v2.5.0)
+- **Aurora Cinema Search redesign** — Complete search page rewrite with animated aurora background, frosted glass header, gold-glow animated search bar with pulse effect, filter tabs (All/Live TV/Movies/Series), Trending Now row with ranked poster cards, recent searches as styled chips, categorized results with section headers + poster art, voice search support, long-press info overlay integration, full D-pad navigation. (`search/SearchFragment.kt`, `search/SearchBarFocusAnimator.kt`, `search/SearchChipPresenter.kt`, `search/TrendingRankPresenter.kt`, `res/layout/fragment_search_aurora.xml`)
+- **FFmpeg audio decoder integration** — Replaced native libVLC library (~15-20MB) with `org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1` (~5.6MB). Jellyfin fork bundles pre-built native .so files for all ABIs (arm64-v8a, armeabi-v7a, x86, x86_64). Single unified ExoPlayer engine for all audio codecs — no dual-player complexity. `EXTENSION_RENDERER_MODE_ON` = hardware first, FFmpeg fallback for AC3/DTS/EAC3.
+- **Stereo downmix** — `ChannelMixingAudioProcessor` with ITU-R BS.775 matrices (5.1→stereo, 7.1→stereo) in custom `DefaultRenderersFactory.buildAudioSink()`. Budget devices (Ooustick) can't output 6-channel PCM. Always enabled — identity passthrough matrices for mono (1→1) and stereo (2→2) prevent crash on 2-channel content.
+- **FFmpeg runtime verification** — `AudioLogger.isFfmpegAvailable()` (reflection-based) + `logFfmpegCodecs()` checks all MIME types at startup. Audio Decoder info row in Settings shows "FFmpeg (AC3, DTS, EAC3, AAC, FLAC)" or "Hardware Only".
+- **ExoPlayer track picker cleanup** — TrackPickerOverlay shows all audio tracks (none hidden), with codec+channel labels.
+- **AudioLogger upgrade** — All `Log.d()` changed to `Log.w()` for Fire TV Stick visibility (Fire TV suppresses debug logs).
 
 ### Hotfixes (v2.3.x)
 - **Playback stall detector** (v2.3.0) — Content-aware retries (LIVE=3, SERIES=5, VOD=6) with escalating delays (1s→15s). Watchdog detects silent buffering hangs (15s LIVE, 30s VOD/SERIES) and forces recovery.
@@ -94,6 +121,35 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Low-memory buffer sizing** (v2.3.3) — `ActivityManager.memoryClass <= 128` triggers `BufferConfigs.forLowMemory()` with capped buffers (30s max VOD instead of 90-120s) to prevent OOM on 1GB Fire Sticks.
 - **Smart audio fallback** (v2.3.4) — Two-stage recovery when audio decoder fails: (1) `findSupportedAudioTrack()` searches for non-AC3/EAC3 tracks preferring English via `TrackSelectionOverride`, (2) disables all audio as last resort. `audioFallbackAttempted` flag prevents infinite loop.
 - **AC3 audio root fix** (v2.3.5) — `setExceedRendererCapabilitiesIfNecessary(false)` on DefaultTrackSelector prevents ExoPlayer from selecting codecs the device can't decode. `setPreferredAudioMimeTypes(AAC, E-AC3, AC3)` makes AAC preferred over AC3. User-friendly error messages via `friendlyErrorMessage()` replace raw ExoPlayer dumps. Retry button resets audio state (re-enables audio, clears overrides).
+
+### Hotfixes (v2.4.x)
+- **Sleep timer dialog crash** (v2.4.1) — `SleepTimerManager.showTimerDialog()` was the last remaining use of `androidx.appcompat.app.AlertDialog`. Changed to `android.app.AlertDialog` for Leanback theme compatibility.
+
+### Hotfixes (v2.5.x)
+- **5.1 surround audio crash fix** (v2.5.1) — FFmpeg decodes EAC3/AC3/DTS 5.1 → 6ch PCM, but Ooustick can't create 6-channel AudioTrack. Fix: `ChannelMixingAudioProcessor` with ITU-R BS.775 downmix matrices (6→2, 8→2). FFmpeg verification and diagnostic logging added. Audio Decoder status in Settings.
+- **Live TV 2ch AC3 audio crash fix** (v2.5.2) — `ChannelMixingAudioProcessor` throws `UnhandledAudioFormatException` when no matrix exists for a channel count. Added identity passthrough matrices for mono (1→1) and stereo (2→2). Changed from `EXTENSION_RENDERER_MODE_PREFER` to `EXTENSION_RENDERER_MODE_ON` — hardware handles AAC/MP3 natively, FFmpeg only for AC3/DTS/EAC3.
+
+### Phase 7 — MultiView Sports Player (v2.6.0)
+- **MultiView Fragment** — Full multi-screen live TV player. 4 layout modes: Quad (2x2), Main+3 (1 large + 3 sidebar), Dual (side-by-side), Triple (3 columns). ConstraintSet-based layout switching. D-pad navigation between slots with gold focus border. Auto-hide controls overlay (8s timeout). Exit confirmation dialog. `FLAG_KEEP_SCREEN_ON` while active. (`multiview/MultiViewFragment.kt`, `res/layout/fragment_multiview.xml`)
+- **Multi-player audio management** — Up to 4 simultaneous ExoPlayer instances with independent audio control. Only the active audio slot has volume; all others muted at 0f. 200ms crossfade on audio switch. `setAudioSlot()` explicitly mutes ALL non-target players (belt-and-suspenders). Short-press OK on occupied slot switches audio. (`multiview/MultiViewPlayerManager.kt`)
+- **Per-slot ExoPlayer pipeline** — Each slot gets its own ExoPlayer with stereo downmix (same `ChannelMixingAudioProcessor` pipeline as main player), `EXTENSION_RENDERER_MODE_ON`, AAC-preferred track selection. Non-focused slots capped to 480p resolution. Reduced buffer sizes for non-audio slots (3-10s vs 5-15s). (`multiview/MultiViewPlayerManager.kt`)
+- **MultiViewSlotView** — Fully programmatic custom view (no XML). Shows channel name badge, pulsing LIVE dot, AUDIO indicator (gold), slot number badge, empty state with "Select Channel" prompt. Gold focus border via `bg_multiview_slot_focused` drawable. Non-focusable (focus lives on parent FrameLayout). (`multiview/MultiViewSlotView.kt`)
+- **Channel Picker Dialog** — Dual-pane dialog (categories 30% left, channels 70% right). Reuses existing `CategoryListAdapter`. EPG loaded per channel in background. Click assigns channel to slot. (`multiview/ChannelPickerDialogFragment.kt`, `res/layout/dialog_channel_picker.xml`)
+- **Auto-fill** — When entering MultiView with a seed channel, remaining slots auto-filled from same category first, then other categories. (`multiview/MultiViewAutoFillUseCase.kt`)
+- **Long-press channel swap** — Long-press OK (500ms threshold) on an occupied slot opens channel picker to replace that slot's channel. Uses `onFullKeyEvent()` for ACTION_DOWN/UP timing. (`multiview/MultiViewFragment.kt`)
+- **Top bar** — Layout mode selector buttons (2x2, 1+3, Dual, Triple) with gold active state, stream count, clock. Scale+gold focus feedback on layout buttons. D-pad UP from grid reaches layout buttons; DOWN returns to slot 1. Visibility set synchronously in `showControls()` so focus system finds buttons on same frame. (`multiview/MultiViewTopBarController.kt`, `res/layout/view_multiview_top_bar.xml`)
+- **Bottom bar** — Audio slot selector buttons, scrolling EPG ticker with channel names and program titles. (`multiview/MultiViewBottomBarController.kt`, `res/layout/view_multiview_bottom_bar.xml`)
+- **Pro plan gating** — `UserPlanManager` checks `maxConnections >= 4` for Pro status, `totalMem >= 1.4GB` for device capability. Basic users see locked popup → QR upgrade dialog. Pro badge on Home hero card. Plan refreshed on login and auto-login. (`data/UserPlanManager.kt`)
+- **QR upgrade flow** — Full-screen dialog with QR code linking to `ooustick.com/subscribe/pro`, feature list, 5-minute countdown auto-dismiss. Uses ZXing for QR generation. (`multiview/QrUpgradeDialogFragment.kt`, `multiview/QrCodeGenerator.kt`, `res/layout/dialog_qr_upgrade.xml`)
+- **Home hero card** — MultiView promotional card on Home screen with pulsing live dot, gold glow + corner brackets on focus, 1.03x scale. Click navigates to MultiView (Pro) or shows locked popup (Basic). Only shown when device is capable. (`home/MultiViewHeroPresenter.kt`, `res/layout/item_hero_multiview_card.xml`)
+- **Live TV integration** — MultiView icon in Live TV header bar with focus animation (1.3x scale, gold border). Click seeds MultiView with current preview channel. (`livetv/LiveTvFragment.kt`)
+- **Focus architecture** — Focus lives on outer FrameLayouts (slot_1–slot_4 in XML), NOT inner MultiViewSlotView children. `FOCUS_BLOCK_DESCENDANTS` prevents PlayerView/SurfaceView from stealing focus. `isSlotFocused()` guard ensures OK/Enter only intercepted when a slot has focus (not layout buttons). (`multiview/MultiViewFragment.kt`)
+- **KeyEventHandler extension** — `onFullKeyEvent(event: KeyEvent)` added to `KeyEventHandler` interface for full ACTION_DOWN+ACTION_UP access. Dispatched in `MainActivity.dispatchKeyEvent()` before the ACTION_DOWN guard. Default implementation returns false. (`MainActivity.kt`)
+- **Anti-chop auto-recovery** — 3-signal chop detection (dropped frames via AnalyticsListener, rendered frame stall via DecoderCounters, buffer health via bufferedPosition−currentPosition). 3-level recovery ladder: soft reset (seekToDefaultPosition), hard reset (stop/clearMediaItems/setMediaSource/prepare/play), nuclear reset (release player+thread, rebuild). 10s cooldown between attempts, staggered multi-slot recovery. Recovery fade mask hides visual glitches during reset. Emergency quality tier drops non-focused slots to 320p when any slot chops. (`multiview/MultiViewStallDetector.kt`, `multiview/PlaybackHealth.kt`)
+- **Thread-isolated ExoPlayer instances** — Each MultiView slot gets its own `HandlerThread` with `setPlaybackLooper(thread.looper)`, preventing decoder stalls on one slot from starving others. Soft/hard/nuclear reset methods on `MultiViewPlayerManager`. Stream URLs stored for recovery without Fragment involvement. (`multiview/MultiViewPlayerManager.kt`)
+- **Recovery fade mask** — Dark overlay (150ms fade-in) with optional gold spinner on MultiViewSlotView, shown during hard/nuclear reset to hide decoder glitches. Dismissed on `onRenderedFirstFrame` callback or safety timeout (3s hard, 5s nuclear). (`multiview/MultiViewSlotView.kt`)
+- **Single player frame watchdog** — Polls `videoDecoderCounters.renderedOutputBufferCount` every 3s during STATE_READY. Forces hard reset (stop/prepare/play) if no new frames for 5+ seconds. Catches silent freezes that existing STATE_BUFFERING watchdog misses. (`player/OoustreamPlaybackFragment.kt`)
+- **SurfaceView focus glitch fix** — Removed scaleX/scaleY animation on slot FrameLayouts (SurfaceView renders on separate hardware layer that doesn't scale with parent transforms). Removed `clipToOutline` on MultiViewSlotView (SurfaceView ignores view clipping, outline recomputation on background swap caused visual artifacts in 1+3 mode). (`multiview/MultiViewFragment.kt`, `multiview/MultiViewSlotView.kt`)
 
 ## Deferred Features (Future Updates)
 
@@ -142,14 +198,14 @@ These features were scoped but deferred for a future release:
 - Estimated effort: Medium
 
 ## Key Files (Most Modified)
-1. `MainActivity.kt` — sidebar, transitions, deep links
-2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming
-3. `OoustreamPlaybackFragment.kt` — audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, AC3 audio fallback, low-memory buffers, friendly error messages
+1. `MainActivity.kt` — sidebar, transitions, deep links, MultiView navigation, onFullKeyEvent dispatch
+2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming, MultiView hero card
+3. `OoustreamPlaybackFragment.kt` — ExoPlayer + FFmpeg init, stereo downmix, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, AC3 audio fallback, low-memory buffers, friendly error messages
 4. `OoustreamPlaybackGlue.kt` — ALL key handling (DPAD, media buttons, channel zap, seek, back), gold-tinted action icons, Back-dismisses-controls fix
 5. `OoustreamDatabase.kt` — v8, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern entities
 6. `PlayerViewModel.kt` — analytics recording, stream URL building, Watch Next suggestions (RecommendationEngine), NonCancellable saveProgress
 7. `ChannelPresenter.kt` — channel list items with debounced focus effects for scroll perf
-8. `LiveTvFragment.kt` — category/channel lists, debounced EPG loading, preview player, SmartEpgFiller for channel EPG text
+8. `LiveTvFragment.kt` — category/channel lists, debounced EPG loading, preview player, SmartEpgFiller for channel EPG text, MultiView icon
 9. `VodFragment.kt` / `SeriesFragment.kt` — ContentInfoHelper for long-press info overlay
 10. `common/ContentInfoHelper.kt` — reusable long-press info overlay wiring for any fragment
 11. `player/TrackPickerOverlay.kt` — audio/subtitle track picker slide-in panel
@@ -160,17 +216,72 @@ These features were scoped but deferred for a future release:
 16. `epg/ChannelNameParser.kt` — 60+ network recognition, content type inference from channel names
 17. `recommendation/ChannelRecommendationEngine.kt` — on-device channel scoring (frequency × recency × duration)
 18. `recommendation/WatchSessionLogger.kt` — silent Live TV session logging (>30s threshold)
-19. `common/AudioLogger.kt` — debug-only audio diagnostic logging (OOUSTREAM_AUDIO tag)
+19. `common/AudioLogger.kt` — audio diagnostic logging (OOUSTREAM_AUDIO tag), FFmpeg verification
 20. `player/AudioStatusOverlay.kt` — top-right audio status indicator (no audio, unsupported codec)
 21. `common/CrashLogger.kt` — global crash logger, saves traces to file for customer troubleshooting
+22. `search/SearchFragment.kt` — Aurora Cinema search UI with filter tabs, trending, voice search
+23. `search/SearchBarFocusAnimator.kt` — gold-glow animated search bar
+24. `player/ExternalPlayerLauncher.kt` — intent-based launch to VLC/MX Player/Kodi/system default
+25. `multiview/MultiViewFragment.kt` — multi-screen live TV player, layout switching, focus management, key handling
+26. `multiview/MultiViewPlayerManager.kt` — up to 4 ExoPlayer instances, audio slot management, resolution caps, thread isolation, soft/hard/nuclear reset, emergency quality
+27. `multiview/MultiViewSlotView.kt` — programmatic slot view with channel badge, LIVE dot, audio indicator, recovery fade mask
+28. `multiview/MultiViewStallDetector.kt` — 3-signal chop detection (dropped frames, frame stall, buffer health), 3-level recovery ladder, watchdog timer, health StateFlow
+29. `multiview/PlaybackHealth.kt` — PlaybackHealth enum (SMOOTH/SLIGHT_STUTTER/CHOPPING/FROZEN/DEAD), RecoveryAction enum
+30. `multiview/ChannelPickerDialogFragment.kt` — dual-pane category/channel picker dialog
+31. `multiview/MultiViewViewModel.kt` — layout mode, slot states, audio/focus tracking
+32. `data/UserPlanManager.kt` — Pro plan detection (maxConnections >= 4), device capability check
+33. `home/MultiViewHeroPresenter.kt` — Home screen MultiView promotional card
+
+## Source File Inventory (186 Kotlin files)
+
+### By Package
+| Package | Files | Key Components |
+|---------|-------|----------------|
+| `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
+| `auth/` | 2 | AuthViewModel, LoginFragment |
+| `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
+| `common/` | 33 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, CrashLogger, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions |
+| `data/local/dao/` | 11 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao |
+| `data/local/entity/` | 13 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity |
+| `data/local/` | 1 | OoustreamDatabase (Room v8) |
+| `data/` | 1 | UserPlanManager |
+| `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
+| `data/remote/` | 3 | AuthInterceptor, SafeSeriesInfoDeserializer, XtreamApiService |
+| `data/repository/` | 9 | AuthRepository, ContentRepository, ContentCacheRepository, CredentialStore, EpgCacheRepository, FavoriteRepository, PredictivePreFetcher, SearchIndexRepository, WatchAnalyticsRepository |
+| `di/` | 3 | AppModule, DatabaseModule, NetworkModule |
+| `epg/` | 2 | ChannelNameParser, SmartEpgFiller |
+| `favorites/` | 2 | FavoritesFragment, FavoritesViewModel |
+| `home/` | 8 | HomeFragment, HomeViewModel, ContinueWatchingPresenter, ForYouPresenter, ForYouLivePresenter, MultiViewHeroPresenter, PaletteExtractor, SectionCardPresenter |
+| `livetv/` | 2 | LiveTvFragment, LiveTvViewModel |
+| `multiview/` | 14 | MultiViewFragment, MultiViewViewModel, MultiViewPlayerManager, MultiViewSlotView, MultiViewStallDetector, PlaybackHealth, SlotActionPopup, MultiViewAutoFillUseCase, MultiViewTopBarController, MultiViewBottomBarController, MultiViewLockedPopup, ChannelPickerDialogFragment, QrUpgradeDialogFragment, QrCodeGenerator |
+| `onboarding/` | 1 | OnboardingOverlay |
+| `parental/` | 3 | ParentalControlManager, ParentalPinFragment, ParentalViewModel |
+| `player/` | 19 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager |
+| `recommendation/` | 4 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger |
+| `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
+| `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
+| `settings/` | 3 | SettingsFragment, SettingsViewModel, SettingsConfirmFragment |
+| `speedtest/` | 3 | SpeedTestFragment, SpeedTestService, SpeedTestViewModel |
+| `splash/` | 1 | IntroSplashFragment |
+| `update/` | 4 | UpdateFragment, UpdateService, UpdateViewModel, UpdateManifest |
+| `vod/` | 4 | VodFragment, VodViewModel, VodDetailFragment, VodDetailViewModel |
+| Root | 2 | MainActivity, OoustreamApp |
+
+## Layout Files (53 XML)
+- **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail
+- **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_next_card, item_zap_channel
+- **Overlays**: overlay_audio_only, overlay_binge_countdown, overlay_channel_banner, overlay_channel_zap, overlay_content_info, overlay_onboarding_step, overlay_player_controls, overlay_quick_sidebar, overlay_remote_hints, overlay_series_complete, overlay_stream_stats, overlay_track_picker, overlay_watch_next
+- **Dialogs**: dialog_channel_picker, dialog_qr_upgrade
+- **MultiView**: view_multiview_top_bar, view_multiview_bottom_bar
+- **Utility**: include_screen_header, layout_row_header, view_channel_info_overlay
 
 ## Deployment
 - **ADB**: `adb connect <firestick-ip>:5555 && adb install -r app/build/outputs/apk/debug/app-debug.apk`
 - **GitHub Auto-Update**: App fetches `update.json` from repo root (`raw.githubusercontent.com`), compares `versionCode`, downloads APK via `UpdateService`. OTA UI fixed in v2.1.1.
-- **Primary test devices**: Fire TV Stick at 192.168.1.82, 192.168.1.84
+- **Primary test devices**: Fire TV Stick at 192.168.1.82, 192.168.1.84, Ooustick at 192.168.1.222
 
 ## Memory Constraints
-Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves memory by disabling video decoder.
+Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves memory by disabling video decoder. Low-memory buffer capping (BufferConfigs.forLowMemory()) for devices with memoryClass <= 128MB.
 
 ## Performance Patterns
 - **Debounced focus effects**: ChannelPresenter defers expensive visuals (overlay drawables, scale animation, background resource inflation) behind 60ms delay — only lightweight background tint applied immediately during rapid D-pad scrolling
@@ -178,10 +289,23 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **Cached overlay drawables**: GoldGlowFocusDrawable and FocusBracketDrawable created once per view in onCreateViewHolder, reused via view tags
 - **Sound throttling**: DpadSoundManager.playMove() throttled to max once per 80ms during rapid focus changes
 - **VerticalGridView tuning**: `setAnimateChildLayout(false)` + `itemAnimator = null` for channel lists
+- **Progressive image loading**: Low-res placeholder → dominant color extraction → full image load
 
 ## DB Version History
 - v1-v4: Phase 1+2 (favorites, watch progress, EPG cache, search history, crash recovery, content cache)
 - v5: Phase 3 (WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts)
 - v6: Phase 4 (destructive migration — added columns; resets user data)
 - v7: Continue Watching fix (completed/dismissed columns on watch_progress)
-- v8: Phase 5 AI features (ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity — destructive, no users yet)
+- v8: Phase 5 AI features (ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity — destructive, no users yet). Unchanged through v2.5.2.
+
+## Version Release History
+- **v2.1.0** — Phase 4 premium playback UX (all overlays, track picker, controls bar)
+- **v2.1.1** — OTA update system fix, speed test accuracy fix
+- **v2.2.0** — Phase 4b audio system hardening (DefaultTrackSelector, AudioLogger, CrashLogger)
+- **v2.3.0-v2.3.5** — Hotfixes (stall detector, AlertDialog crash, scroll fix, low-memory buffers, audio fallback, AC3 root fix)
+- **v2.4.0** — Phase 5 AI features (For You Live Now, Smart EPG Filler)
+- **v2.4.1** — Sleep timer dialog crash fix
+- **v2.5.0** — Aurora Cinema Search redesign, removed native libVLC, added Jellyfin FFmpeg audio decoder extension
+- **v2.5.1** — Surround audio (5.1/7.1) stereo downmix fix for Ooustick
+- **v2.5.2** — Live TV 2ch AC3 crash fix (passthrough matrices + hardware-first renderer mode)
+- **v2.6.0** — MultiView Sports Player (4 simultaneous live streams, Pro plan gating, QR upgrade flow)

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tablet overscan (no TV overscan needed, comfortable margins) -->
+    <dimen name="overscan_margin">24dp</dimen>
+    <dimen name="overscan_horizontal">24dp</dimen>
+
+    <!-- Cards -->
+    <dimen name="card_poster_width">140dp</dimen>
+    <dimen name="card_poster_height">200dp</dimen>
+
+    <!-- Hero -->
+    <dimen name="hero_height">280dp</dimen>
+
+    <!-- Row heights -->
+    <dimen name="row_continue_watching_height">180dp</dimen>
+    <dimen name="row_for_you_height">180dp</dimen>
+    <dimen name="row_sections_height">140dp</dimen>
+    <dimen name="row_trending_height">220dp</dimen>
+
+    <!-- Grid -->
+    <integer name="poster_columns">4</integer>
+    <integer name="category_columns">3</integer>
+</resources>

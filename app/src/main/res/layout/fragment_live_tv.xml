@@ -18,7 +18,7 @@
         android:paddingStart="@dimen/overscan_margin"
         android:paddingEnd="@dimen/overscan_margin"
         android:paddingBottom="@dimen/overscan_margin"
-        android:paddingTop="56dp">
+        android:paddingTop="@dimen/screen_top_clearance">
 
         <!-- 3-Panel Content -->
         <LinearLayout
@@ -241,6 +241,23 @@
             android:clickable="true"
             android:contentDescription="Search"
             android:nextFocusDown="@+id/channels_list"
-            android:nextFocusLeft="@+id/header_clock" />
+            android:nextFocusLeft="@+id/header_clock"
+            android:nextFocusRight="@+id/header_multiview_icon" />
+
+        <ImageView
+            android:id="@+id/header_multiview_icon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="12dp"
+            android:padding="2dp"
+            android:src="@drawable/ic_multiview_grid"
+            android:scaleType="centerInside"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true"
+            android:alpha="0.4"
+            android:contentDescription="MultiView"
+            android:nextFocusDown="@+id/channels_list"
+            android:nextFocusLeft="@+id/header_search_icon" />
     </LinearLayout>
 </FrameLayout>

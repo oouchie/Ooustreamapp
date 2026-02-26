@@ -36,6 +36,7 @@ import com.ooustream.iptv.common.CategoryItem
 import com.ooustream.iptv.common.CategoryListAdapter
 import com.ooustream.iptv.common.ChannelPresenter
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
@@ -44,6 +45,9 @@ import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.epg.SmartEpgFiller
 import com.ooustream.iptv.epg.bindEpgText
+import com.ooustream.iptv.MainActivity
+import com.ooustream.iptv.data.UserPlanManager
+import com.ooustream.iptv.multiview.MultiViewLockedPopup
 import com.ooustream.iptv.player.ChannelListHolder
 import com.ooustream.iptv.player.LivePreviewManager
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
@@ -63,6 +67,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var smartEpgFiller: SmartEpgFiller
+    @Inject lateinit var userPlanManager: UserPlanManager
 
     private val viewModel: LiveTvViewModel by viewModels()
     private var previewManager: LivePreviewManager? = null
@@ -104,6 +109,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
+        // Hide TV-only UI on mobile
+        if (!DeviceUtils.isTV(requireContext())) {
+            navHints.visibility = View.GONE
+            view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
+        }
         navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
 
         // Preview container — click to go fullscreen (focusable only when previewing)
@@ -114,8 +124,10 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         previewContainer.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 DpadSoundManager.getInstance()?.playMove()
-                v.overlay.add(GoldGlowFocusDrawable())
-                v.overlay.add(FocusBracketDrawable())
+                if (DeviceUtils.isTV(requireContext())) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                    v.overlay.add(FocusBracketDrawable())
+                }
                 previewFocusHint.visibility = View.VISIBLE
                 navHints.text = "OK: Watch fullscreen \u2022 \u2190: Back to channels"
             } else {
@@ -162,6 +174,36 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
                 v.background = null
             }
+        }
+
+        // MultiView toggle icon in header
+        val multiviewIcon = view.findViewById<ImageView>(R.id.header_multiview_icon)
+        if (userPlanManager.isDeviceCapable()) {
+            multiviewIcon.visibility = View.VISIBLE
+            multiviewIcon.setOnFocusChangeListener { v, hasFocus ->
+                if (hasFocus) {
+                    v.animate().scaleX(1.3f).scaleY(1.3f).setDuration(200).start()
+                    v.alpha = 1f
+                    v.background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setStroke(2, 0xFFFFC107.toInt())
+                        setColor(0x14FFD700)
+                    }
+                } else {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
+                    v.alpha = 0.4f
+                    v.background = null
+                }
+            }
+            multiviewIcon.setOnClickListener {
+                android.app.AlertDialog.Builder(requireContext())
+                    .setTitle("MultiView — Coming Soon")
+                    .setMessage("MultiView Sports Player is coming in a future update.\n\nWatch up to 4 live channels simultaneously.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        } else {
+            multiviewIcon.visibility = View.GONE
         }
 
         // Header search icon toggle

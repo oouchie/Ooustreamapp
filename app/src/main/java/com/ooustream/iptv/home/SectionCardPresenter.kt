@@ -10,6 +10,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
@@ -68,8 +69,10 @@ class SectionCardPresenter : Presenter() {
         root.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 DpadSoundManager.getInstance()?.playMove()
-                v.overlay.add(GoldGlowFocusDrawable())
-                v.overlay.add(FocusBracketDrawable())
+                if (DeviceUtils.isTV(v.context)) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                    v.overlay.add(FocusBracketDrawable())
+                }
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
             } else {
                 v.overlay.clear()

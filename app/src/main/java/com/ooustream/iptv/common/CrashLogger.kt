@@ -33,8 +33,9 @@ object CrashLogger {
     private fun saveCrash(context: Context, throwable: Throwable) {
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
+        val trace = redactSensitiveData(sw.toString())
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        val entry = "═══ CRASH $timestamp ═══\n${sw}\n"
+        val entry = "═══ CRASH $timestamp ═══\n${trace}\n"
 
         val file = File(context.filesDir, CRASH_FILE)
         val existing = if (file.exists()) file.readText() else ""
@@ -60,5 +61,15 @@ object CrashLogger {
 
     fun clearCrashLog(context: Context) {
         File(context.filesDir, CRASH_FILE).delete()
+    }
+
+    /** Redact credentials and stream URLs from stack traces. */
+    private fun redactSensitiveData(trace: String): String {
+        return trace
+            .replace(Regex("""(https?://[^\s]*?)/live/[^\s/]+/[^\s/]+/"""), "$1/live/***/***/" )
+            .replace(Regex("""(https?://[^\s]*?)/movie/[^\s/]+/[^\s/]+/"""), "$1/movie/***/***/" )
+            .replace(Regex("""(https?://[^\s]*?)/series/[^\s/]+/[^\s/]+/"""), "$1/series/***/***/" )
+            .replace(Regex("""password=[^\s&]+"""), "password=***")
+            .replace(Regex("""username=[^\s&]+"""), "username=***")
     }
 }

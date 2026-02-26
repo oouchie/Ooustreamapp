@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/multiview_hero_root"
+    android:layout_width="480dp"
+    android:layout_height="200dp"
+    android:background="@drawable/bg_hero_multiview_card"
+    android:clipToOutline="true"
+    android:clipChildren="false"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Left Panel: 2x2 Grid Preview (55% width) -->
+    <FrameLayout
+        android:id="@+id/grid_preview_container"
+        android:layout_width="264dp"
+        android:layout_height="match_parent"
+        android:padding="12dp">
+
+        <!-- 2x2 Grid Layout -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <!-- Top Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <!-- Top-Left: Dark Blue Screen -->
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="3dp"
+                    android:layout_marginBottom="3dp"
+                    android:background="@drawable/bg_multiview_mini_screen"
+                    android:backgroundTint="#FF1A237E">
+
+                    <!-- Pulsing Red Dot -->
+                    <View
+                        android:id="@+id/dot_1"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:layout_gravity="top|start"
+                        android:layout_margin="4dp"
+                        android:background="@drawable/bg_multiview_pulsing_dot" />
+                </FrameLayout>
+
+                <!-- Top-Right: Dark Pink Screen -->
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginBottom="3dp"
+                    android:background="@drawable/bg_multiview_mini_screen"
+                    android:backgroundTint="#FF880E4F">
+
+                    <View
+                        android:id="@+id/dot_2"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:layout_gravity="top|start"
+                        android:layout_margin="4dp"
+                        android:background="@drawable/bg_multiview_pulsing_dot" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <!-- Bottom Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <!-- Bottom-Left: Dark Teal Screen -->
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="3dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@drawable/bg_multiview_mini_screen"
+                    android:backgroundTint="#FF004D40">
+
+                    <View
+                        android:id="@+id/dot_3"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:layout_gravity="top|start"
+                        android:layout_margin="4dp"
+                        android:background="@drawable/bg_multiview_pulsing_dot" />
+                </FrameLayout>
+
+                <!-- Bottom-Right: Dark Red Screen -->
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@drawable/bg_multiview_mini_screen"
+                    android:backgroundTint="#FFBF360C">
+
+                    <View
+                        android:id="@+id/dot_4"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:layout_gravity="top|start"
+                        android:layout_margin="4dp"
+                        android:background="@drawable/bg_multiview_pulsing_dot" />
+                </FrameLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Gold Divider Lines (Center Cross) -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_gravity="center_vertical"
+            android:background="#26FFD700" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center_horizontal"
+            android:background="#26FFD700" />
+    </FrameLayout>
+
+    <!-- Right Panel: Text Content (45% width) -->
+    <LinearLayout
+        android:layout_width="216dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="20dp"
+        android:paddingVertical="24dp">
+
+        <!-- MULTIVIEW Title -->
+        <TextView
+            android:id="@+id/multiview_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MULTIVIEW"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFFFF"
+            android:letterSpacing="0.05"
+            tools:ignore="HardcodedText" />
+
+        <!-- Subtitle -->
+        <TextView
+            android:id="@+id/multiview_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Watch 4 games at once."
+            android:textSize="13sp"
+            android:textColor="#99FFFFFF"
+            android:lineSpacingMultiplier="1.2"
+            tools:ignore="HardcodedText" />
+
+        <!-- PRO Badge -->
+        <FrameLayout
+            android:id="@+id/pro_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_pro_badge"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="COMING SOON"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFD700"
+                android:letterSpacing="0.08"
+                tools:ignore="HardcodedText" />
+        </FrameLayout>
+
+        <!-- Plan label -->
+        <TextView
+            android:id="@+id/multiview_price"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Stay tuned"
+            android:textSize="11sp"
+            android:textColor="#80FFD700"
+            tools:ignore="HardcodedText" />
+    </LinearLayout>
+</FrameLayout>

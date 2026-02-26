@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-files-path name="backups" path="Documents/" />
-    <external-cache-path name="updates" path="/" />
-    <!-- Internal cache for OTA update APKs (context.cacheDir) -->
-    <cache-path name="apk_cache" path="/" />
+    <!-- Restricted to updates/ subdirectory for OTA APK downloads -->
+    <cache-path name="apk_cache" path="updates/" />
 </paths>

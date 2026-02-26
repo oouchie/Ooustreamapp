@@ -13,8 +13,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 19
-        versionName = "2.5.2"
+        versionCode = 21
+        versionName = "2.7.0"
     }
 
     signingConfigs {
@@ -67,6 +67,12 @@ dependencies {
 
     // Leanback
     implementation(libs.leanback)
+
+    // ConstraintLayout (MultiView grid)
+    implementation(libs.constraintlayout)
+
+    // Material (mobile bottom nav, theme)
+    implementation(libs.material)
 
     // Lifecycle
     implementation(libs.lifecycle.viewmodel)
@@ -121,6 +127,9 @@ dependencies {
 
     // Palette (color extraction)
     implementation(libs.palette)
+
+    // ZXing (QR code generation for MultiView upgrade)
+    implementation(libs.zxing.core)
 
     // WorkManager
     implementation(libs.work.runtime)

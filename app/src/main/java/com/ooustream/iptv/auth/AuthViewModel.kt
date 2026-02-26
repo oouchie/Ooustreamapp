@@ -4,10 +4,12 @@ import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.model.AuthResponse
 import com.ooustream.iptv.data.repository.AuthRepository
+import com.ooustream.iptv.data.UserPlanManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import android.util.Log
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,7 +22,8 @@ sealed class AuthState {
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val userPlanManager: UserPlanManager
 ) : BaseViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
@@ -36,7 +39,14 @@ class AuthViewModel @Inject constructor(
             val result = authRepository.autoLogin()
             if (result != null) {
                 result.fold(
-                    onSuccess = { _authState.value = AuthState.Success(it) },
+                    onSuccess = {
+                        val mc = it.userInfo.maxConnections
+                        Log.w("OOUSTREAM_PLAN", "autoLogin maxConnections raw='$mc' parsed=${mc?.toIntOrNull()} isPro=${(mc?.toIntOrNull() ?: 1) >= 4}")
+                        userPlanManager.updateFromMaxConnections(
+                            mc?.toIntOrNull() ?: 1
+                        )
+                        _authState.value = AuthState.Success(it)
+                    },
                     onFailure = { _authState.value = AuthState.Idle }
                 )
             } else {
@@ -54,7 +64,12 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
             val result = authRepository.login(serverUrl, username, password)
             result.fold(
-                onSuccess = { _authState.value = AuthState.Success(it) },
+                onSuccess = {
+                    userPlanManager.updateFromMaxConnections(
+                        it.userInfo.maxConnections?.toIntOrNull() ?: 1
+                    )
+                    _authState.value = AuthState.Success(it)
+                },
                 onFailure = { _authState.value = AuthState.Error(it.message ?: "Login failed") }
             )
         }

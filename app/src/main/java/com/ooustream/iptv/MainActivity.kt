@@ -8,11 +8,14 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.app.AlertDialog
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.auth.LoginFragment
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QuickSidebar
@@ -20,11 +23,14 @@ import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.CredentialStore
+import com.ooustream.iptv.data.UserPlanManager
 import com.ooustream.iptv.deeplink.DeepLinkRouter
 import com.ooustream.iptv.deeplink.DeepLinkTarget
 import com.ooustream.iptv.favorites.FavoritesFragment
+import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.home.HomeFragment
 import com.ooustream.iptv.livetv.LiveTvFragment
+import com.ooustream.iptv.multiview.MultiViewFragment
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
 import com.ooustream.iptv.search.SearchFragment
 import com.ooustream.iptv.series.SeriesFragment
@@ -37,6 +43,8 @@ import javax.inject.Inject
 
 interface KeyEventHandler {
     fun onKeyEvent(keyCode: Int): Boolean
+    /** Override for full KeyEvent access (ACTION_DOWN + ACTION_UP). Return true to consume. */
+    fun onFullKeyEvent(event: KeyEvent): Boolean = false
 }
 
 @AndroidEntryPoint
@@ -45,16 +53,23 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var networkMonitor: NetworkMonitor
     @Inject lateinit var credentialStore: CredentialStore
     @Inject lateinit var contentRepository: ContentRepository
+    @Inject lateinit var userPlanManager: UserPlanManager
 
     private var sidebar: QuickSidebar? = null
+    private var bottomNav: BottomNavigationView? = null
     private var pendingDeepLink: DeepLinkTarget? = null
     private var lastLeftEdgeTime: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Mobile gets Material theme; TV keeps Leanback theme from manifest
+        if (!DeviceUtils.isTV(this)) {
+            setTheme(R.style.Theme_Ooustream_Mobile)
+        }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         setupSidebar()
+        setupBottomNavigation()
         handleDeepLink(intent)
 
         if (savedInstanceState == null) {
@@ -63,6 +78,8 @@ class MainActivity : FragmentActivity() {
             splash.onFinished = {
                 // Skip login if already authenticated
                 if (credentialStore.load() != null) {
+                    // Refresh plan state (Pro/Basic) from server
+                    lifecycleScope.launch { userPlanManager.refreshPlan() }
                     navigateToHome()
                 } else {
                     supportFragmentManager.beginTransaction()
@@ -117,14 +134,66 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun setupBottomNavigation() {
+        // bottomNav is null on TV (layout-television/activity_main.xml has no BottomNavigationView)
+        bottomNav = findViewById(R.id.bottom_navigation) ?: return
+
+        bottomNav?.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> { navigateFromSidebar("home"); true }
+                R.id.nav_live -> { navigateFromSidebar("live"); true }
+                R.id.nav_movies -> { navigateFromSidebar("vod"); true }
+                R.id.nav_series -> { navigateFromSidebar("series"); true }
+                R.id.nav_search -> { navigateFromSidebar("search"); true }
+                else -> false
+            }
+        }
+
+        // Sync bottom nav highlight when fragments change
+        supportFragmentManager.addOnBackStackChangedListener { syncBottomNav() }
+    }
+
+    /** Update bottom nav selected item to match the currently visible fragment. */
+    private fun syncBottomNav() {
+        val nav = bottomNav ?: return
+        val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
+        val itemId = when (fragment) {
+            is HomeFragment -> R.id.nav_home
+            is LiveTvFragment -> R.id.nav_live
+            is VodFragment -> R.id.nav_movies
+            is SeriesFragment -> R.id.nav_series
+            is SearchFragment -> R.id.nav_search
+            else -> null
+        }
+
+        // Hide bottom nav during player / multiview, show otherwise
+        val hideNav = fragment is OoustreamPlaybackFragment || fragment is MultiViewFragment
+                || fragment is IntroSplashFragment || fragment is LoginFragment
+        nav.visibility = if (hideNav) View.GONE else View.VISIBLE
+
+        // Silently update the selected item (don't re-trigger listener)
+        if (itemId != null && nav.selectedItemId != itemId) {
+            nav.setOnItemSelectedListener(null)
+            nav.selectedItemId = itemId
+            nav.setOnItemSelectedListener { item ->
+                when (item.itemId) {
+                    R.id.nav_home -> { navigateFromSidebar("home"); true }
+                    R.id.nav_live -> { navigateFromSidebar("live"); true }
+                    R.id.nav_movies -> { navigateFromSidebar("vod"); true }
+                    R.id.nav_series -> { navigateFromSidebar("series"); true }
+                    R.id.nav_search -> { navigateFromSidebar("search"); true }
+                    else -> false
+                }
+            }
+        }
+    }
+
     /**
      * Determines if the quick sidebar is allowed to open for the current fragment.
-     * The sidebar should NOT open during:
-     * - Splash / Login screens (no navigation needed)
-     * - Player (has its own controls)
-     * - LiveTvFragment (has its own left-side category panel)
+     * Sidebar is TV-only — mobile uses bottom navigation.
      */
     private fun isSidebarAllowedForCurrentFragment(): Boolean {
+        if (!DeviceUtils.isTV(this)) return false
         val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
         return when (fragment) {
             is HomeFragment,
@@ -200,40 +269,53 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            // If sidebar is open, let it handle the key event first
-            if (sidebar?.isOpen == true) {
-                if (sidebar?.handleKeyEvent(event.keyCode) == true) return true
-                // While sidebar is open, DPAD_UP/DOWN navigation within
-                // the sidebar is handled by the Android focus system
-                return super.dispatchKeyEvent(event)
-            }
+        // Forward full key events (ACTION_DOWN + ACTION_UP) for long-press detection
+        val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
+        if (fragment is KeyEventHandler) {
+            if (fragment.onFullKeyEvent(event)) return true
+        }
 
-            // Route to fragment's key event handler
-            val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
-            if (fragment is KeyEventHandler) {
-                if (fragment.onKeyEvent(event.keyCode)) return true
-            }
+        // Guard against Android framework focus crash during fragment transitions.
+        // ViewGroup.offsetRectBetweenParentAndChild throws IllegalArgumentException
+        // when a detached view is still referenced by the focus navigation system.
+        try {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                // If sidebar is open, let it handle the key event first
+                if (sidebar?.isOpen == true) {
+                    if (sidebar?.handleKeyEvent(event.keyCode) == true) return true
+                    // While sidebar is open, DPAD_UP/DOWN navigation within
+                    // the sidebar is handled by the Android focus system
+                    return super.dispatchKeyEvent(event)
+                }
 
-            // For DPAD_LEFT on allowed fragments: double-tap at the left edge opens sidebar.
-            // Normal left navigation is never blocked.
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && isSidebarAllowedForCurrentFragment()) {
-                val focused = currentFocus
-                val atLeftEdge = focused != null && focused.focusSearch(View.FOCUS_LEFT) == null
-                if (atLeftEdge) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastLeftEdgeTime < 500) {
+                // Route to fragment's key event handler
+                if (fragment is KeyEventHandler) {
+                    if (fragment.onKeyEvent(event.keyCode)) return true
+                }
+
+                // For DPAD_LEFT on allowed fragments: double-tap at the left edge opens sidebar.
+                // Normal left navigation is never blocked.
+                if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && isSidebarAllowedForCurrentFragment()) {
+                    val focused = currentFocus
+                    val atLeftEdge = focused != null && focused.focusSearch(View.FOCUS_LEFT) == null
+                    if (atLeftEdge) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastLeftEdgeTime < 500) {
+                            lastLeftEdgeTime = 0
+                            sidebar?.show()
+                            return true
+                        }
+                        lastLeftEdgeTime = now
+                    } else {
                         lastLeftEdgeTime = 0
-                        sidebar?.show()
-                        return true
                     }
-                    lastLeftEdgeTime = now
-                } else {
-                    lastLeftEdgeTime = 0
                 }
             }
+            return super.dispatchKeyEvent(event)
+        } catch (_: IllegalArgumentException) {
+            // Swallow — view hierarchy is mid-transition, focus target detached
+            return true
         }
-        return super.dispatchKeyEvent(event)
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -341,6 +423,15 @@ class MainActivity : FragmentActivity() {
         val tx = supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.HOME)
         tx.replace(R.id.main_container, HomeFragment())
+            .commit()
+        syncBottomNav()
+    }
+
+    fun navigateToMultiView(seedChannel: LiveStream? = null, streamUrl: String? = null) {
+        val tx = supportFragmentManager.beginTransaction()
+        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+        tx.replace(R.id.main_container, MultiViewFragment.newInstance(seedChannel, streamUrl))
+            .addToBackStack(null)
             .commit()
     }
 

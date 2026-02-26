@@ -96,6 +96,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var retryCount = 0
     private var retryJob: Job? = null
     private var stallDetectorJob: Job? = null
+    private var frameWatchdogJob: Job? = null
+    private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
     private var channelSwitchJob: Job? = null
 
@@ -787,10 +789,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         showBufferingOverlay(false)
                         stallDetectorJob?.cancel()
                         retryCount = 0
+                        startFrameWatchdog()
                     }
                     Player.STATE_ENDED -> {
                         showBufferingOverlay(false)
                         stallDetectorJob?.cancel()
+                        frameWatchdogJob?.cancel()
                         if (viewModel.contentType != ContentType.LIVE) {
                             val p = player
                             val dur = p?.duration ?: 0
@@ -988,6 +992,51 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         null,
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
                     ))
+                }
+            }
+        }
+    }
+
+    /**
+     * Frame watchdog: detects silent freezes where ExoPlayer is STATE_READY
+     * but no new frames are rendering (decoder buffer debt).
+     * Checks every 3s; if no new frames for 5s, forces a hard reset.
+     */
+    private fun startFrameWatchdog() {
+        frameWatchdogJob?.cancel()
+        lastRenderedFrameCount = -1
+        frameWatchdogJob = viewLifecycleOwner.lifecycleScope.launch {
+            var noNewFramesSinceMs = 0L
+            while (isActive) {
+                delay(FRAME_WATCHDOG_INTERVAL_MS)
+                val p = player ?: continue
+                if (p.playbackState != Player.STATE_READY || !p.playWhenReady) {
+                    noNewFramesSinceMs = 0L
+                    continue
+                }
+                val counters = p.videoDecoderCounters ?: continue
+                val currentFrames = counters.renderedOutputBufferCount
+                if (lastRenderedFrameCount < 0) {
+                    lastRenderedFrameCount = currentFrames
+                    continue
+                }
+                if (currentFrames == lastRenderedFrameCount) {
+                    if (noNewFramesSinceMs == 0L) {
+                        noNewFramesSinceMs = android.os.SystemClock.elapsedRealtime()
+                    }
+                    val frozenMs = android.os.SystemClock.elapsedRealtime() - noNewFramesSinceMs
+                    if (frozenMs >= FRAME_WATCHDOG_FROZEN_MS) {
+                        AudioLogger.log("Frame watchdog: frozen ${frozenMs}ms, forcing hard reset")
+                        noNewFramesSinceMs = 0L
+                        lastRenderedFrameCount = -1
+                        // Hard reset: same as what stall detector does
+                        p.stop()
+                        p.prepare()
+                        p.play()
+                    }
+                } else {
+                    noNewFramesSinceMs = 0L
+                    lastRenderedFrameCount = currentFrames
                 }
             }
         }
@@ -1321,6 +1370,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         bufferingOverlay = null
         stallDetectorJob?.cancel()
         stallDetectorJob = null
+        frameWatchdogJob?.cancel()
+        frameWatchdogJob = null
         retryJob?.cancel()
         retryJob = null
         // Release MediaSession before player
@@ -1341,6 +1392,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000, 8_000, 12_000, 15_000)
         private const val STALL_TIMEOUT_LIVE_MS = 15_000L
         private const val STALL_TIMEOUT_VOD_MS = 30_000L
+        private const val FRAME_WATCHDOG_INTERVAL_MS = 3_000L
+        private const val FRAME_WATCHDOG_FROZEN_MS = 5_000L
 
         fun newInstance(
             streamUrl: String,

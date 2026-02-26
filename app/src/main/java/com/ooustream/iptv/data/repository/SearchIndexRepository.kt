@@ -19,8 +19,20 @@ class SearchIndexRepository @Inject constructor(
         if (query.isBlank()) return emptyList()
 
         return try {
-            // FTS4 MATCH requires special syntax - append wildcard for prefix matching
-            val ftsQuery = "${query.trim()}*"
+            // Strip FTS4 special characters to prevent query injection
+            val sanitized = query.trim()
+                .replace("\"", "")
+                .replace("*", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(":", "")
+                .replace(Regex("\\bOR\\b", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("\\bAND\\b", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("\\bNOT\\b", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("\\bNEAR\\b", RegexOption.IGNORE_CASE), " ")
+                .trim()
+            if (sanitized.isBlank()) return emptyList()
+            val ftsQuery = "$sanitized*"
             searchIndexDao.search(ftsQuery)
         } catch (e: Exception) {
             // Fallback to LIKE search if FTS fails

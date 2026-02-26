@@ -12,6 +12,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
+import androidx.leanback.widget.ClassPresenterSelector
 import androidx.leanback.widget.HorizontalGridView
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.lifecycle.Lifecycle
@@ -22,6 +23,7 @@ import coil.request.CachePolicy
 import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AuroraBackgroundView
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
 import com.ooustream.iptv.common.PosterItem
@@ -29,11 +31,14 @@ import com.ooustream.iptv.common.PosterPresenter
 import com.ooustream.iptv.common.ScreenPreWarmer
 import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.common.dp
+import com.ooustream.iptv.data.UserPlanManager
+import com.ooustream.iptv.multiview.MultiViewLockedPopup
 import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.MainActivity
 import com.ooustream.iptv.favorites.FavoritesFragment
 import com.ooustream.iptv.livetv.LiveTvFragment
 import com.ooustream.iptv.onboarding.OnboardingOverlay
@@ -47,12 +52,15 @@ import com.ooustream.iptv.settings.SettingsFragment
 import com.ooustream.iptv.vod.VodFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
+import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class HomeFragment : Fragment(), KeyEventHandler {
+
+    @Inject lateinit var userPlanManager: UserPlanManager
 
     private val viewModel: HomeViewModel by viewModels()
 
@@ -91,7 +99,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
     private val forYouObjectAdapter = ArrayObjectAdapter(ForYouPresenter())
     private val forYouLiveObjectAdapter = ArrayObjectAdapter(ForYouLivePresenter())
-    private val sectionObjectAdapter = ArrayObjectAdapter(SectionCardPresenter())
+    private val sectionPresenterSelector = ClassPresenterSelector().apply {
+        addClassPresenter(SectionItem::class.java, SectionCardPresenter())
+        addClassPresenter(MultiViewHeroItem::class.java, MultiViewHeroPresenter())
+    }
+    private val sectionObjectAdapter = ArrayObjectAdapter(sectionPresenterSelector)
     private val trendingObjectAdapter = ArrayObjectAdapter(PosterPresenter())
     private val trendingSeriesObjectAdapter = ArrayObjectAdapter(PosterPresenter())
 
@@ -305,6 +317,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val frostedHeader = view.findViewById<LinearLayout>(R.id.frosted_header)
         val heroContainer = view.findViewById<View>(R.id.hero_container)
 
+        // Hide frosted header on mobile (bottom nav handles navigation)
+        if (!DeviceUtils.isTV(requireContext())) {
+            frostedHeader.visibility = View.GONE
+            return
+        }
+
         scrollView.setOnScrollChangeListener(
             NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
                 val heroHeight = heroContainer.height.toFloat()
@@ -363,6 +381,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private fun setupSectionsRow() {
         viewModel.sections.forEach { section ->
             sectionObjectAdapter.add(section)
+            // Add MultiView hero card after Search section card
+            if (section.id == "search" && userPlanManager.isDeviceCapable()) {
+                sectionObjectAdapter.add(MultiViewHeroItem)
+            }
         }
 
         val bridgeAdapter = ItemBridgeAdapter(sectionObjectAdapter)
@@ -373,6 +395,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     val item = sectionObjectAdapter.get(position)
                     if (item is SectionItem) {
                         navigateToSection(item)
+                    } else if (item is MultiViewHeroItem) {
+                        android.app.AlertDialog.Builder(requireContext())
+                            .setTitle("MultiView — Coming Soon")
+                            .setMessage("MultiView Sports Player is coming in a future update.\n\nWatch up to 4 live channels simultaneously.")
+                            .setPositiveButton("OK", null)
+                            .show()
                     }
                 }
 
@@ -744,8 +772,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroRotationJob = viewLifecycleOwner.lifecycleScope.launch {
             while (isActive) {
                 delay(8_000)
-                heroIndex = (heroIndex + 1) % featuredItems.size
-                displayHeroItem(featuredItems[heroIndex], animate = true)
+                val items = featuredItems
+                if (items.size <= 1) break
+                heroIndex = (heroIndex + 1) % items.size
+                displayHeroItem(items[heroIndex], animate = true)
             }
         }
     }
@@ -753,7 +783,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private fun setupHeroClickListener() {
         heroWatchNow.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
-                v.overlay.add(GoldGlowFocusDrawable())
+                if (DeviceUtils.isTV(requireContext())) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                }
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
             } else {
                 v.overlay.clear()
@@ -784,7 +816,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
         // "More Info" button — same as Watch Now for now
         heroMoreInfo.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
-                v.overlay.add(GoldGlowFocusDrawable())
+                if (DeviceUtils.isTV(requireContext())) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                }
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
             } else {
                 v.overlay.clear()

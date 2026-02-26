@@ -3,6 +3,7 @@ package com.ooustream.iptv.update
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.ooustream.iptv.BuildConfig
@@ -26,6 +27,7 @@ class UpdateService @Inject constructor(
         const val DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/oouchie/Ooustreamapp/main/update.json"
         private const val APK_FILE_NAME = "update.apk"
         private const val FILE_PROVIDER_AUTHORITY = "com.ooustream.iptv.fileprovider"
+        private const val MAX_APK_SIZE = 100L * 1024 * 1024 // 100MB
     }
 
     private val gson = Gson()
@@ -73,6 +75,14 @@ class UpdateService @Inject constructor(
         onProgress: (Float) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
+            // Validate download URL host
+            val parsedUri = Uri.parse(url)
+            val host = parsedUri.host?.lowercase()
+                ?: throw Exception("Invalid download URL")
+            require(host.endsWith("githubusercontent.com") || host.endsWith("github.com")) {
+                "APK downloads only allowed from GitHub"
+            }
+
             val request = Request.Builder()
                 .url(url)
                 .get()
@@ -88,7 +98,12 @@ class UpdateService @Inject constructor(
                 ?: throw Exception("Empty response body when downloading APK")
 
             val contentLength = responseBody.contentLength()
-            val outputFile = File(context.cacheDir, APK_FILE_NAME)
+            if (contentLength > MAX_APK_SIZE) {
+                throw Exception("APK too large (${contentLength / 1024 / 1024}MB, max ${MAX_APK_SIZE / 1024 / 1024}MB)")
+            }
+
+            val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
+            val outputFile = File(updateDir, APK_FILE_NAME)
 
             // Delete any previous download
             if (outputFile.exists()) {

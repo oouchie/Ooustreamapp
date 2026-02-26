@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="48dp">
+        android:padding="@dimen/overscan_horizontal">
 
         <!-- Header -->
         <TextView

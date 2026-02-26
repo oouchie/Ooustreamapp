@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
@@ -63,8 +64,10 @@ class ContinueWatchingPresenter : Presenter() {
         root.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 DpadSoundManager.getInstance()?.playMove()
-                v.overlay.add(GoldGlowFocusDrawable())
-                v.overlay.add(FocusBracketDrawable())
+                if (DeviceUtils.isTV(v.context)) {
+                    v.overlay.add(GoldGlowFocusDrawable())
+                    v.overlay.add(FocusBracketDrawable())
+                }
                 v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(200).start()
                 resumeText.visibility = View.VISIBLE
             } else {

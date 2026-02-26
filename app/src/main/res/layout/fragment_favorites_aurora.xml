@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/aurora_bg_deep">
+
+    <!-- Layer 0: Animated aurora background -->
+    <com.ooustream.iptv.common.AuroraBackgroundView
+        android:id="@+id/aurora_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Layer 1: Main content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/screen_top_clearance"
+        android:paddingStart="@dimen/overscan_horizontal"
+        android:paddingEnd="@dimen/overscan_horizontal">
+
+        <!-- Header actions bar (below frosted header) -->
+        <LinearLayout
+            android:id="@+id/header_actions_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="60dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- View mode toggle -->
+            <TextView
+                android:id="@+id/view_toggle_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_score_card"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Grid"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif-medium"
+                android:focusable="true" />
+
+            <!-- Sort button -->
+            <TextView
+                android:id="@+id/sort_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_score_card"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Recently Added"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif-medium"
+                android:focusable="true" />
+
+            <!-- Edit mode button -->
+            <TextView
+                android:id="@+id/edit_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_score_card"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Edit"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif-medium"
+                android:focusable="true" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Item count -->
+            <TextView
+                android:id="@+id/item_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                tools:text="24 items" />
+
+        </LinearLayout>
+
+        <!-- Filter tabs row -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:scrollbars="none"
+            android:focusable="false">
+
+            <LinearLayout
+                android:id="@+id/filter_tabs_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+
+        </HorizontalScrollView>
+
+        <!-- Live scores bar (sports favorites only) -->
+        <LinearLayout
+            android:id="@+id/scores_bar_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- Pulsing red dot -->
+                <View
+                    android:id="@+id/scores_live_dot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/bg_status_dot_green" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="LIVE SCORES"
+                    android:textColor="#EF4444"
+                    android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+            <androidx.leanback.widget.HorizontalGridView
+                android:id="@+id/scores_row"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_marginTop="6dp" />
+
+        </LinearLayout>
+
+        <!-- Content area -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp">
+
+            <!-- Favorites grid -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/favorites_grid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="60dp" />
+
+            <!-- Empty state -->
+            <LinearLayout
+                android:id="@+id/empty_state"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="\u2B50"
+                    android:textSize="48sp" />
+
+                <TextView
+                    android:id="@+id/empty_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="No Favorites Yet"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/empty_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Long-press on any channel or movie to add it here"
+                    android:textColor="@color/text_muted"
+                    android:textSize="13sp"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/empty_cta"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="24dp"
+                    android:background="@drawable/bg_score_card"
+                    android:gravity="center"
+                    android:paddingHorizontal="24dp"
+                    android:text="Browse Live TV"
+                    android:textColor="@color/focus_gold"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:focusable="true" />
+
+            </LinearLayout>
+
+        </FrameLayout>
+
+        <!-- Undo bar (bottom, hidden by default) -->
+        <LinearLayout
+            android:id="@+id/undo_bar"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_undo_bar"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/undo_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:singleLine="true"
+                android:ellipsize="end"
+                tools:text="ESPN removed" />
+
+            <TextView
+                android:id="@+id/undo_button"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="UNDO"
+                android:textColor="@color/focus_gold"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif-medium"
+                android:focusable="true" />
+
+        </LinearLayout>
+
+        <!-- Remote hints bar (TV only) -->
+        <LinearLayout
+            android:id="@+id/remote_hints"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_remote_hint_badge"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="OK"
+                android:textColor="@color/focus_gold"
+                android:textSize="10sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="Watch"
+                android:textColor="@color/text_muted"
+                android:textSize="10sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/bg_remote_hint_badge"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="MENU"
+                android:textColor="@color/focus_gold"
+                android:textSize="10sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="Sort"
+                android:textColor="@color/text_muted"
+                android:textSize="10sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="OOUSTREAM"
+                android:textColor="#40FFFFFF"
+                android:textSize="10sp"
+                android:fontFamily="sans-serif-medium" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Layer 2: Frosted header overlay -->
+    <LinearLayout
+        android:id="@+id/frosted_header"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_frosted_header"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/overscan_horizontal">
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/logo_full"
+            android:contentDescription="Ooustream logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text=" / Favorites"
+            android:textColor="@color/focus_gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/header_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp"
+            tools:text="(24)" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextClock
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:format12Hour="h:mm a"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+</FrameLayout>

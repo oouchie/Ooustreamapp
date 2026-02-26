@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="72dp"
+    android:layout_marginVertical="2dp"
+    android:background="@drawable/bg_favorite_card"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="12dp"
+    android:focusable="true">
+
+    <!-- Channel logo / poster thumbnail -->
+    <ImageView
+        android:id="@+id/fav_logo"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:scaleType="centerCrop"
+        android:contentDescription="Logo"
+        tools:background="#1A1A2E" />
+
+    <!-- Channel/content info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/fav_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"
+            tools:text="ESPN" />
+
+        <TextView
+            android:id="@+id/fav_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#40FFFFFF"
+            android:textSize="10sp"
+            tools:text="Sports" />
+
+    </LinearLayout>
+
+    <!-- EPG / program info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/fav_epg_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            tools:text="NBA: Lakers vs Warriors" />
+
+        <TextView
+            android:id="@+id/fav_score"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/focus_gold"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"
+            android:visibility="gone"
+            tools:text="110 - 105"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+    <!-- Progress bar -->
+    <ProgressBar
+        android:id="@+id/fav_progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="100dp"
+        android:layout_height="3dp"
+        android:layout_marginStart="8dp"
+        android:max="1000"
+        android:progressDrawable="@drawable/progress_gold"
+        android:visibility="gone"
+        tools:progress="650"
+        tools:visibility="visible" />
+
+    <!-- LIVE badge -->
+    <TextView
+        android:id="@+id/fav_live_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="20dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_type_badge_live"
+        android:gravity="center"
+        android:paddingHorizontal="6dp"
+        android:text="LIVE"
+        android:textColor="#EF4444"
+        android:textSize="9sp"
+        android:fontFamily="sans-serif-medium"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <!-- Remove button (edit mode) -->
+    <ImageView
+        android:id="@+id/fav_remove_btn"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_type_badge_live"
+        android:padding="5dp"
+        android:src="@drawable/ic_close_24"
+        android:tint="#EF4444"
+        android:contentDescription="Remove"
+        android:focusable="true"
+        android:visibility="gone"
+        tools:ignore="UseAppTint"
+        tools:visibility="visible" />
+
+</LinearLayout>

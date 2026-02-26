@@ -21,7 +21,7 @@ class BackupFragment : GuidedStepSupportFragment() {
     override fun onCreateGuidance(savedInstanceState: Bundle?): GuidanceStylist.Guidance {
         return GuidanceStylist.Guidance(
             "Backup & Restore",
-            "Export your favorites, watch progress, and credentials to a file, or restore from a previous backup.",
+            "Export your favorites and watch progress to an encrypted backup file, or restore from a previous backup.",
             "Settings",
             null
         )
@@ -32,7 +32,7 @@ class BackupFragment : GuidedStepSupportFragment() {
             GuidedAction.Builder(requireContext())
                 .id(ACTION_EXPORT)
                 .title("Export Backup")
-                .description("Save all data to a backup file")
+                .description("Save favorites and watch progress to an encrypted .ooubackup file")
                 .build()
         )
 
@@ -58,7 +58,7 @@ class BackupFragment : GuidedStepSupportFragment() {
             GuidedAction.Builder(requireContext())
                 .id(ACTION_CLEAR)
                 .title("Clear All Data")
-                .description("Remove all favorites, watch progress, and credentials")
+                .description("Remove all favorites, watch progress, and search history")
                 .build()
         )
     }
@@ -116,7 +116,7 @@ class BackupFragment : GuidedStepSupportFragment() {
     private fun updateActionsForState(state: BackupState) {
         when (state) {
             is BackupState.Idle -> {
-                updateAction(ACTION_EXPORT, "Export Backup", "Save all data to a backup file")
+                updateAction(ACTION_EXPORT, "Export Backup", "Save favorites and watch progress to an encrypted .ooubackup file")
                 updateAction(ACTION_IMPORT_CONFIRM, "Restore from Backup", "Tap after pasting JSON above")
             }
             is BackupState.Exporting -> {
@@ -132,7 +132,7 @@ class BackupFragment : GuidedStepSupportFragment() {
                 updateAction(ACTION_IMPORT_CONFIRM, "Restore from Backup", "Restored ${state.itemCount} items successfully")
             }
             is BackupState.Error -> {
-                updateAction(ACTION_EXPORT, "Export Backup", "Save all data to a backup file")
+                updateAction(ACTION_EXPORT, "Export Backup", "Save favorites and watch progress to an encrypted .ooubackup file")
                 updateAction(ACTION_IMPORT_CONFIRM, "Restore from Backup", "Error: ${state.message}")
             }
         }

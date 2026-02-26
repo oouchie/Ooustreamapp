@@ -16,9 +16,9 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingTop="52dp"
-        android:paddingStart="32dp"
-        android:paddingEnd="32dp">
+        android:paddingTop="@dimen/screen_top_clearance"
+        android:paddingStart="@dimen/overscan_horizontal"
+        android:paddingEnd="@dimen/overscan_horizontal">
 
         <!-- Search input bar (48dp pill) -->
         <LinearLayout
@@ -235,7 +235,7 @@
         android:background="@drawable/bg_frosted_header"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="32dp">
+        android:paddingHorizontal="@dimen/overscan_horizontal">
 
         <ImageView
             android:layout_width="wrap_content"

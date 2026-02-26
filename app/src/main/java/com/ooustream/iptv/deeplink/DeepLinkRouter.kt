@@ -38,18 +38,25 @@ object DeepLinkRouter {
         return when (host) {
             "live" -> {
                 val streamId = pathSegments.firstOrNull() ?: return null
+                val id = streamId.toIntOrNull() ?: return null
+                if (id <= 0) return null
                 DeepLinkTarget.Live(streamId)
             }
             "vod" -> {
                 val streamId = pathSegments.firstOrNull() ?: return null
+                val id = streamId.toIntOrNull() ?: return null
+                if (id <= 0) return null
                 DeepLinkTarget.Vod(streamId)
             }
             "series" -> {
                 val seriesId = pathSegments.firstOrNull() ?: return null
+                val id = seriesId.toIntOrNull() ?: return null
+                if (id <= 0) return null
                 DeepLinkTarget.Series(seriesId)
             }
             "search" -> {
-                val query = uri.getQueryParameter("q") ?: return null
+                val query = uri.getQueryParameter("q")?.take(200) ?: return null
+                if (query.isBlank()) return null
                 DeepLinkTarget.Search(query)
             }
             "home" -> DeepLinkTarget.Home

@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="48dp">
+        android:paddingHorizontal="@dimen/overscan_horizontal">
 
         <TextView
             android:id="@+id/watch_next_title"

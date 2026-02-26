@@ -40,11 +40,7 @@ class SpeedTestViewModel @Inject constructor(
 
                 // Phase 2: Download
                 _testState.value = TestState.Testing("Measuring download speed...")
-                val downloadMbps = speedTestService.runDownloadTest(
-                    credentials.serverUrl,
-                    credentials.username,
-                    credentials.password
-                )
+                val downloadMbps = speedTestService.runDownloadTest(credentials.serverUrl)
 
                 // Calculate rating
                 val rating = when {

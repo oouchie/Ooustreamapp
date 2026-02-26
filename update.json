@@ -1,7 +1,7 @@
 {
-  "version_name": "2.5.2",
-  "version_code": 19,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.5.2/app-release.apk",
-  "changelog": "v2.5.2 — Live TV Audio Fix\n\n• Fixed live TV streams with 2-channel AC3 audio crashing\n• Added stereo/mono passthrough matrices for ChannelMixingAudioProcessor\n• Switched to EXTENSION_RENDERER_MODE_ON (hardware first, FFmpeg fallback)\n• Hardware handles AAC/MP3, FFmpeg handles AC3/DTS/EAC3",
+  "version_name": "2.7.0",
+  "version_code": 21,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.7.0/app-release.apk",
+  "changelog": "v2.7.0 — Stability Update\n\n• Fixed crash on Home screen hero rotation (divide by zero)\n• Fixed crash during D-pad navigation between screens\n• MultiView Sports Player — Coming Soon teaser card",
   "mandatory": true
 }

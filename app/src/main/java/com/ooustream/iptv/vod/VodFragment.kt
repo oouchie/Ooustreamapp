@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
+import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.VerticalGridView
 import androidx.lifecycle.Lifecycle
@@ -73,6 +74,12 @@ class VodFragment : Fragment(), KeyEventHandler {
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
         navHints.text = "OK: Play Movie \u2022 Long-press: More Info \u2022 Back: Home"
+
+        // Hide TV-only elements on mobile
+        if (!DeviceUtils.isTV(requireContext())) {
+            navHints.visibility = View.GONE
+            view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
+        }
 
         // Content info overlay for long-press
         val infoHelper = ContentInfoHelper(this, contentRepository) { item ->

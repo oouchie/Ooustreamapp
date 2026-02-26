@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/multiview_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#06060A">
+
+    <!-- Layer 0: Video grid container -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/grid_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="3dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- Slot 1 (top-left in Quad) -->
+        <FrameLayout
+            android:id="@+id/slot_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="1dp"
+            android:background="#FF0A0A0A"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/slot_2"
+            app:layout_constraintBottom_toTopOf="@+id/slot_3"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintVertical_weight="1" />
+
+        <!-- Slot 2 (top-right in Quad) -->
+        <FrameLayout
+            android:id="@+id/slot_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="1dp"
+            android:background="#FF0A0A0A"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/slot_1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toTopOf="@+id/slot_4"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintVertical_weight="1" />
+
+        <!-- Slot 3 (bottom-left in Quad) -->
+        <FrameLayout
+            android:id="@+id/slot_3"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="1dp"
+            android:background="#FF0A0A0A"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            app:layout_constraintTop_toBottomOf="@+id/slot_1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/slot_4"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintVertical_weight="1" />
+
+        <!-- Slot 4 (bottom-right in Quad) -->
+        <FrameLayout
+            android:id="@+id/slot_4"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="1dp"
+            android:background="#FF0A0A0A"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            app:layout_constraintTop_toBottomOf="@+id/slot_2"
+            app:layout_constraintStart_toEndOf="@+id/slot_3"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintVertical_weight="1" />
+
+        <!-- Gold divider glow (horizontal center) -->
+        <View
+            android:id="@+id/divider_h"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26FFD700"
+            app:layout_constraintTop_toBottomOf="@+id/slot_1"
+            app:layout_constraintBottom_toTopOf="@+id/slot_3" />
+
+        <!-- Gold divider glow (vertical center) -->
+        <View
+            android:id="@+id/divider_v"
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#26FFD700"
+            app:layout_constraintStart_toEndOf="@+id/slot_1"
+            app:layout_constraintEnd_toStartOf="@+id/slot_2" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Layer 1: Top control bar -->
+    <include
+        android:id="@+id/top_bar"
+        layout="@layout/view_multiview_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:visibility="gone" />
+
+    <!-- Layer 2: Bottom control bar -->
+    <include
+        android:id="@+id/bottom_bar"
+        layout="@layout/view_multiview_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:visibility="gone" />
+
+    <!-- Layer 3: Empty state welcome overlay -->
+    <LinearLayout
+        android:id="@+id/empty_state"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Welcome to MultiView"
+            android:textColor="#FFD700"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Select channels to fill your screens"
+            android:textColor="#80FFFFFF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Press OK to pick a channel"
+            android:textColor="#FFD700"
+            android:textSize="11sp"
+            android:background="#14FFD700"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp" />
+    </LinearLayout>
+
+</FrameLayout>

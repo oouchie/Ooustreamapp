@@ -31,15 +31,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingBottom="48dp">
+            android:paddingBottom="@dimen/overscan_horizontal">
 
             <!-- Info section overlaying the backdrop -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:paddingStart="48dp"
-                android:paddingEnd="48dp"
+                android:paddingStart="@dimen/overscan_horizontal"
+                android:paddingEnd="@dimen/overscan_horizontal"
                 android:paddingTop="140dp"
                 android:gravity="bottom">
 
