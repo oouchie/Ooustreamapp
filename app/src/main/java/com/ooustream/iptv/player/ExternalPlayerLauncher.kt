@@ -43,11 +43,11 @@ object ExternalPlayerLauncher {
      * Launches the specified external player with the given stream URL.
      * Returns true if the player was launched successfully.
      */
-    fun launch(context: Context, player: Player, url: String, title: String? = null): Boolean {
+    fun launch(context: Context, player: Player, url: String, title: String? = null, positionMs: Long = 0L): Boolean {
         return try {
             val intent = when (player) {
-                Player.VLC -> createVlcIntent(url, title)
-                Player.MX_PLAYER -> createMxPlayerIntent(url, title)
+                Player.VLC -> createVlcIntent(url, title, positionMs)
+                Player.MX_PLAYER -> createMxPlayerIntent(url, title, positionMs)
                 Player.KODI -> createKodiIntent(url)
                 Player.SYSTEM -> createSystemIntent(url)
             }
@@ -68,19 +68,21 @@ object ExternalPlayerLauncher {
         }
     }
 
-    private fun createVlcIntent(url: String, title: String?): Intent {
+    private fun createVlcIntent(url: String, title: String?, positionMs: Long): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
             setPackage("org.videolan.vlc")
             setDataAndType(Uri.parse(url), "video/*")
             title?.let { putExtra("title", it) }
+            if (positionMs > 0) putExtra("position", positionMs)
         }
     }
 
-    private fun createMxPlayerIntent(url: String, title: String?): Intent {
+    private fun createMxPlayerIntent(url: String, title: String?, positionMs: Long): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
             // Try free version first, MX will handle the intent
             setDataAndType(Uri.parse(url), "video/*")
             title?.let { putExtra("title", it) }
+            if (positionMs > 0) putExtra("position", positionMs.toInt())
         }
     }
 

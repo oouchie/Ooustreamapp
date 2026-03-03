@@ -29,18 +29,14 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.common.audio.ChannelMixingAudioProcessor
-import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.RemoteHintOverlay
@@ -99,6 +95,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var frameWatchdogJob: Job? = null
     private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
+    private var userTrackOverrideActive = false
     private var channelSwitchJob: Job? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -116,7 +113,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
         // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
-        val ffmpegAvailable = AudioLogger.isFfmpegAvailable()
+        val ffmpegAvailable = AudioLogger.isFfmpegAvailable
         AudioLogger.log("FFmpeg available: $ffmpegAvailable")
         if (ffmpegAvailable) {
             AudioLogger.logFfmpegCodecs()
@@ -124,68 +121,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             AudioLogger.log("WARNING: FFmpeg not loaded — AC3/DTS will use hardware decoder only")
         }
 
-        // DefaultTrackSelector: prefer surround formats (FFmpeg decodes all codecs)
+        // DefaultTrackSelector: AAC first (cheapest, hardware-decoded), FFmpeg handles surround fallback
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(
                 buildUponParameters()
+                    .setExceedRendererCapabilitiesIfNecessary(false) // Don't select codecs device can't decode
                     .setPreferredAudioMimeTypes(
-                        MimeTypes.AUDIO_E_AC3,
+                        MimeTypes.AUDIO_AAC,     // Hardware-decoded, lowest CPU
+                        MimeTypes.AUDIO_E_AC3,   // FFmpeg fallback
                         MimeTypes.AUDIO_AC3,
                         MimeTypes.AUDIO_DTS,
                         MimeTypes.AUDIO_DTS_HD,
-                        MimeTypes.AUDIO_AAC,
                     )
                     .setPreferredAudioLanguage("en")
                     .setPreferredTextLanguage("en")
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .setTunnelingEnabled(false) // Tunneled playback bypasses audio processor chain
             )
         }
 
-        // Always downmix multichannel audio to stereo — budget sticks (Ooustick) can't output
-        // 6-channel PCM. Detection via AudioTrack.Builder is unreliable (test succeeds, real fails).
-        // Only affects 5.1/7.1 content — stereo/mono passes through unchanged.
-        AudioLogger.log("Stereo downmix enabled (multichannel → stereo)")
-
-        // ON = hardware decoders first, FFmpeg as fallback for codecs hardware can't handle
-        // (AC3/DTS/EAC3 → FFmpeg software decode, AAC → hardware). PREFER breaks live TV
-        // because FFmpeg handles ALL codecs and AudioSink rejects its PCM output on some streams.
-        // Custom buildAudioSink adds stereo downmix processor for multichannel content.
-        val renderersFactory = object : DefaultRenderersFactory(requireContext()) {
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink? {
-                val downmixer = ChannelMixingAudioProcessor()
-                // Passthrough for mono and stereo (processor throws if no matrix for channel count)
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
-                // ITU-R BS.775 5.1→stereo: L=FL+0.707*C+0.707*SL, R=FR+0.707*C+0.707*SR
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(6, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.707f, 0f,
-                        0f, 1f, 0.707f, 0f, 0f, 0.707f
-                    ))
-                )
-                // 7.1→stereo downmix
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(8, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
-                        0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f
-                    ))
-                )
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessorChain(
-                        DefaultAudioSink.DefaultAudioProcessorChain(downmixer)
-                    )
-                    .build()
-            }
-        }.apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            setEnableAudioTrackPlaybackParams(true)
-        }
+        // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
+        val renderersFactory = AudioPipelineFactory.createRenderersFactory(requireContext())
 
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(renderersFactory)
@@ -459,6 +415,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         trackPicker.onDismissed = {
             controlsManager?.resumeAutoHide()
+        }
+        trackPicker.onTrackSelected = { trackType ->
+            if (trackType == C.TRACK_TYPE_AUDIO) {
+                userTrackOverrideActive = true
+            }
         }
         trackPickerOverlay = trackPicker
 
@@ -738,21 +699,33 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
-                // Audio decoder error: try alternate track as fallback
+                // Audio decoder error: two-stage fallback
                 if (isAudioDecoderError(error)) {
                     if (!audioFallbackAttempted) {
                         audioFallbackAttempted = true
+                        // Stage 1: try alternate audio track (different codec, prefer English)
                         val altTrack = findAlternateAudioTrack()
                         if (altTrack != null) {
-                            trackSelector?.setParameters(
-                                trackSelector!!.buildUponParameters()
-                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                                    .addOverride(altTrack)
-                            )
+                            AudioLogger.log("Audio fallback: switching to alternate track")
+                            player?.trackSelectionParameters = player?.trackSelectionParameters
+                                ?.buildUpon()
+                                ?.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                ?.setOverrideForType(altTrack)
+                                ?.build() ?: return
                             player?.prepare()
                             player?.play()
                             return
                         }
+                        // Stage 2: no alternate track — disable audio entirely, keep video playing
+                        AudioLogger.log("Audio fallback: no alternate track, disabling audio")
+                        player?.trackSelectionParameters = player?.trackSelectionParameters
+                            ?.buildUpon()
+                            ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            ?.build() ?: return
+                        audioStatusOverlay?.showCodecUnsupported()
+                        player?.prepare()
+                        player?.play()
+                        return
                     }
                 }
                 // Audio-specific errors: show indicator (video may still play)
@@ -826,6 +799,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
             override fun onTracksChanged(tracks: Tracks) {
                 AudioLogger.logTrackSelection(tracks)
+                // Don't override user's manual track selection from TrackPickerOverlay
+                if (userTrackOverrideActive) return
                 try {
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
 
@@ -941,6 +916,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             if (group.type != C.TRACK_TYPE_AUDIO) continue
             for (i in 0 until group.length) {
                 if (group.isTrackSelected(i)) continue // Skip the currently-failing track
+                if (!group.isTrackSupported(i)) continue // Skip unsupported tracks
                 val format = group.getTrackFormat(i)
                 // Prefer a different codec than the one that failed
                 if (format.sampleMimeType == selectedMime && bestGroup != null) continue
@@ -1043,11 +1019,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     /** Matches English audio tracks by language code or label. */
+    /** Matches English audio tracks by language code or label. */
     private fun isEnglishTrack(format: Format): Boolean {
         val lang = format.language?.lowercase()
-        if (lang == "en" || lang == "eng" || lang?.startsWith("en") == true) return true
+        if (lang == "en" || lang == "eng" || lang == "en-us" || lang == "en-gb") return true
         val label = format.label?.lowercase() ?: return false
-        return label.contains("english") || label.contains("eng")
+        return label == "english" || label.startsWith("english ")
     }
 
     private fun showBufferingOverlay(show: Boolean) {
@@ -1079,6 +1056,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setPositiveButton(R.string.retry) { _, _ ->
                 retryCount = 0
                 audioFallbackAttempted = false
+                userTrackOverrideActive = false
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
@@ -1158,14 +1136,28 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Auto-close track picker on channel switch
         if (trackPickerOverlay?.isShowing == true) trackPickerOverlay?.dismiss()
 
+        // Reset audio state for new channel
+        retryCount = 0
+        audioFallbackAttempted = false
+        userTrackOverrideActive = false
+
+        // Re-enable audio in case it was disabled by Stage 2 fallback
+        player?.trackSelectionParameters = player?.trackSelectionParameters
+            ?.buildUpon()
+            ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            ?.build() ?: return
+
         // Log session for previous channel before switching
         watchSessionLogger.endCurrentSession()
         watchSessionLogger.onChannelStarted(channel, null)
 
+        // Mute before loading new source to prevent audio pop from previous stream
+        player?.volume = 0f
         val url = viewModel.buildLiveUrl(channel)
         player?.setMediaItem(MediaItem.fromUri(url))
         player?.prepare()
         player?.play()
+        player?.volume = 1f
         glue?.title = channel.name
         viewModel.streamName = channel.name
         viewModel.streamId = channel.streamId.toString()
@@ -1258,7 +1250,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 val selectedPlayer = players[which]
                 player?.pause()
                 val launched = ExternalPlayerLauncher.launch(
-                    ctx, selectedPlayer, viewModel.streamUrl, viewModel.streamName
+                    ctx, selectedPlayer, viewModel.streamUrl, viewModel.streamName,
+                    positionMs = player?.currentPosition ?: 0L
                 )
                 if (!launched) {
                     Toast.makeText(ctx, "Could not launch ${selectedPlayer.displayName}", Toast.LENGTH_SHORT).show()

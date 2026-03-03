@@ -41,6 +41,10 @@
 # Media3
 -keep class androidx.media3.** { *; }
 
+# Jellyfin FFmpeg decoder extension (native .so + JNI classes, checked via reflection in AudioLogger)
+-keep class org.jellyfin.** { *; }
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
+
 # Hilt
 -keep class dagger.hilt.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }

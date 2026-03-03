@@ -9,19 +9,16 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.audio.ChannelMixingAudioProcessor
-import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.AudioPipelineFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
@@ -86,8 +83,8 @@ class MultiViewPlayerManager(
                             setMaxVideoSize(854, 480)
                         }
                         if (!isAudio) {
-                            // Disable audio tracks entirely — prevents FFmpeg decoder initialization
-                            setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO))
+                            // Disable audio + text + metadata — preserve all disabled states
+                            setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT, C.TRACK_TYPE_METADATA))
                         }
                     }
             )
@@ -174,15 +171,15 @@ class MultiViewPlayerManager(
                 players[i]?.volume = 0f
                 trackSelectors[i]?.setParameters(
                     trackSelectors[i]!!.buildUponParameters()
-                        .setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO))
+                        .setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT, C.TRACK_TYPE_METADATA))
                 )
             }
         }
 
-        // Enable audio on target slot (allows audio decoder to initialize)
+        // Enable audio on target slot (keep text/metadata disabled)
         trackSelectors[targetSlot]?.setParameters(
             trackSelectors[targetSlot]!!.buildUponParameters()
-                .setDisabledTrackTypes(emptySet())
+                .setDisabledTrackTypes(setOf(C.TRACK_TYPE_TEXT, C.TRACK_TYPE_METADATA))
         )
 
         if (oldSlot == targetSlot) {
@@ -433,7 +430,7 @@ class MultiViewPlayerManager(
                     .setTrackTypeDisabled(C.TRACK_TYPE_METADATA, true)
                     .apply {
                         if (!isAudio) {
-                            setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO))
+                            setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT, C.TRACK_TYPE_METADATA))
                         }
                     }
             )
@@ -531,38 +528,6 @@ class MultiViewPlayerManager(
     }
 
     private fun createRenderersFactory(): DefaultRenderersFactory {
-        return object : DefaultRenderersFactory(context) {
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink {
-                val downmixer = ChannelMixingAudioProcessor()
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(6, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.707f, 0f,
-                        0f, 1f, 0.707f, 0f, 0f, 0.707f
-                    ))
-                )
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(8, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
-                        0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f
-                    ))
-                )
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessorChain(
-                        DefaultAudioSink.DefaultAudioProcessorChain(downmixer)
-                    )
-                    .build()
-            }
-        }.apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            setEnableDecoderFallback(true)
-        }
+        return AudioPipelineFactory.createRenderersFactory(context)
     }
 }

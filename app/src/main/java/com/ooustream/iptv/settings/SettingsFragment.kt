@@ -138,7 +138,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         )
 
         // Audio Decoder info (non-actionable)
-        val ffmpegAvailable = AudioLogger.isFfmpegAvailable()
+        val ffmpegAvailable = AudioLogger.isFfmpegAvailable
         val decoderDesc = if (ffmpegAvailable)
             "FFmpeg (AC3, DTS, EAC3, AAC, FLAC)"
         else

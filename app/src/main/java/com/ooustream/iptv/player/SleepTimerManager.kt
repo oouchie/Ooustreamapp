@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.media3.exoplayer.ExoPlayer
 import com.ooustream.iptv.R
+import kotlin.math.pow
 
 /**
  * Manages a sleep timer that pauses playback after a user-selected duration.
@@ -54,7 +55,7 @@ class SleepTimerManager(private val activity: FragmentActivity) {
                 // Gradually reduce volume in the last few minutes
                 if (millisUntilFinished < fadeStartMs) {
                     val fadeProgress = 1f - (millisUntilFinished.toFloat() / fadeStartMs)
-                    val volume = originalVolume * (1f - fadeProgress)
+                    val volume = originalVolume * (1f - fadeProgress).pow(2)
                     player?.volume = volume.coerceAtLeast(0f)
                 }
             }

@@ -27,6 +27,9 @@ interface WatchProgressDao {
     @Query("SELECT * FROM watch_progress WHERE seriesId = :seriesId ORDER BY lastWatched DESC")
     suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity>
 
+    @Query("SELECT * FROM watch_progress WHERE streamId IN (:streamIds)")
+    suspend fun getProgressForIds(streamIds: List<String>): List<WatchProgressEntity>
+
     @Query("SELECT * FROM watch_progress ORDER BY lastWatched DESC")
     fun getAllProgress(): Flow<List<WatchProgressEntity>>
 

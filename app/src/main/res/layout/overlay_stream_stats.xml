@@ -33,6 +33,13 @@
         android:textSize="12sp"/>
 
     <TextView
+        android:id="@+id/stats_audio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"/>
+
+    <TextView
         android:id="@+id/stats_buffer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

@@ -32,19 +32,24 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
         release()
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
+        // Always use track selector: disable audio (visual-only preview), optional 480p cap
+        trackSelector = DefaultTrackSelector(context).apply {
+            setParameters(
+                buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)  // No audio in preview
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)    // No subtitles
+                    .apply {
+                        if (lowBitrateEnabled) {
+                            setMaxVideoSize(854, 480)
+                        }
+                    }
+            )
+        }
+
         val builder = ExoPlayer.Builder(context)
             .setLoadControl(BufferConfigs.forContentType(ContentType.LIVE))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-
-        if (lowBitrateEnabled) {
-            trackSelector = DefaultTrackSelector(context).apply {
-                setParameters(
-                    buildUponParameters()
-                        .setMaxVideoSize(854, 480)
-                )
-            }
-            builder.setTrackSelector(trackSelector!!)
-        }
+            .setTrackSelector(trackSelector!!)
 
         player = builder.build().apply {
             setAudioAttributes(
@@ -52,15 +57,10 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build(),
-                /* handleAudioFocus = */ true
+                /* handleAudioFocus = */ false  // Preview must NOT steal audio focus
             )
-            trackSelectionParameters = trackSelectionParameters
-                .buildUpon()
-                .setPreferredAudioLanguage("en")
-                .build()
+            volume = 0f  // Belt-and-suspenders: mute even though audio track is disabled
             setMediaItem(MediaItem.fromUri(streamUrl))
-            volume = 0.15f
-            AudioLogger.logVolume("PREVIEW_START", 0.15f)
             prepare()
             play()
         }

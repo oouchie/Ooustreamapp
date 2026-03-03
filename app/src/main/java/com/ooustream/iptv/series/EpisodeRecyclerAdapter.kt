@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -11,11 +12,19 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Episode
 
 class EpisodeRecyclerAdapter(
     private val onEpisodeClicked: (Episode) -> Unit
 ) : ListAdapter<Episode, EpisodeRecyclerAdapter.EpisodeViewHolder>(EpisodeDiffCallback) {
+
+    /** Map of episode streamId -> watch progress. Set externally, triggers rebind. */
+    var watchProgressMap: Map<String, WatchProgressEntity> = emptyMap()
+        set(value) {
+            field = value
+            notifyDataSetChanged()
+        }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EpisodeViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -31,10 +40,12 @@ class EpisodeRecyclerAdapter(
 
     inner class EpisodeViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val thumbnail: ImageView = itemView.findViewById(R.id.episode_thumbnail)
+        private val watchedCheck: ImageView = itemView.findViewById(R.id.episode_watched_check)
         private val number: TextView = itemView.findViewById(R.id.episode_number)
         private val title: TextView = itemView.findViewById(R.id.episode_title)
         private val duration: TextView = itemView.findViewById(R.id.episode_duration)
         private val plot: TextView = itemView.findViewById(R.id.episode_plot)
+        private val progressBar: ProgressBar = itemView.findViewById(R.id.episode_progress_bar)
 
         init {
             itemView.setOnClickListener {
@@ -49,7 +60,7 @@ class EpisodeRecyclerAdapter(
                     .scaleY(if (hasFocus) 1.02f else 1f)
                     .setDuration(150)
                     .start()
-                v.setBackgroundColor(if (hasFocus) 0xFF263244.toInt() else 0xFF1A2332.toInt())
+                v.setBackgroundColor(if (hasFocus) 0xFF263244.toInt() else 0x00000000.toInt())
             }
         }
 
@@ -87,6 +98,29 @@ class EpisodeRecyclerAdapter(
                 plot.visibility = View.VISIBLE
             } else {
                 plot.visibility = View.GONE
+            }
+
+            // Watch progress indicators
+            val progress = watchProgressMap[episode.id]
+            if (progress != null && progress.completed) {
+                // Fully watched — show checkmark, dim the row
+                watchedCheck.visibility = View.VISIBLE
+                progressBar.visibility = View.GONE
+                title.alpha = 0.6f
+                number.alpha = 0.6f
+            } else if (progress != null && progress.progressPercent > 0.05f) {
+                // Partially watched — show progress bar
+                watchedCheck.visibility = View.GONE
+                progressBar.visibility = View.VISIBLE
+                progressBar.progress = (progress.progressPercent * 1000).toInt()
+                title.alpha = 1f
+                number.alpha = 1f
+            } else {
+                // Not watched
+                watchedCheck.visibility = View.GONE
+                progressBar.visibility = View.GONE
+                title.alpha = 1f
+                number.alpha = 1f
             }
         }
     }

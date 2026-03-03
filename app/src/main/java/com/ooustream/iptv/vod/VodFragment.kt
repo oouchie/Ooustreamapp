@@ -223,6 +223,8 @@ class VodFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.movies.collect { movies ->
+                    // Load watch progress for the new movie list
+                    viewModel.loadWatchProgress(movies.map { it.streamId })
                     updateMovieList(posterAdapter)
                     // Swap from skeleton to real adapter on first data arrival
                     if (!skeletonSwapped && movies.isNotEmpty()) {
@@ -234,6 +236,17 @@ class VodFragment : Fragment(), KeyEventHandler {
                                 viewModel.savedGridPosition = -1
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Observe watch progress changes → rebind posters with updated state
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.watchProgressMap.collect {
+                    if (filteredMovies.isNotEmpty()) {
+                        updateMovieList(posterAdapter)
                     }
                 }
             }
@@ -253,6 +266,7 @@ class VodFragment : Fragment(), KeyEventHandler {
 
     private fun updateMovieList(posterAdapter: ArrayObjectAdapter) {
         val movies = viewModel.movies.value
+        val progressMap = viewModel.watchProgressMap.value
         filteredMovies = if (searchFilter.isEmpty()) {
             movies
         } else {
@@ -260,13 +274,16 @@ class VodFragment : Fragment(), KeyEventHandler {
         }
         posterAdapter.clear()
         filteredMovies.forEach { movie ->
+            val progress = progressMap[movie.streamId.toString()]
             posterAdapter.add(PosterItem(
                 id = movie.streamId,
                 title = movie.name,
                 imageUrl = movie.streamIcon,
                 rating = movie.rating,
                 extension = movie.containerExtension,
-                type = "vod"
+                type = "vod",
+                watchCompleted = progress?.completed == true,
+                watchProgress = progress?.progressPercent ?: 0f
             ))
         }
     }
@@ -291,6 +308,15 @@ class VodFragment : Fragment(), KeyEventHandler {
             VodViewModel.RECENTLY_ADDED_ID to 0xFF10B981.toInt()
         )
         categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh watch progress when returning from player
+        val movieIds = filteredMovies.map { it.streamId }
+        if (movieIds.isNotEmpty()) {
+            viewModel.loadWatchProgress(movieIds)
+        }
     }
 
     override fun onDestroyView() {

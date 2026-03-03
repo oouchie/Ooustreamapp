@@ -40,6 +40,7 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     private val scrim: View
 
     var onDismissed: (() -> Unit)? = null
+    var onTrackSelected: ((trackType: Int) -> Unit)? = null
 
     val isShowing: Boolean get() = visibility == VISIBLE
 
@@ -221,6 +222,9 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         "audio/vnd.dts" -> "DTS"
         "audio/vnd.dts.hd" -> "DTS-HD"
         "audio/opus" -> "Opus"
+        "audio/flac" -> "FLAC"
+        "audio/true-hd" -> "TrueHD"
+        "audio/vorbis" -> "Vorbis"
         else -> null
     }
 
@@ -302,6 +306,7 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
             setOnClickListener {
                 try {
                     applyTrackSelection(player, track)
+                    onTrackSelected?.invoke(track.type)
                 } catch (e: Exception) {
                     Toast.makeText(context, "Unable to switch track", Toast.LENGTH_SHORT).show()
                 }

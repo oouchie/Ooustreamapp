@@ -28,5 +28,8 @@ class WatchProgressRepository @Inject constructor(
     suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity> =
         watchProgressDao.getSeriesEpisodes(seriesId)
 
+    suspend fun getProgressForIds(streamIds: List<String>): List<WatchProgressEntity> =
+        watchProgressDao.getProgressForIds(streamIds)
+
     suspend fun clearAll() = watchProgressDao.clearAll()
 }

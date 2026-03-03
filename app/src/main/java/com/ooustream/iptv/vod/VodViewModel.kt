@@ -5,9 +5,11 @@ import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.model.Category
 import com.ooustream.iptv.data.local.entity.FavoriteEntity
 import com.ooustream.iptv.data.model.VodStream
+import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
+import com.ooustream.iptv.data.repository.WatchProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +22,8 @@ import javax.inject.Inject
 class VodViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val favoriteRepository: FavoriteRepository,
-    private val contentCacheRepository: ContentCacheRepository
+    private val contentCacheRepository: ContentCacheRepository,
+    private val watchProgressRepository: WatchProgressRepository
 ) : BaseViewModel() {
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
@@ -33,6 +36,9 @@ class VodViewModel @Inject constructor(
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
 
     val favorites = favoriteRepository.getFavoritesByType("vod")
+
+    private val _watchProgressMap = MutableStateFlow<Map<String, WatchProgressEntity>>(emptyMap())
+    val watchProgressMap: StateFlow<Map<String, WatchProgressEntity>> = _watchProgressMap.asStateFlow()
 
     /** Saved positions for focus restoration on back navigation */
     var savedGridPosition: Int = -1
@@ -147,5 +153,19 @@ class VodViewModel @Inject constructor(
 
     fun buildStreamUrl(movie: VodStream): String {
         return contentRepository.buildVodStreamUrl(movie.streamId, movie.containerExtension ?: "mp4")
+    }
+
+    /** Load watch progress for the currently displayed movie list */
+    fun loadWatchProgress(movieIds: List<Int>) {
+        if (movieIds.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val streamIds = movieIds.map { it.toString() }
+                val progressList = watchProgressRepository.getProgressForIds(streamIds)
+                _watchProgressMap.value = progressList.associateBy { it.streamId }
+            } catch (_: Exception) {
+                // Non-critical — silently fail
+            }
+        }
     }
 }

@@ -3,10 +3,12 @@ package com.ooustream.iptv.series
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
+import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Episode
 import com.ooustream.iptv.data.model.Season
 import com.ooustream.iptv.data.model.SeriesInfo
 import com.ooustream.iptv.data.repository.ContentRepository
+import com.ooustream.iptv.data.repository.WatchProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,8 @@ data class SeasonTab(
 
 @HiltViewModel
 class SeriesDetailViewModel @Inject constructor(
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    private val watchProgressRepository: WatchProgressRepository
 ) : BaseViewModel() {
 
     companion object {
@@ -44,12 +47,18 @@ class SeriesDetailViewModel @Inject constructor(
     private val _episodes = MutableStateFlow<List<Episode>>(emptyList())
     val episodes: StateFlow<List<Episode>> = _episodes.asStateFlow()
 
+    private val _episodeWatchProgress = MutableStateFlow<Map<String, WatchProgressEntity>>(emptyMap())
+    val episodeWatchProgress: StateFlow<Map<String, WatchProgressEntity>> = _episodeWatchProgress.asStateFlow()
+
+    private var loadedSeriesId: Int = 0
+
     fun loadSeriesInfo(seriesId: Int) {
         Log.i(TAG, "loadSeriesInfo called with seriesId=$seriesId")
         if (seriesId == 0) {
             Log.e(TAG, "seriesId is 0 — invalid, aborting")
             return
         }
+        loadedSeriesId = seriesId
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -58,6 +67,9 @@ class SeriesDetailViewModel @Inject constructor(
                 Log.i(TAG, "API success: name=${info.info?.name}, seasons=${info.seasons?.size}, episodeMapKeys=${info.episodes?.keys}")
 
                 _seriesInfo.value = info
+
+                // Load watch progress for all episodes in this series
+                loadWatchProgress(seriesId)
 
                 // Build season tabs from the actual episode map keys
                 val episodeKeys = info.episodes?.keys?.toList()?.sortedBy {
@@ -112,5 +124,23 @@ class SeriesDetailViewModel @Inject constructor(
         val ext = episode.containerExtension ?: "mp4"
         val id = episode.id?.toIntOrNull() ?: 0
         return contentRepository.buildSeriesStreamUrl(id, ext)
+    }
+
+    private suspend fun loadWatchProgress(seriesId: Int) {
+        try {
+            val progressList = watchProgressRepository.getSeriesEpisodes(seriesId)
+            _episodeWatchProgress.value = progressList.associateBy { it.streamId }
+            Log.i(TAG, "Loaded watch progress: ${progressList.size} episodes tracked")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load watch progress", e)
+        }
+    }
+
+    /** Called from Fragment onResume to refresh after returning from player */
+    fun refreshWatchProgress() {
+        if (loadedSeriesId == 0) return
+        viewModelScope.launch {
+            loadWatchProgress(loadedSeriesId)
+        }
     }
 }

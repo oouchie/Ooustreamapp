@@ -28,6 +28,7 @@ class StreamStatsOverlay @JvmOverloads constructor(
     private val resolutionText: TextView
     private val bitrateText: TextView
     private val codecText: TextView
+    private val audioText: TextView
     private val bufferText: TextView
 
     private var updateJob: Job? = null
@@ -39,6 +40,7 @@ class StreamStatsOverlay @JvmOverloads constructor(
         resolutionText = findViewById(R.id.stats_resolution)
         bitrateText = findViewById(R.id.stats_bitrate)
         codecText = findViewById(R.id.stats_codec)
+        audioText = findViewById(R.id.stats_audio)
         bufferText = findViewById(R.id.stats_buffer)
     }
 
@@ -134,6 +136,29 @@ class StreamStatsOverlay @JvmOverloads constructor(
             ?: p.audioFormat?.sampleMimeType
             ?: "Unknown"
         codecText.text = "Video: $videoCodec | Audio: $audioCodec"
+
+        // Audio
+        val audioFormat = p.audioFormat
+        if (audioFormat != null) {
+            val parts = mutableListOf<String>()
+            val audioBitrate = audioFormat.bitrate
+            if (audioBitrate > 0) parts.add("${audioBitrate / 1000}kbps")
+            val sampleRate = audioFormat.sampleRate
+            if (sampleRate > 0) parts.add("${sampleRate}Hz")
+            val channels = audioFormat.channelCount
+            val channelLabel = when {
+                channels <= 0 -> null
+                channels == 1 -> "Mono"
+                channels == 2 -> "Stereo"
+                channels == 6 -> "5.1"
+                channels == 8 -> "7.1"
+                else -> "${channels}ch"
+            }
+            channelLabel?.let { parts.add(it) }
+            audioText.text = "Audio: ${parts.joinToString(" | ")}"
+        } else {
+            audioText.text = "Audio: --"
+        }
 
         // Buffer
         val bufferedMs = p.bufferedPosition - p.currentPosition

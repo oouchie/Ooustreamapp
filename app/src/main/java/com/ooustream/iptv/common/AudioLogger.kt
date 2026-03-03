@@ -50,7 +50,7 @@ object AudioLogger {
     }
 
     fun logAudioError(error: PlaybackException) {
-        if (!BuildConfig.DEBUG) return
+        // Always log audio errors — critical for diagnosing codec failures in production
         Log.e(TAG, "ERROR: code=${error.errorCode} msg=${error.message}", error)
     }
 
@@ -76,9 +76,9 @@ object AudioLogger {
         Log.w(TAG, message)
     }
 
-    /** Check if FFmpeg native library is available via reflection. */
-    fun isFfmpegAvailable(): Boolean {
-        return try {
+    /** Check if FFmpeg native library is available via reflection. Cached after first call. */
+    val isFfmpegAvailable: Boolean by lazy {
+        try {
             val clazz = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegLibrary")
             val method = clazz.getMethod("isAvailable")
             method.invoke(null) as Boolean

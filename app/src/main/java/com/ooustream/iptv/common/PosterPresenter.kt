@@ -7,6 +7,7 @@ import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
@@ -23,7 +24,9 @@ data class PosterItem(
     val imageUrl: String?,
     val rating: String?,
     val extension: String?,
-    val type: String // "vod" or "series"
+    val type: String, // "vod" or "series"
+    val watchCompleted: Boolean = false,
+    val watchProgress: Float = 0f // 0.0 - 1.0
 )
 
 open class PosterPresenter : Presenter() {
@@ -56,6 +59,24 @@ open class PosterPresenter : Presenter() {
 
         // Quality badge - parse from title + extension
         bindQualityBadge(qualityBadge, poster.title, poster.extension)
+
+        // Watch status indicators
+        val watchedBadge = root.findViewById<ImageView>(R.id.poster_watched_badge)
+        val progressBar = root.findViewById<ProgressBar>(R.id.poster_progress_bar)
+        if (poster.watchCompleted) {
+            watchedBadge.visibility = View.VISIBLE
+            progressBar.visibility = View.GONE
+            image.alpha = 0.7f
+        } else if (poster.watchProgress > 0.05f) {
+            watchedBadge.visibility = View.GONE
+            progressBar.visibility = View.VISIBLE
+            progressBar.progress = (poster.watchProgress * 1000).toInt()
+            image.alpha = 1f
+        } else {
+            watchedBadge.visibility = View.GONE
+            progressBar.visibility = View.GONE
+            image.alpha = 1f
+        }
 
         val imageUrl = poster.imageUrl
         val cacheKey = "poster_${poster.id}"

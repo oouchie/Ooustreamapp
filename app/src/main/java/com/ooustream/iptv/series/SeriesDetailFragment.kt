@@ -121,6 +121,12 @@ class SeriesDetailFragment : Fragment() {
         episodesList.adapter = episodesRvAdapter
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Refresh watch progress when returning from player
+        viewModel.refreshWatchProgress()
+    }
+
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -129,6 +135,7 @@ class SeriesDetailFragment : Fragment() {
                 launch { collectSeasonTabs() }
                 launch { collectSelectedSeason() }
                 launch { collectEpisodes() }
+                launch { collectWatchProgress() }
                 launch { collectErrors() }
             }
         }
@@ -263,6 +270,12 @@ class SeriesDetailFragment : Fragment() {
                 episodesList.visibility = View.GONE
                 episodesRvAdapter.submitList(emptyList())
             }
+        }
+    }
+
+    private suspend fun collectWatchProgress() {
+        viewModel.episodeWatchProgress.collect { progressMap ->
+            episodesRvAdapter.watchProgressMap = progressMap
         }
     }
 

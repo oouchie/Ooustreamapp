@@ -216,11 +216,36 @@ class VodDetailFragment : Fragment() {
             }
         }
 
+        // Observe watch progress for play button state
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.watchProgress.collect { progress ->
+                    if (progress == null) {
+                        playButton.text = "Play"
+                    } else if (progress.completed) {
+                        playButton.text = "Watch Again"
+                    } else if (progress.progressPercent > 0.05f) {
+                        val totalSecs = (progress.position / 1000).toInt()
+                        val mins = totalSecs / 60
+                        val secs = totalSecs % 60
+                        playButton.text = "Resume from ${mins}:${"%02d".format(secs)}"
+                    } else {
+                        playButton.text = "Play"
+                    }
+                }
+            }
+        }
+
         // Load the movie info from API
         viewModel.loadVodInfo(vodId)
 
         // Request focus on play button immediately (even before API returns)
         playButton.post { playButton.requestFocus() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshWatchProgress()
     }
 
     /**

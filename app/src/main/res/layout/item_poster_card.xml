@@ -27,6 +27,19 @@
         android:layout_gravity="bottom"
         android:background="@drawable/gradient_poster_aurora" />
 
+    <!-- Watched checkmark badge (top-left) -->
+    <ImageView
+        android:id="@+id/poster_watched_badge"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="6dp"
+        android:src="@android:drawable/checkbox_on_background"
+        android:tint="#FF10B981"
+        android:contentDescription="Watched"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <!-- Quality badge (top-right) -->
     <TextView
         android:id="@+id/poster_quality_badge"
@@ -82,4 +95,17 @@
             android:shadowRadius="4"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- Watch progress bar (bottom edge) -->
+    <ProgressBar
+        android:id="@+id/poster_progress_bar"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progress="0"
+        android:progressTint="#FF10B981"
+        android:progressBackgroundTint="#33FFFFFF"
+        android:visibility="gone" />
 </FrameLayout>
