@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.leanback.widget.Presenter
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
@@ -60,7 +61,7 @@ class ForYouLivePresenter : Presenter() {
         name.text = channel.channelName
 
         if (!channel.channelIcon.isNullOrBlank()) {
-            logo.load(channel.channelIcon) { crossfade(200) }
+            logo.load(PosterUrlRewriter.rewrite(channel.channelIcon)) { crossfade(200) }
             logo.visibility = View.VISIBLE
         } else {
             logo.visibility = View.GONE

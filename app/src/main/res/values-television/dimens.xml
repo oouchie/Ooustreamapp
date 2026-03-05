@@ -25,8 +25,10 @@
     <dimen name="row_trending_height">240dp</dimen>
 
     <!-- Grid -->
-    <integer name="poster_columns">5</integer>
+    <integer name="poster_columns">4</integer>
     <integer name="category_columns">4</integer>
+    <dimen name="poster_grid_h_spacing">10dp</dimen>
+    <dimen name="poster_grid_v_spacing">14dp</dimen>
 
     <!-- Bottom nav (hidden on TV) -->
     <dimen name="bottom_nav_height">0dp</dimen>

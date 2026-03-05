@@ -18,5 +18,6 @@ data class Series(
     @SerializedName("backdrop_path") val backdropPath: List<String>?,
     @SerializedName("youtube_trailer") val youtubeTrailer: String?,
     @SerializedName("episode_run_time") val episodeRunTime: String?,
-    @SerializedName("category_id") val categoryId: String?
+    @SerializedName("category_id") val categoryId: String?,
+    @SerializedName("tmdb") val tmdbId: String? = null
 )

@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
@@ -37,7 +38,7 @@ class ForYouPresenter : Presenter() {
 
         recommended.icon?.let { url ->
             if (url.isNotBlank()) {
-                image.load(url) {
+                image.load(PosterUrlRewriter.rewrite(url)) {
                     crossfade(200)
                 }
             }

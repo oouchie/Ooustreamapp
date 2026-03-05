@@ -197,8 +197,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             }
             multiviewIcon.setOnClickListener {
                 android.app.AlertDialog.Builder(requireContext())
-                    .setTitle("MultiView — Coming Soon")
-                    .setMessage("MultiView Sports Player is coming in a future update.\n\nWatch up to 4 live channels simultaneously.")
+                    .setTitle("MultiView")
+                    .setMessage("Coming Soon!")
                     .setPositiveButton("OK", null)
                     .show()
             }

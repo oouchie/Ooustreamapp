@@ -34,10 +34,14 @@ class LiveTvViewModel @Inject constructor(
     private val _epgPrograms = MutableStateFlow<List<EpgProgram>>(emptyList())
     val epgPrograms: StateFlow<List<EpgProgram>> = _epgPrograms.asStateFlow()
 
-    private val _selectedCategoryId = MutableStateFlow<String?>(null)
+    private val _selectedCategoryId = MutableStateFlow<String?>(FAVORITES_ID)
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
 
     val favorites = favoriteRepository.getAllFavorites()
+
+    init {
+        selectCategory(FAVORITES_ID)
+    }
 
     /** Full preview state — saved before fullscreen, consumed on return to restart preview */
     var lastPreviewedChannel: LiveStream? = null

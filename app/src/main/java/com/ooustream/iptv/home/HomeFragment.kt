@@ -27,6 +27,7 @@ import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
 import com.ooustream.iptv.common.PosterItem
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.PosterPresenter
 import com.ooustream.iptv.common.ScreenPreWarmer
 import com.ooustream.iptv.common.TransitionDirection
@@ -397,8 +398,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         navigateToSection(item)
                     } else if (item is MultiViewHeroItem) {
                         android.app.AlertDialog.Builder(requireContext())
-                            .setTitle("MultiView — Coming Soon")
-                            .setMessage("MultiView Sports Player is coming in a future update.\n\nWatch up to 4 live channels simultaneously.")
+                            .setTitle("MultiView")
+                            .setMessage("Coming Soon!")
                             .setPositiveButton("OK", null)
                             .show()
                     }
@@ -476,7 +477,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                     imageUrl = vod.streamIcon,
                                     rating = vod.rating,
                                     extension = vod.containerExtension,
-                                    type = "vod"
+                                    type = "vod",
+                                    tmdbId = vod.tmdbId
                                 )
                             )
                         }
@@ -529,7 +531,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                     imageUrl = series.cover,
                                     rating = series.rating,
                                     extension = null,
-                                    type = "series"
+                                    type = "series",
+                                    tmdbId = series.tmdbId
                                 )
                             )
                         }
@@ -746,7 +749,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun loadHeroImage(item: FeaturedItem) {
         if (!item.backdropUrl.isNullOrBlank()) {
-            heroBackdrop.load(item.backdropUrl) {
+            heroBackdrop.load(PosterUrlRewriter.rewriteBackdrop(item.backdropUrl)) {
                 crossfade(false)
                 memoryCachePolicy(CachePolicy.ENABLED)
                 allowHardware(false) // Required for Palette extraction

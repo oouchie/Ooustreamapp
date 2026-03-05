@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.ooustream.iptv.data.model.SeriesInfo
 import com.ooustream.iptv.data.remote.AuthInterceptor
 import com.ooustream.iptv.data.remote.SafeSeriesInfoDeserializer
+import com.ooustream.iptv.data.remote.TmdbApiService
 import com.ooustream.iptv.data.remote.XtreamApiService
 import dagger.Module
 import dagger.Provides
@@ -66,5 +67,21 @@ object NetworkModule {
     @Singleton
     fun provideXtreamApiService(retrofit: Retrofit): XtreamApiService {
         return retrofit.create(XtreamApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTmdbApiService(gson: Gson): TmdbApiService {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl("https://api.themoviedb.org/3/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(TmdbApiService::class.java)
     }
 }

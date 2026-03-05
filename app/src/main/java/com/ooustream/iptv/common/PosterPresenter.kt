@@ -12,11 +12,6 @@ import android.widget.TextView
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.DeviceUtils
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 data class PosterItem(
     val id: Int,
@@ -26,7 +21,8 @@ data class PosterItem(
     val extension: String?,
     val type: String, // "vod" or "series"
     val watchCompleted: Boolean = false,
-    val watchProgress: Float = 0f // 0.0 - 1.0
+    val watchProgress: Float = 0f, // 0.0 - 1.0
+    val tmdbId: String? = null
 )
 
 open class PosterPresenter : Presenter() {
@@ -35,6 +31,7 @@ open class PosterPresenter : Presenter() {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_poster_card, parent, false)
         view.outlineProvider = ViewOutlineProvider.BACKGROUND
         view.clipToOutline = true
+
         return ViewHolder(view)
     }
 
@@ -95,16 +92,7 @@ open class PosterPresenter : Presenter() {
                 v.animate().scaleX(1.06f).scaleY(1.06f).setDuration(250).start()
                 v.setBackgroundResource(R.drawable.bg_poster_card_aurora_focused)
 
-                // Debounced full-res load after 300ms sustained focus
-                val job = CoroutineScope(Dispatchers.Main).launch {
-                    delay(300)
-                    ProgressiveImageLoader.loadFullRes(image, imageUrl)
-                }
-                v.setTag(R.id.focus_load_job, job)
             } else {
-                // Cancel pending full-res load
-                (v.getTag(R.id.focus_load_job) as? Job)?.cancel()
-
                 v.overlay.clear()
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
                 v.setBackgroundResource(R.drawable.bg_poster_card_aurora)

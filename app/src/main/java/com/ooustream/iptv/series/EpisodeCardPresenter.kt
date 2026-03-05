@@ -10,6 +10,7 @@ import androidx.leanback.widget.Presenter
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.data.model.Episode
 
 class EpisodeCardPresenter(
@@ -41,7 +42,7 @@ class EpisodeCardPresenter(
         val imageUrl = episode.info?.movieImage
         if (!imageUrl.isNullOrBlank()) {
             thumbnail.visibility = View.VISIBLE
-            thumbnail.load(imageUrl) {
+            thumbnail.load(PosterUrlRewriter.rewrite(imageUrl)) {
                 crossfade(true)
                 memoryCachePolicy(CachePolicy.ENABLED)
                 placeholder(R.color.card_bg)

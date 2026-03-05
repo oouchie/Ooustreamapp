@@ -9,6 +9,7 @@ import com.ooustream.iptv.data.local.dao.CrashRecoveryDao
 import com.ooustream.iptv.data.local.dao.EpgCacheDao
 import com.ooustream.iptv.data.local.dao.EpgPatternDao
 import com.ooustream.iptv.data.local.dao.FavoriteDao
+import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
@@ -19,6 +20,7 @@ import com.ooustream.iptv.data.local.entity.ChannelScoreEntity
 import com.ooustream.iptv.data.local.entity.ChannelWatchLogEntity
 import com.ooustream.iptv.data.local.entity.CrashRecoveryEntity
 import com.ooustream.iptv.data.local.entity.EpgPatternEntity
+import com.ooustream.iptv.data.local.entity.PosterCacheEntity
 import com.ooustream.iptv.data.local.entity.EpgCacheEntity
 import com.ooustream.iptv.data.local.entity.FavoriteEntity
 import com.ooustream.iptv.data.local.entity.SearchHistoryEntity
@@ -41,9 +43,10 @@ import com.ooustream.iptv.data.local.entity.WatchProgressEntity
         SearchIndexFts::class,
         ChannelWatchLogEntity::class,
         ChannelScoreEntity::class,
-        EpgPatternEntity::class
+        EpgPatternEntity::class,
+        PosterCacheEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class OoustreamDatabase : RoomDatabase() {
@@ -58,4 +61,5 @@ abstract class OoustreamDatabase : RoomDatabase() {
     abstract fun channelWatchLogDao(): ChannelWatchLogDao
     abstract fun channelScoreDao(): ChannelScoreDao
     abstract fun epgPatternDao(): EpgPatternDao
+    abstract fun posterCacheDao(): PosterCacheDao
 }

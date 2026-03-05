@@ -104,7 +104,9 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         }
         categoriesList.adapter = categoryAdapter
 
-        posterGrid.setNumColumns(5)
+        posterGrid.setNumColumns(resources.getInteger(R.integer.poster_columns))
+        posterGrid.setHorizontalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing))
+        posterGrid.setVerticalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing))
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())
 
         // Show shimmer skeletons while loading
@@ -248,7 +250,8 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                 imageUrl = s.cover,
                 rating = s.rating,
                 extension = null,
-                type = "series"
+                type = "series",
+                tmdbId = s.tmdbId
             ))
         }
     }

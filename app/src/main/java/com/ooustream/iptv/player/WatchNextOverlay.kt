@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.transform.RoundedCornersTransformation
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.recommendation.RecommendedItem
 
 /**
@@ -87,7 +88,7 @@ class WatchNextOverlay @JvmOverloads constructor(
             val item = items[position]
             holder.name.text = item.name
             holder.reason.text = item.reason
-            holder.poster.load(item.icon) {
+            holder.poster.load(PosterUrlRewriter.rewrite(item.icon)) {
                 crossfade(200)
                 placeholder(R.drawable.bg_card_rounded)
                 error(R.drawable.bg_card_rounded)

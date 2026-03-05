@@ -3,6 +3,7 @@ package com.ooustream.iptv.common
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.widget.ImageView
+import com.ooustream.iptv.R
 import androidx.palette.graphics.Palette
 import coil.load
 import coil.request.CachePolicy
@@ -41,9 +42,10 @@ object ProgressiveImageLoader {
         }
 
         val cachedColor = DominantColorCache.get(cacheKey)
-        val thumbnailSize = qualityPolicy?.imageSize?.takeIf { it > 0 } ?: 200
-        imageView.load(url) {
-            size(thumbnailSize, (thumbnailSize * 1.5).toInt())
+        val rewrittenUrl = PosterUrlRewriter.rewrite(url) ?: url
+        imageView.load(rewrittenUrl) {
+            // Let Coil size to the ImageView (sharp at grid column width)
+            // No forced downscale — w500 TMDB URLs + disk cache keep this fast
             if (cachedColor != null) {
                 placeholder(ColorDrawable(cachedColor))
             } else {
@@ -51,22 +53,26 @@ object ProgressiveImageLoader {
             }
             crossfade(150)
             memoryCachePolicy(CachePolicy.ENABLED)
+            error(R.drawable.poster_error_placeholder)
             if (cornerRadius > 0f) {
                 transformations(RoundedCornersTransformation(cornerRadius))
             }
-            allowHardware(false) // Need software bitmap for Palette extraction
-            listener(
-                onSuccess = { _, result ->
-                    val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                    if (bitmap != null && DominantColorCache.get(cacheKey) == null) {
-                        Palette.from(bitmap).generate { palette ->
-                            palette?.getDominantColor(DEFAULT_PLACEHOLDER)?.let { color ->
-                                DominantColorCache.put(cacheKey, color)
+            val needsPalette = DominantColorCache.get(cacheKey) == null
+            allowHardware(!needsPalette) // Software bitmap only when Palette extraction needed
+            if (needsPalette) {
+                listener(
+                    onSuccess = { _, result ->
+                        val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                        if (bitmap != null) {
+                            Palette.from(bitmap).generate { palette ->
+                                palette?.getDominantColor(DEFAULT_PLACEHOLDER)?.let { color ->
+                                    DominantColorCache.put(cacheKey, color)
+                                }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     }
 
@@ -79,7 +85,8 @@ object ProgressiveImageLoader {
         cornerRadius: Float = 0f
     ) {
         if (url.isNullOrBlank()) return
-        imageView.load(url) {
+        val rewrittenUrl = PosterUrlRewriter.rewrite(url) ?: url
+        imageView.load(rewrittenUrl) {
             size(Size.ORIGINAL)
             crossfade(200)
             memoryCachePolicy(CachePolicy.ENABLED)

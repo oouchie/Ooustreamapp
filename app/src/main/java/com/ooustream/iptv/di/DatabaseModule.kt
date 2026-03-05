@@ -10,6 +10,7 @@ import com.ooustream.iptv.data.local.dao.CrashRecoveryDao
 import com.ooustream.iptv.data.local.dao.EpgCacheDao
 import com.ooustream.iptv.data.local.dao.EpgPatternDao
 import com.ooustream.iptv.data.local.dao.FavoriteDao
+import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
@@ -67,4 +68,7 @@ object DatabaseModule {
 
     @Provides
     fun provideEpgPatternDao(db: OoustreamDatabase): EpgPatternDao = db.epgPatternDao()
+
+    @Provides
+    fun providePosterCacheDao(db: OoustreamDatabase): PosterCacheDao = db.posterCacheDao()
 }

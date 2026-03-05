@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,7 +17,16 @@ android {
         minSdk = 21
         targetSdk = 34
         versionCode = 21
-        versionName = "2.7.0"
+        versionName = "2.8.0"
+
+        // TMDB API key for poster quality fallback
+        val localPropsFile = rootProject.file("local.properties")
+        val tmdbKey = if (localPropsFile.exists()) {
+            val props = Properties()
+            FileInputStream(localPropsFile).use { props.load(it) }
+            props.getProperty("TMDB_API_KEY", "")
+        } else ""
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbKey\"")
     }
 
     signingConfigs {

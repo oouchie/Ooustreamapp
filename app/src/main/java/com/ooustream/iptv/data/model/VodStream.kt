@@ -14,5 +14,6 @@ data class VodStream(
     @SerializedName("category_id") val categoryId: String?,
     @SerializedName("container_extension") val containerExtension: String?,
     @SerializedName("custom_sid") val customSid: String?,
-    @SerializedName("direct_source") val directSource: String?
+    @SerializedName("direct_source") val directSource: String?,
+    @SerializedName("tmdb") val tmdbId: String? = null
 )

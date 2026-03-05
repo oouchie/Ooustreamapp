@@ -16,6 +16,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.data.model.ContentType
@@ -68,13 +69,13 @@ class VodDetailFragment : Fragment() {
 
         // Load cover poster immediately as placeholder
         if (!coverUrl.isNullOrBlank()) {
-            cover.load(coverUrl) {
+            cover.load(PosterUrlRewriter.rewrite(coverUrl)) {
                 crossfade(true)
                 memoryCachePolicy(CachePolicy.ENABLED)
                 placeholder(R.color.card_bg)
             }
             // Also use cover as initial backdrop until detail loads
-            backdrop.load(coverUrl) {
+            backdrop.load(PosterUrlRewriter.rewriteBackdrop(coverUrl)) {
                 crossfade(true)
                 memoryCachePolicy(CachePolicy.ENABLED)
                 placeholder(R.color.card_bg)
@@ -132,7 +133,7 @@ class VodDetailFragment : Fragment() {
                         ?: detail?.movieImage
                         ?: coverUrl
                     if (!backdropUrl.isNullOrBlank()) {
-                        backdrop.load(backdropUrl) {
+                        backdrop.load(PosterUrlRewriter.rewriteBackdrop(backdropUrl)) {
                             crossfade(true)
                             memoryCachePolicy(CachePolicy.ENABLED)
                             placeholder(R.color.card_bg)
@@ -142,7 +143,7 @@ class VodDetailFragment : Fragment() {
                     // Cover: prefer movieImage, then fall back to existing cover
                     val detailCover = detail?.movieImage ?: coverUrl
                     if (!detailCover.isNullOrBlank()) {
-                        cover.load(detailCover) {
+                        cover.load(PosterUrlRewriter.rewrite(detailCover)) {
                             crossfade(true)
                             memoryCachePolicy(CachePolicy.ENABLED)
                             placeholder(R.color.card_bg)

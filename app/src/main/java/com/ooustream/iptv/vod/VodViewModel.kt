@@ -32,7 +32,7 @@ class VodViewModel @Inject constructor(
     private val _movies = MutableStateFlow<List<VodStream>>(emptyList())
     val movies: StateFlow<List<VodStream>> = _movies.asStateFlow()
 
-    private val _selectedCategoryId = MutableStateFlow<String?>(null)
+    private val _selectedCategoryId = MutableStateFlow<String?>(FAVORITES_ID)
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
 
     val favorites = favoriteRepository.getFavoritesByType("vod")
@@ -43,6 +43,10 @@ class VodViewModel @Inject constructor(
     /** Saved positions for focus restoration on back navigation */
     var savedGridPosition: Int = -1
     var savedCategoryPosition: Int = -1
+
+    init {
+        selectCategory(FAVORITES_ID)
+    }
 
     fun loadCategories() {
         viewModelScope.launch {

@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.data.model.ContentType
@@ -156,7 +157,7 @@ class SeriesDetailFragment : Fragment() {
             // Backdrop image
             val backdropUrl = detail?.backdropPath?.firstOrNull() ?: detail?.cover
             if (!backdropUrl.isNullOrBlank()) {
-                backdrop.load(backdropUrl) {
+                backdrop.load(PosterUrlRewriter.rewriteBackdrop(backdropUrl)) {
                     crossfade(true)
                     memoryCachePolicy(CachePolicy.ENABLED)
                     placeholder(R.color.card_bg)
@@ -167,7 +168,7 @@ class SeriesDetailFragment : Fragment() {
             // Cover poster
             val coverUrl = detail?.cover
             if (!coverUrl.isNullOrBlank()) {
-                cover.load(coverUrl) {
+                cover.load(PosterUrlRewriter.rewrite(coverUrl)) {
                     crossfade(true)
                     memoryCachePolicy(CachePolicy.ENABLED)
                     placeholder(R.color.card_bg)

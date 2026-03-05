@@ -28,7 +28,7 @@ class SeriesViewModel @Inject constructor(
     private val _seriesList = MutableStateFlow<List<Series>>(emptyList())
     val seriesList: StateFlow<List<Series>> = _seriesList.asStateFlow()
 
-    private val _selectedCategoryId = MutableStateFlow<String?>(null)
+    private val _selectedCategoryId = MutableStateFlow<String?>(FAVORITES_ID)
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
 
     val favorites = favoriteRepository.getFavoritesByType("series")
@@ -36,6 +36,10 @@ class SeriesViewModel @Inject constructor(
     /** Saved positions for focus restoration on back navigation */
     var savedGridPosition: Int = -1
     var savedCategoryPosition: Int = -1
+
+    init {
+        selectCategory(FAVORITES_ID)
+    }
 
     fun loadCategories() {
         viewModelScope.launch {

@@ -112,8 +112,10 @@ class VodFragment : Fragment(), KeyEventHandler {
         }
         categoriesList.adapter = categoryAdapter
 
-        // Poster grid: 5 columns
-        posterGrid.setNumColumns(5)
+        // Poster grid: column count from resources (4 on TV, 3 on phone)
+        posterGrid.setNumColumns(resources.getInteger(R.integer.poster_columns))
+        posterGrid.setHorizontalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing))
+        posterGrid.setVerticalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing))
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())
 
         // Show shimmer skeletons while loading
@@ -283,7 +285,8 @@ class VodFragment : Fragment(), KeyEventHandler {
                 extension = movie.containerExtension,
                 type = "vod",
                 watchCompleted = progress?.completed == true,
-                watchProgress = progress?.progressPercent ?: 0f
+                watchProgress = progress?.progressPercent ?: 0f,
+                tmdbId = movie.tmdbId
             ))
         }
     }

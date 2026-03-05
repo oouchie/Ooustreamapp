@@ -6,6 +6,10 @@ import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.ProgressiveImageLoader
@@ -16,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltAndroidApp
-class OoustreamApp : Application(), Configuration.Provider {
+class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
 
     @Inject lateinit var dpadSoundManager: DpadSoundManager
     @Inject lateinit var qualityPolicy: QualityPolicy
@@ -34,6 +38,24 @@ class OoustreamApp : Application(), Configuration.Provider {
         DpadSoundManager.setInstance(dpadSoundManager)
         ProgressiveImageLoader.setQualityPolicy(qualityPolicy)
         scheduleScoreRefresh()
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.15) // 15% of available RAM (conservative for 1GB Fire Sticks)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("poster_cache"))
+                    .maxSizeBytes(100L * 1024 * 1024) // 100MB disk cache
+                    .build()
+            }
+            .crossfade(200)
+            .respectCacheHeaders(false) // TMDB images are permanent — same URL = same image
+            .build()
     }
 
     private fun scheduleScoreRefresh() {
