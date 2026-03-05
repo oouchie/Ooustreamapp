@@ -1,6 +1,6 @@
 {
   "version_name": "2.8.0",
-  "version_code": 21,
+  "version_code": 22,
   "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.8.0/app-release.apk",
   "changelog": "v2.8.0 — Poster Quality & Grid Overhaul\n\n• Sharper poster images (TMDB w500 rewriting)\n• 4-column grid with proper spacing\n• Improved image caching (100MB disk, 15% RAM)\n• Favorites loads first on VOD, Series & Live TV\n• Error placeholder for broken images\n• TMDB API fallback for non-TMDB posters\n• MultiView moved back to Coming Soon",
   "mandatory": false

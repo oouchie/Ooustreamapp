@@ -16,7 +16,7 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 21
+        versionCode = 22
         versionName = "2.8.0"
 
         // TMDB API key for poster quality fallback
