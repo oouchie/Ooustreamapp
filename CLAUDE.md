@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 2.7.1 (versionCode 20)
+- **Current Version**: 2.8.1 (versionCode 23)
 
 ## Build
 ```bash
@@ -171,6 +171,12 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Batch watch progress query** — `WatchProgressDao.getProgressForIds()` and `WatchProgressRepository.getProgressForIds()` for efficient bulk lookup. (`data/local/dao/WatchProgressDao.kt`, `data/repository/WatchProgressRepository.kt`)
 - **MultiView unlocked** — Removed "Coming Soon" dialogs from Home hero card and Live TV header icon. Both now navigate directly to `MultiViewFragment` via `MainActivity.navigateToMultiView()`. Device capability check (RAM >= 1.4GB) still gates visibility. (`home/HomeFragment.kt`, `livetv/LiveTvFragment.kt`)
 
+### Hotfixes (v2.8.x)
+- **Hero rotation divide-by-zero fix** (v2.8.1) — `startHeroRotation()` race condition: `featuredItems` could be replaced with empty list between size check and modulo. Fix: capture `size` as local val, use `getOrNull()` for safe access. (`home/HomeFragment.kt`)
+- **VOD/Series grid IndexOutOfBoundsException fix** (v2.8.1) — Leanback `VerticalGridView` crashes with position -1 when `ArrayObjectAdapter.clear()` + `.add()` loop fires multiple layout notifications. Fix: replaced with atomic `setItems()` + `DiffCallback` in both VodFragment and SeriesFragment. (`vod/VodFragment.kt`, `series/SeriesFragment.kt`)
+- **SafeAdapterUtils** (v2.8.1) — `safeReplaceAll()` for atomic adapter updates and `safeSetSelectedPosition()` with bounds checking. Applied to all Home screen rows (Continue Watching, For You, Trending, etc.). (`common/SafeAdapterUtils.kt`, `home/HomeFragment.kt`)
+- **Favorites empty fallback** (v2.8.1) — Live TV, Movies, Series pages default to Favorites but now auto-select the first real API category when favorites is empty, instead of showing a blank screen. (`livetv/LiveTvViewModel.kt`, `vod/VodViewModel.kt`, `series/SeriesViewModel.kt`)
+
 ## Deferred Features (Future Updates)
 
 These features were scoped but deferred for a future release:
@@ -331,3 +337,5 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v2.5.2** — Live TV 2ch AC3 crash fix (passthrough matrices + hardware-first renderer mode)
 - **v2.6.0** — MultiView Sports Player (4 simultaneous live streams, Pro plan gating, QR upgrade flow)
 - **v2.7.1** — Audio pipeline audit (AudioPipelineFactory, 3/4/5ch downmix, user track override, stage 2 fallback, preview audio isolation, stream stats audio row, logarithmic sleep fade, external player position handoff), watch progress indicators on poster/episode cards, MultiView unlocked
+- **v2.8.0** — Poster quality overhaul (TMDB w500 rewriting), 4-column grid spacing, favorites default on VOD/Series/Live TV, improved image caching
+- **v2.8.1** — Crash fixes (hero rotation divide-by-zero, VOD/Series grid IndexOutOfBoundsException), safe adapter updates via DiffCallback + SafeAdapterUtils, favorites fallback to first real category when empty
