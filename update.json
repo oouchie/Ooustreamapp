@@ -1,7 +1,7 @@
 {
-  "version_name": "2.8.0",
-  "version_code": 22,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.8.0/app-release.apk",
-  "changelog": "v2.8.0 — Poster Quality & Grid Overhaul\n\n• Sharper poster images (TMDB w500 rewriting)\n• 4-column grid with proper spacing\n• Improved image caching (100MB disk, 15% RAM)\n• Favorites loads first on VOD, Series & Live TV\n• Error placeholder for broken images\n• TMDB API fallback for non-TMDB posters\n• MultiView moved back to Coming Soon",
+  "version_name": "2.8.1",
+  "version_code": 23,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.8.1/app-release.apk",
+  "changelog": "v2.8.1 — Stability & UX Fixes\n\n• Fixed crash on Home screen hero rotation (divide by zero)\n• Fixed crash on Movies/Series grid scrolling (IndexOutOfBounds)\n• Safe adapter updates across all Home screen rows\n• Movies, Series & Live TV now auto-select first category when no favorites exist\n• Improved grid performance with DiffCallback updates",
   "mandatory": false
 }
