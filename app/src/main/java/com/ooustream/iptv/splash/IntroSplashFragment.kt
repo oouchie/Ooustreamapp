@@ -76,7 +76,13 @@ class IntroSplashFragment : Fragment(), KeyEventHandler {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     player?.release()
                     player = null
-                    onFinished?.invoke()
+                    // Post to avoid calling fragment transactions inside animation callbacks,
+                    // and check lifecycle to prevent IllegalStateException after onSaveInstanceState
+                    view.post {
+                        if (isAdded && activity?.isFinishing == false) {
+                            onFinished?.invoke()
+                        }
+                    }
                 }
             })
             start()

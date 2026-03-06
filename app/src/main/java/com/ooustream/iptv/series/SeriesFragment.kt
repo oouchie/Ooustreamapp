@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
+import androidx.leanback.widget.DiffCallback
 import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.VerticalGridView
@@ -242,9 +243,8 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         } else {
             series.filter { it.name.lowercase().contains(searchFilter) }
         }
-        posterAdapter.clear()
-        filteredSeries.forEach { s ->
-            posterAdapter.add(PosterItem(
+        val newItems = filteredSeries.map { s ->
+            PosterItem(
                 id = s.seriesId,
                 title = s.name,
                 imageUrl = s.cover,
@@ -252,8 +252,12 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                 extension = null,
                 type = "series",
                 tmdbId = s.tmdbId
-            ))
+            )
         }
+        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
+            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
+            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
+        })
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
+import androidx.leanback.widget.DiffCallback
 import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.VerticalGridView
@@ -274,10 +275,9 @@ class VodFragment : Fragment(), KeyEventHandler {
         } else {
             movies.filter { it.name.lowercase().contains(searchFilter) }
         }
-        posterAdapter.clear()
-        filteredMovies.forEach { movie ->
+        val newItems = filteredMovies.map { movie ->
             val progress = progressMap[movie.streamId.toString()]
-            posterAdapter.add(PosterItem(
+            PosterItem(
                 id = movie.streamId,
                 title = movie.name,
                 imageUrl = movie.streamIcon,
@@ -287,8 +287,12 @@ class VodFragment : Fragment(), KeyEventHandler {
                 watchCompleted = progress?.completed == true,
                 watchProgress = progress?.progressPercent ?: 0f,
                 tmdbId = movie.tmdbId
-            ))
+            )
         }
+        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
+            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
+            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
+        })
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

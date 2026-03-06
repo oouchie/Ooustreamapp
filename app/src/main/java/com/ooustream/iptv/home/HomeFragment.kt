@@ -24,6 +24,8 @@ import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AuroraBackgroundView
 import com.ooustream.iptv.common.DeviceUtils
+import com.ooustream.iptv.common.safeReplaceAll
+import com.ooustream.iptv.common.safeSetSelectedPosition
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
 import com.ooustream.iptv.common.PosterItem
@@ -212,28 +214,48 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
         when (rowId) {
             R.id.sections_row -> sectionsRow.post {
-                sectionsRow.selectedPosition = pos.coerceAtLeast(0)
+                sectionsRow.safeSetSelectedPosition(pos, sectionObjectAdapter.size())
                 sectionsRow.requestFocus()
             }
             R.id.continue_watching_row -> continueWatchingRow.post {
-                continueWatchingRow.selectedPosition = pos.coerceAtLeast(0)
-                continueWatchingRow.requestFocus()
+                if (cwObjectAdapter.size() > 0) {
+                    continueWatchingRow.safeSetSelectedPosition(pos, cwObjectAdapter.size())
+                    continueWatchingRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
             }
             R.id.for_you_row -> forYouRow.post {
-                forYouRow.selectedPosition = pos.coerceAtLeast(0)
-                forYouRow.requestFocus()
+                if (forYouObjectAdapter.size() > 0) {
+                    forYouRow.safeSetSelectedPosition(pos, forYouObjectAdapter.size())
+                    forYouRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
             }
             R.id.for_you_live_row -> forYouLiveRow.post {
-                forYouLiveRow.selectedPosition = pos.coerceAtLeast(0)
-                forYouLiveRow.requestFocus()
+                if (forYouLiveObjectAdapter.size() > 0) {
+                    forYouLiveRow.safeSetSelectedPosition(pos, forYouLiveObjectAdapter.size())
+                    forYouLiveRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
             }
             R.id.trending_row -> trendingRow.post {
-                trendingRow.selectedPosition = pos.coerceAtLeast(0)
-                trendingRow.requestFocus()
+                if (trendingObjectAdapter.size() > 0) {
+                    trendingRow.safeSetSelectedPosition(pos, trendingObjectAdapter.size())
+                    trendingRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
             }
             R.id.trending_series_row -> trendingSeriesRow.post {
-                trendingSeriesRow.selectedPosition = pos.coerceAtLeast(0)
-                trendingSeriesRow.requestFocus()
+                if (trendingSeriesObjectAdapter.size() > 0) {
+                    trendingSeriesRow.safeSetSelectedPosition(pos, trendingSeriesObjectAdapter.size())
+                    trendingSeriesRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
             }
             R.id.hero_watch_now -> heroWatchNow.post { heroWatchNow.requestFocus() }
             R.id.hero_more_info -> heroMoreInfo.post { heroMoreInfo.requestFocus() }
@@ -380,6 +402,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
     // ── Sections Row ─────────────────────────────────────────────────────
 
     private fun setupSectionsRow() {
+        sectionObjectAdapter.clear()
         viewModel.sections.forEach { section ->
             sectionObjectAdapter.add(section)
             // Add MultiView hero card after Search section card
@@ -467,21 +490,19 @@ class HomeFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.trendingContent.collect { items ->
-                    trendingObjectAdapter.clear()
+                    val posterItems = items.map { vod ->
+                        PosterItem(
+                            id = vod.streamId,
+                            title = vod.name,
+                            imageUrl = vod.streamIcon,
+                            rating = vod.rating,
+                            extension = vod.containerExtension,
+                            type = "vod",
+                            tmdbId = vod.tmdbId
+                        )
+                    }
+                    trendingObjectAdapter.safeReplaceAll(posterItems)
                     if (items.isNotEmpty()) {
-                        items.forEach { vod ->
-                            trendingObjectAdapter.add(
-                                PosterItem(
-                                    id = vod.streamId,
-                                    title = vod.name,
-                                    imageUrl = vod.streamIcon,
-                                    rating = vod.rating,
-                                    extension = vod.containerExtension,
-                                    type = "vod",
-                                    tmdbId = vod.tmdbId
-                                )
-                            )
-                        }
                         trendingLabel.visibility = View.VISIBLE
                         trendingRow.visibility = View.VISIBLE
                     } else {
@@ -521,21 +542,19 @@ class HomeFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.trendingSeries.collect { items ->
-                    trendingSeriesObjectAdapter.clear()
+                    val posterItems = items.map { series ->
+                        PosterItem(
+                            id = series.seriesId,
+                            title = series.name,
+                            imageUrl = series.cover,
+                            rating = series.rating,
+                            extension = null,
+                            type = "series",
+                            tmdbId = series.tmdbId
+                        )
+                    }
+                    trendingSeriesObjectAdapter.safeReplaceAll(posterItems)
                     if (items.isNotEmpty()) {
-                        items.forEach { series ->
-                            trendingSeriesObjectAdapter.add(
-                                PosterItem(
-                                    id = series.seriesId,
-                                    title = series.name,
-                                    imageUrl = series.cover,
-                                    rating = series.rating,
-                                    extension = null,
-                                    type = "series",
-                                    tmdbId = series.tmdbId
-                                )
-                            )
-                        }
                         trendingSeriesLabel.visibility = View.VISIBLE
                         trendingSeriesRow.visibility = View.VISIBLE
                     } else {
@@ -578,9 +597,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateContinueWatchingRow(items: List<WatchProgressEntity>) {
-        cwObjectAdapter.clear()
+        cwObjectAdapter.safeReplaceAll(items)
         if (items.isNotEmpty()) {
-            items.forEach { cwObjectAdapter.add(it) }
             continueWatchingLabel.visibility = View.VISIBLE
             continueWatchingRow.visibility = View.VISIBLE
         } else {
@@ -620,9 +638,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateForYouRow(items: List<RecommendedItem>) {
-        forYouObjectAdapter.clear()
+        forYouObjectAdapter.safeReplaceAll(items)
         if (items.isNotEmpty()) {
-            items.forEach { forYouObjectAdapter.add(it) }
             forYouLabel.visibility = View.VISIBLE
             forYouRow.visibility = View.VISIBLE
         } else {
@@ -655,9 +672,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.forYouLiveNow.collect { channels ->
-                    forYouLiveObjectAdapter.clear()
+                    forYouLiveObjectAdapter.safeReplaceAll(channels)
                     if (channels.isNotEmpty()) {
-                        channels.forEach { forYouLiveObjectAdapter.add(it) }
                         forYouLiveLabel.visibility = View.VISIBLE
                         forYouLiveRow.visibility = View.VISIBLE
                     } else {
@@ -776,9 +792,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
             while (isActive) {
                 delay(8_000)
                 val items = featuredItems
-                if (items.size <= 1) break
-                heroIndex = (heroIndex + 1) % items.size
-                displayHeroItem(items[heroIndex], animate = true)
+                val size = items.size
+                if (size <= 1) break
+                heroIndex = (heroIndex + 1) % size
+                val item = items.getOrNull(heroIndex) ?: break
+                displayHeroItem(item, animate = true)
             }
         }
     }

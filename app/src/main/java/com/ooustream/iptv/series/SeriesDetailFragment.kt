@@ -25,6 +25,7 @@ import com.ooustream.iptv.R
 import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
+import com.ooustream.iptv.common.safeReplaceAll
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.Episode
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
@@ -226,12 +227,15 @@ class SeriesDetailFragment : Fragment() {
     private suspend fun collectSeasonTabs() {
         viewModel.seasonTabs.collect { tabs ->
             Log.i(TAG, "collectSeasonTabs: received ${tabs.size} tabs")
-            seasonsAdapter.clear()
+            seasonsAdapter.safeReplaceAll(tabs)
             if (tabs.isNotEmpty()) {
-                tabs.forEach { seasonsAdapter.add(it) }
                 seasonsLabel.visibility = View.VISIBLE
                 seasonsRow.visibility = View.VISIBLE
-                seasonsRow.post { seasonsRow.requestFocus() }
+                seasonsRow.post {
+                    if (seasonsAdapter.size() > 0) {
+                        seasonsRow.requestFocus()
+                    }
+                }
             }
         }
     }
@@ -262,7 +266,7 @@ class SeriesDetailFragment : Fragment() {
                 Log.i(TAG, "collectEpisodes: submitted ${episodes.size} items to RecyclerView adapter")
 
                 episodesList.post {
-                    if (!seasonsRow.hasFocus()) {
+                    if (!seasonsRow.hasFocus() && episodesRvAdapter.itemCount > 0) {
                         episodesList.requestFocus()
                     }
                 }

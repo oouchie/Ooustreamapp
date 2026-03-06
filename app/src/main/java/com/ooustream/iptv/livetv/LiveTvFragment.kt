@@ -37,6 +37,8 @@ import com.ooustream.iptv.common.CategoryListAdapter
 import com.ooustream.iptv.common.ChannelPresenter
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
 import com.ooustream.iptv.common.DeviceUtils
+import com.ooustream.iptv.common.safeReplaceAll
+import com.ooustream.iptv.common.safeSetSelectedPosition
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
@@ -304,7 +306,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         // Restore focus position on back navigation
                         if (viewModel.savedChannelPosition >= 0) {
                             channelsList.post {
-                                channelsList.selectedPosition = viewModel.savedChannelPosition
+                                channelsList.safeSetSelectedPosition(viewModel.savedChannelPosition, channelAdapter.size())
                                 viewModel.savedChannelPosition = -1
                             }
                         }
@@ -517,8 +519,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         } else {
             channels.filter { it.name.lowercase().contains(searchFilter) }
         }
-        channelAdapter.clear()
-        filteredChannels.forEach { channelAdapter.add(it) }
+        channelAdapter.safeReplaceAll(filteredChannels)
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

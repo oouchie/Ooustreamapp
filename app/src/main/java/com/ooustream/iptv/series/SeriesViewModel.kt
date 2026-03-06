@@ -47,7 +47,12 @@ class SeriesViewModel @Inject constructor(
             try {
                 contentCacheRepository.getCategories("series").collect { categories ->
                     _categories.value = categories
-                    if (_selectedCategoryId.value == null) {
+                    if (_selectedCategoryId.value == FAVORITES_ID) {
+                        val favCount = favoriteRepository.getFavoritesListByType("series").size
+                        if (favCount == 0) {
+                            categories.firstOrNull()?.let { selectCategory(it.categoryId) }
+                        }
+                    } else if (_selectedCategoryId.value == null) {
                         categories.firstOrNull()?.let { selectCategory(it.categoryId) }
                     }
                     _isLoading.value = false
