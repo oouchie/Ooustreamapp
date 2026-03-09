@@ -11,7 +11,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.ChannelNameParser
 
 /**
  * Translucent bottom overlay that shows adjacent channels during live TV playback.
@@ -118,8 +120,9 @@ class ChannelZapOverlay @JvmOverloads constructor(
             val itemView = LayoutInflater.from(context)
                 .inflate(R.layout.item_zap_channel, container, false)
 
-            // Channel name
-            itemView.findViewById<TextView>(R.id.zap_name).text = channel.name
+            // Parsed channel name (without country prefix / quality suffix)
+            val parsed = ChannelNameParser.parseForDisplay(channel.name)
+            itemView.findViewById<TextView>(R.id.zap_name).text = parsed.name
 
             // Channel number (1-based for user display)
             itemView.findViewById<TextView>(R.id.zap_number).text = "${i + 1}"
@@ -127,12 +130,10 @@ class ChannelZapOverlay @JvmOverloads constructor(
             // EPG placeholder -- the model doesn't carry EPG text, leave blank
             itemView.findViewById<TextView>(R.id.zap_epg).visibility = View.GONE
 
-            // Channel logo via Coil
+            // Channel logo with initials fallback
             val logo = itemView.findViewById<ImageView>(R.id.zap_logo)
-            val iconUrl = channel.streamIcon
-            if (!iconUrl.isNullOrBlank()) {
-                logo.load(iconUrl) { crossfade(200) }
-            }
+            val initials = itemView.findViewById<TextView>(R.id.zap_initials)
+            ChannelDisplayHelper.loadLogo(logo, initials, channel.streamIcon, channel.name)
 
             // Highlight the currently selected channel
             if (isCurrent) {

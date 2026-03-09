@@ -33,6 +33,20 @@ interface WatchProgressDao {
     @Query("SELECT * FROM watch_progress ORDER BY lastWatched DESC")
     fun getAllProgress(): Flow<List<WatchProgressEntity>>
 
+    @Query("""
+        SELECT wp.* FROM watch_progress wp
+        INNER JOIN (
+            SELECT COALESCE(seriesId, streamId) AS groupKey, MAX(lastWatched) AS maxWatched
+            FROM watch_progress
+            WHERE completed = 1
+            GROUP BY groupKey
+        ) grouped ON COALESCE(wp.seriesId, wp.streamId) = grouped.groupKey AND wp.lastWatched = grouped.maxWatched
+        WHERE wp.completed = 1
+        ORDER BY wp.lastWatched DESC
+        LIMIT 15
+    """)
+    fun getCompletedContent(): Flow<List<WatchProgressEntity>>
+
     @Query("DELETE FROM watch_progress")
     suspend fun clearAll()
 }

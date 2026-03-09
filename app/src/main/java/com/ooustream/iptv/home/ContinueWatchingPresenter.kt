@@ -35,6 +35,8 @@ class ContinueWatchingPresenter : Presenter() {
         val title = root.findViewById<TextView>(R.id.cw_title)
         val progressBar = root.findViewById<ProgressBar>(R.id.cw_progress)
         val resumeText = root.findViewById<TextView>(R.id.cw_resume)
+        val episodeBadge = root.findViewById<TextView>(R.id.cw_episode_badge)
+        val timeLeft = root.findViewById<TextView>(R.id.cw_time_left)
 
         title.text = progress.name
         progressBar.progress = (progress.progressPercent * 100).toInt()
@@ -52,6 +54,29 @@ class ContinueWatchingPresenter : Presenter() {
         } else {
             resumeText.text = "Resume"
             resumeText.visibility = View.GONE
+        }
+
+        // Episode badge: "S1 E5" shown top-left for series only
+        if (isSeries && progress.seasonNum != null && progress.episodeNum != null) {
+            episodeBadge.text = "S${progress.seasonNum} E${progress.episodeNum}"
+            episodeBadge.visibility = View.VISIBLE
+        } else {
+            episodeBadge.visibility = View.GONE
+        }
+
+        // Time remaining label: "(N)m left", hidden for completed content or unknown duration
+        val isCompleted = progress.progressPercent >= 0.95f
+        val duration = progress.duration
+        if (duration > 0L && !isCompleted) {
+            val minutesLeft = ((duration - progress.position) / 60000L).toInt()
+            if (minutesLeft > 0) {
+                timeLeft.text = "${minutesLeft}m left"
+                timeLeft.visibility = View.VISIBLE
+            } else {
+                timeLeft.visibility = View.GONE
+            }
+        } else {
+            timeLeft.visibility = View.GONE
         }
 
         progress.icon?.let { url ->

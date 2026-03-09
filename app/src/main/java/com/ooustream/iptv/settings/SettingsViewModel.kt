@@ -3,6 +3,8 @@ package com.ooustream.iptv.settings
 import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.local.OoustreamDatabase
+import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
+import com.ooustream.iptv.data.local.dao.WatchProgressDao
 import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.CredentialStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,7 +19,9 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val credentialStore: CredentialStore,
     private val database: OoustreamDatabase,
-    private val contentCacheRepository: ContentCacheRepository
+    private val contentCacheRepository: ContentCacheRepository,
+    private val watchProgressDao: WatchProgressDao,
+    private val seriesTrackingDao: SeriesTrackingDao
 ) : BaseViewModel() {
 
     sealed class SettingsEvent {
@@ -51,6 +55,17 @@ class SettingsViewModel @Inject constructor(
                 _event.emit(SettingsEvent.CacheCleared)
             } catch (e: Exception) {
                 _error.emit("Failed to clear cache: ${e.message}")
+            }
+        }
+    }
+
+    fun clearWatchHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                watchProgressDao.clearAll()
+                seriesTrackingDao.clearAll()
+            } catch (e: Exception) {
+                _error.emit("Failed to clear watch history: ${e.message}")
             }
         }
     }

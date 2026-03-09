@@ -9,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.leanback.widget.Presenter
+import com.facebook.shimmer.ShimmerFrameLayout
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
@@ -45,6 +46,7 @@ class SectionCardPresenter : Presenter() {
         val accentBar = root.findViewById<View>(R.id.section_accent_bar)
         val gradientBg = root.findViewById<View>(R.id.section_gradient_bg)
         val cta = root.findViewById<TextView>(R.id.section_cta)
+        val shimmerLine = root.findViewById<ShimmerFrameLayout>(R.id.section_shimmer_line)
 
         icon.setImageResource(section.iconRes)
         icon.setColorFilter(section.accentColor)
@@ -66,6 +68,9 @@ class SectionCardPresenter : Presenter() {
         // Set CTA text
         cta.text = section.cta
 
+        // Start sweeping gold shimmer on the accent line
+        shimmerLine?.startShimmer()
+
         root.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 DpadSoundManager.getInstance()?.playMove()
@@ -74,9 +79,13 @@ class SectionCardPresenter : Presenter() {
                     v.overlay.add(FocusBracketDrawable())
                 }
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
+                cta.setTextColor(0xFFFFC107.toInt())   // gold
+                count.setTextColor(0xCCFFFFFF.toInt()) // brighter white
             } else {
                 v.overlay.clear()
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
+                cta.setTextColor(0x99FFFFFF.toInt())   // default muted white
+                count.setTextColor(0xB3FFFFFF.toInt()) // default secondary white
             }
         }
     }
@@ -84,5 +93,6 @@ class SectionCardPresenter : Presenter() {
     override fun onUnbindViewHolder(viewHolder: ViewHolder) {
         val root = viewHolder.view as FrameLayout
         root.setOnFocusChangeListener(null)
+        root.findViewById<ShimmerFrameLayout>(R.id.section_shimmer_line)?.stopShimmer()
     }
 }

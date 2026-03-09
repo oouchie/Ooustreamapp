@@ -12,6 +12,7 @@ import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
+import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
 import com.ooustream.iptv.data.local.dao.WatchProgressDao
 import com.ooustream.iptv.data.local.entity.CachedCategoryEntity
@@ -27,6 +28,7 @@ import com.ooustream.iptv.data.local.entity.SearchHistoryEntity
 import com.ooustream.iptv.data.local.entity.SearchIndexEntity
 import com.ooustream.iptv.data.local.entity.SearchIndexFts
 import com.ooustream.iptv.data.local.entity.WatchAnalyticsEntity
+import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 
 @Database(
@@ -44,9 +46,10 @@ import com.ooustream.iptv.data.local.entity.WatchProgressEntity
         ChannelWatchLogEntity::class,
         ChannelScoreEntity::class,
         EpgPatternEntity::class,
-        PosterCacheEntity::class
+        PosterCacheEntity::class,
+        SeriesTrackingEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class OoustreamDatabase : RoomDatabase() {
@@ -62,4 +65,5 @@ abstract class OoustreamDatabase : RoomDatabase() {
     abstract fun channelScoreDao(): ChannelScoreDao
     abstract fun epgPatternDao(): EpgPatternDao
     abstract fun posterCacheDao(): PosterCacheDao
+    abstract fun seriesTrackingDao(): SeriesTrackingDao
 }

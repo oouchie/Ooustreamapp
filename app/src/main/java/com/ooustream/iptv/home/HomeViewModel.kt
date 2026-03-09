@@ -3,6 +3,8 @@ package com.ooustream.iptv.home
 import android.graphics.Color
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.BaseViewModel
+import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
+import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
@@ -44,7 +46,8 @@ class HomeViewModel @Inject constructor(
     private val recommendationEngine: RecommendationEngine,
     private val channelRecommendationEngine: ChannelRecommendationEngine,
     private val smartEpgFiller: SmartEpgFiller,
-    private val epgCacheRepository: EpgCacheRepository
+    private val epgCacheRepository: EpgCacheRepository,
+    private val seriesTrackingDao: SeriesTrackingDao
 ) : BaseViewModel() {
 
     init {
@@ -91,6 +94,12 @@ class HomeViewModel @Inject constructor(
 
     val continueWatching: Flow<List<WatchProgressEntity>> =
         watchProgressRepository.getContinueWatching()
+
+    val newEpisodes: Flow<List<SeriesTrackingEntity>> =
+        seriesTrackingDao.getSeriesWithNewEpisodes()
+
+    val watchItAgain: Flow<List<WatchProgressEntity>> =
+        watchProgressRepository.getCompletedContent()
 
     private val _featuredContent = MutableStateFlow<List<FeaturedItem>>(emptyList())
     val featuredContent: StateFlow<List<FeaturedItem>> = _featuredContent.asStateFlow()

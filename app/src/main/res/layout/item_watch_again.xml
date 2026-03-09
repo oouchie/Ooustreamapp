@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/fy_root"
+    android:id="@+id/wa_root"
     android:layout_width="180dp"
     android:layout_height="270dp"
     android:background="@drawable/bg_aurora_card"
@@ -10,12 +10,28 @@
     android:focusableInTouchMode="true">
 
     <ImageView
-        android:id="@+id/fy_image"
+        android:id="@+id/wa_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         tools:ignore="ContentDescription" />
 
+    <!-- Top-right gold checkmark badge: 20dp circle -->
+    <TextView
+        android:id="@+id/wa_checkmark"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:background="#FFC107"
+        android:gravity="center"
+        android:text="&#10003;"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        tools:ignore="SmallSp" />
+
+    <!-- Bottom title bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,34 +41,13 @@
         android:padding="8dp">
 
         <TextView
-            android:id="@+id/fy_title"
+            android:id="@+id/wa_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="2"
             android:textColor="@color/text_primary"
             android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/fy_reason"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/text_accent"
-            android:textSize="11sp"
-            tools:text="Because you watch Action" />
-
-        <TextView
-            android:id="@+id/fy_type_badge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textColor="@color/text_secondary"
-            android:textSize="10sp"
-            android:textAllCaps="true"
-            android:visibility="gone"
-            tools:text="VOD" />
     </LinearLayout>
+
 </FrameLayout>

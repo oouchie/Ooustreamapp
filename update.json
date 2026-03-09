@@ -1,7 +1,7 @@
 {
-  "version_name": "2.8.1",
-  "version_code": 23,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.8.1/app-release.apk",
-  "changelog": "v2.8.1 — Stability & UX Fixes\n\n• Fixed crash on Home screen hero rotation (divide by zero)\n• Fixed crash on Movies/Series grid scrolling (IndexOutOfBounds)\n• Safe adapter updates across all Home screen rows\n• Movies, Series & Live TV now auto-select first category when no favorites exist\n• Improved grid performance with DiffCallback updates",
+  "version_name": "2.9.0",
+  "version_code": 24,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.9.0/app-release.apk",
+  "changelog": "v2.9.0 — Premium Home Redesign + Watch History\n\n• New Episodes row — detects unwatched episodes for tracked series\n• Watch It Again row — completed content for easy rewatching\n• Enhanced Continue Watching cards — episode badges + time remaining\n• Clear Watch History option in Settings\n• Premium card redesign — bigger 180×270dp poster cards with 14dp corners\n• Focus-revealed metadata line + micro-CTA on poster cards\n• Shimmer loading on poster and section cards\n• Section cards redesigned — 320×160dp with glass border\n• Neighbor dimming — spotlight effect dims non-focused cards in each row\n• Row header highlighting — labels turn gold when row is focused\n• Track picker fix — audio tracks now refresh after channel/episode switch\n• New app icon and TV banner",
   "mandatory": false
 }

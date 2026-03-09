@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.leanback.widget.Presenter
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
@@ -60,12 +61,8 @@ class ForYouLivePresenter : Presenter() {
 
         name.text = channel.channelName
 
-        if (!channel.channelIcon.isNullOrBlank()) {
-            logo.load(PosterUrlRewriter.rewrite(channel.channelIcon)) { crossfade(200) }
-            logo.visibility = View.VISIBLE
-        } else {
-            logo.visibility = View.GONE
-        }
+        val initials = root.findViewById<TextView>(R.id.for_you_live_initials)
+        ChannelDisplayHelper.loadLogo(logo, initials, channel.channelIcon, channel.channelName)
 
         // Now playing with EPG source styling
         val epg = channel.nowPlaying

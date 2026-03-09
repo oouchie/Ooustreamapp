@@ -2,8 +2,8 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cw_root"
-    android:layout_width="160dp"
-    android:layout_height="240dp"
+    android:layout_width="180dp"
+    android:layout_height="270dp"
     android:background="@drawable/bg_aurora_card"
     android:clipToOutline="true"
     android:focusable="true"
@@ -15,6 +15,25 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         tools:ignore="ContentDescription" />
+
+    <!-- Top-left episode badge: "S1 E5", shown only for series -->
+    <TextView
+        android:id="@+id/cw_episode_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="6dp"
+        android:background="@drawable/bg_slot_number_badge"
+        android:fontFamily="monospace"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:textColor="#FFFFFF"
+        android:textSize="9sp"
+        android:visibility="gone"
+        tools:text="S1 E5"
+        tools:visibility="visible" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -43,12 +62,31 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- Bottom-right time remaining label, sits above the progress bar -->
+    <TextView
+        android:id="@+id/cw_time_left"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="6dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_slot_number_badge"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:visibility="gone"
+        tools:text="23m left"
+        tools:visibility="visible" />
+
     <!-- Progress bar overlays the bottom edge of the poster -->
     <ProgressBar
         android:id="@+id/cw_progress"
         style="@android:style/Widget.ProgressBar.Horizontal"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
+        android:layout_height="4dp"
         android:layout_gravity="bottom"
         android:max="100"
         android:progressDrawable="@drawable/progress_continue_watching" />

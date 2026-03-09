@@ -14,6 +14,7 @@ import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.ProgressiveImageLoader
 import com.ooustream.iptv.common.QualityPolicy
+import com.ooustream.iptv.recommendation.NewEpisodeSyncWorker
 import com.ooustream.iptv.recommendation.ScoreRefreshWorker
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -38,6 +39,7 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
         DpadSoundManager.setInstance(dpadSoundManager)
         ProgressiveImageLoader.setQualityPolicy(qualityPolicy)
         scheduleScoreRefresh()
+        scheduleNewEpisodeSync()
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -63,6 +65,16 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "score_refresh",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    private fun scheduleNewEpisodeSync() {
+        val request = PeriodicWorkRequestBuilder<NewEpisodeSyncWorker>(6, TimeUnit.HOURS)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "new_episode_sync",
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )

@@ -27,6 +27,15 @@ data class ParsedChannel(
 )
 
 /**
+ * Display-ready channel name with country/quality extracted into separate fields.
+ */
+data class DisplayChannelName(
+    val name: String,
+    val country: String?,
+    val quality: String?
+)
+
+/**
  * Stateless parser for extracting network brand and content type from messy IPTV channel names.
  * Handles country prefixes, quality suffixes, local affiliates, and network branding.
  */
@@ -239,6 +248,40 @@ object ChannelNameParser {
             isLocal = false,
             market = null,
             contentType = contentType,
+            quality = quality
+        )
+    }
+
+    /**
+     * Parse channel name for display purposes — strips country prefix and quality suffix
+     * into separate fields so the name field contains only the channel name.
+     *
+     * "US | ESPN SportsCenter HD" → DisplayChannelName("ESPN SportsCenter", "US", "HD")
+     * "UK | Sky Sports Premier League 4K" → DisplayChannelName("Sky Sports Premier League", "UK", "4K")
+     * "CNN" → DisplayChannelName("CNN", null, null)
+     */
+    fun parseForDisplay(channelName: String): DisplayChannelName {
+        var working = channelName.trim()
+
+        // Extract country prefix
+        val countryMatch = COUNTRY_PREFIX_REGEX.find(working)
+        val country = countryMatch?.groupValues?.get(1)?.uppercase()
+        if (countryMatch != null) working = working.removePrefix(countryMatch.value)
+
+        // Extract quality suffix
+        val qualityMatch = QUALITY_SUFFIX_REGEX.find(working)
+        val quality = qualityMatch?.groupValues?.get(1)?.uppercase()
+        if (qualityMatch != null) working = working.replace(qualityMatch.value, "").trim()
+
+        // Clean remaining artifacts (trailing/leading pipes)
+        working = working
+            .replace(Regex("\\s*\\|\\s*$"), "")
+            .replace(Regex("^\\s*\\|\\s*"), "")
+            .trim()
+
+        return DisplayChannelName(
+            name = working.ifBlank { channelName.trim() },
+            country = country,
             quality = quality
         )
     }

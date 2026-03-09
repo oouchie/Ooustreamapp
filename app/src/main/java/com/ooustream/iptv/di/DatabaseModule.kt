@@ -13,6 +13,7 @@ import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
+import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
 import com.ooustream.iptv.data.local.dao.WatchProgressDao
 import dagger.Module
@@ -71,4 +72,7 @@ object DatabaseModule {
 
     @Provides
     fun providePosterCacheDao(db: OoustreamDatabase): PosterCacheDao = db.posterCacheDao()
+
+    @Provides
+    fun provideSeriesTrackingDao(db: OoustreamDatabase): SeriesTrackingDao = db.seriesTrackingDao()
 }

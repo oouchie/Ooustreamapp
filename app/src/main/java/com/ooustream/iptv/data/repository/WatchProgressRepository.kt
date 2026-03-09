@@ -31,5 +31,8 @@ class WatchProgressRepository @Inject constructor(
     suspend fun getProgressForIds(streamIds: List<String>): List<WatchProgressEntity> =
         watchProgressDao.getProgressForIds(streamIds)
 
+    fun getCompletedContent(): Flow<List<WatchProgressEntity>> =
+        watchProgressDao.getCompletedContent()
+
     suspend fun clearAll() = watchProgressDao.clearAll()
 }

@@ -41,6 +41,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_REFRESH_PLAYLIST = 9L
         private const val ACTION_CRASH_LOG = 10L
         private const val ACTION_AUDIO_DECODER = 11L
+        private const val ACTION_CLEAR_HISTORY = 12L
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -137,6 +138,15 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Clear Watch History
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_CLEAR_HISTORY)
+                .title("Clear Watch History")
+                .description("Remove all watch progress and series tracking data")
+                .build()
+        )
+
         // Audio Decoder info (non-actionable)
         val ffmpegAvailable = AudioLogger.isFfmpegAvailable
         val decoderDesc = if (ffmpegAvailable)
@@ -182,6 +192,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_REFRESH_PLAYLIST -> refreshPlaylist()
             ACTION_CRASH_LOG -> showCrashLog()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
+            ACTION_CLEAR_HISTORY -> showClearHistoryConfirmation()
             ACTION_LOGOUT -> showLogoutConfirmation()
         }
     }
@@ -288,6 +299,18 @@ class SettingsFragment : GuidedStepSupportFragment() {
     // endregion
 
     // region Confirmation Dialogs
+
+    private fun showClearHistoryConfirmation() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Clear Watch History?")
+            .setMessage("This will remove all watch progress, continue watching items, and series tracking data. This cannot be undone.")
+            .setPositiveButton("Clear") { _, _ ->
+                viewModel.clearWatchHistory()
+                Toast.makeText(requireContext(), "Watch history cleared", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     private fun showClearCacheConfirmation() {
         add(

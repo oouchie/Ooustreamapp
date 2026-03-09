@@ -2,6 +2,8 @@ package com.ooustream.iptv.player
 
 import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
+import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
+import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.LiveStream
@@ -24,7 +26,8 @@ class PlayerViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val watchProgressRepository: WatchProgressRepository,
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
-    private val recommendationEngine: RecommendationEngine
+    private val recommendationEngine: RecommendationEngine,
+    private val seriesTrackingDao: SeriesTrackingDao
 ) : BaseViewModel() {
 
     var hasResumed = false
@@ -89,7 +92,46 @@ class PlayerViewModel @Inject constructor(
                         completed = percent >= 0.95f
                     )
                 )
+                // Upsert series tracking for new episode detection
+                if (contentType == ContentType.SERIES && seriesId > 0 && seasonNum > 0) {
+                    upsertSeriesTracking()
+                }
             }
+        }
+    }
+
+    private suspend fun upsertSeriesTracking() {
+        val existing = seriesTrackingDao.getTracking(seriesId)
+        val now = System.currentTimeMillis()
+        if (existing != null) {
+            // Only update if this episode is further than last watched
+            if (seasonNum > existing.lastWatchedSeason ||
+                (seasonNum == existing.lastWatchedSeason && episodeNum > existing.lastWatchedEpisode)
+            ) {
+                seriesTrackingDao.upsert(
+                    existing.copy(
+                        lastWatchedSeason = seasonNum,
+                        lastWatchedEpisode = episodeNum,
+                        lastWatchedEpisodeId = streamId.toIntOrNull() ?: 0,
+                        lastWatchedAt = now
+                    )
+                )
+            } else {
+                // Still update timestamp
+                seriesTrackingDao.upsert(existing.copy(lastWatchedAt = now))
+            }
+        } else {
+            seriesTrackingDao.upsert(
+                SeriesTrackingEntity(
+                    seriesId = seriesId,
+                    seriesTitle = streamName.substringBefore(" - ").trim(),
+                    posterUrl = streamIcon.ifBlank { null },
+                    lastWatchedSeason = seasonNum,
+                    lastWatchedEpisode = episodeNum,
+                    lastWatchedEpisodeId = streamId.toIntOrNull() ?: 0,
+                    lastWatchedAt = now
+                )
+            )
         }
     }
 

@@ -4,13 +4,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.ChannelNameParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,14 +51,33 @@ open class ChannelPresenter(
 
     override fun onBindViewHolder(viewHolder: ViewHolder, item: Any) {
         val channel = item as LiveStream
-        val root = viewHolder.view as LinearLayout
+        val root = viewHolder.view as FrameLayout
         val logo = root.findViewById<ImageView>(R.id.channel_logo)
+        val initials = root.findViewById<TextView>(R.id.channel_initials)
         val name = root.findViewById<TextView>(R.id.channel_name)
         val epg = root.findViewById<TextView>(R.id.channel_epg)
+        val epgTime = root.findViewById<TextView>(R.id.epg_time)
+        val epgContainer = root.findViewById<View>(R.id.epg_container)
+        val epgProgressContainer = root.findViewById<View>(R.id.epg_progress_container)
+        val qualityBadge = root.findViewById<TextView>(R.id.quality_badge)
+        val countryBadge = root.findViewById<TextView>(R.id.country_badge)
         val accentBar = root.findViewById<View>(R.id.channel_accent_bar)
 
-        name.text = channel.name
-        epg.text = "" // EPG set externally
+        // Parse channel name for display
+        val parsed = ChannelNameParser.parseForDisplay(channel.name)
+        name.text = parsed.name
+
+        // EPG hidden by default — set externally when EPG data arrives
+        epg.text = ""
+        epgTime.text = ""
+        epgContainer.visibility = View.GONE
+        epgProgressContainer.visibility = View.GONE
+
+        // Quality badge
+        ChannelDisplayHelper.bindQualityBadge(qualityBadge, parsed.quality)
+
+        // Country badge
+        ChannelDisplayHelper.bindCountryBadge(countryBadge, parsed.country)
 
         // Show favorites star
         val star = root.findViewById<ImageView>(R.id.channel_favorite_star)
@@ -70,9 +90,8 @@ open class ChannelPresenter(
             star.visibility = View.GONE
         }
 
-        val iconUrl = channel.streamIcon
-        val cacheKey = "channel_${channel.streamId}"
-        ProgressiveImageLoader.loadThumbnail(logo, iconUrl, cacheKey)
+        // Load logo with initials fallback
+        ChannelDisplayHelper.loadLogo(logo, initials, channel.streamIcon, channel.name)
 
         root.setOnFocusChangeListener { v, hasFocus ->
             // Cancel any pending focus effect from prior focus/unfocus
@@ -97,12 +116,16 @@ open class ChannelPresenter(
                     glow?.let { v.overlay.add(it) }
                     brackets?.let { v.overlay.add(it) }
                     // Scale + accent
-                    v.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
+                    v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(150).start()
                     accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.focus_gold))
+                    // Gold tint on name when focused
+                    name.setTextColor(0xFFFFD700.toInt())
 
                     // Full-res image after 300ms total
                     delay(240)
-                    ProgressiveImageLoader.loadFullRes(logo, iconUrl)
+                    if (logo.visibility == View.VISIBLE) {
+                        ProgressiveImageLoader.loadFullRes(logo, channel.streamIcon)
+                    }
                 }
                 v.setTag(R.id.focus_effect_job, job)
             } else {
@@ -112,12 +135,13 @@ open class ChannelPresenter(
                 v.scaleX = 1f
                 v.scaleY = 1f
                 accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.brand_cyan))
+                name.setTextColor(0xFFFFFFFF.toInt())
             }
         }
     }
 
     override fun onUnbindViewHolder(viewHolder: ViewHolder) {
-        val root = viewHolder.view as LinearLayout
+        val root = viewHolder.view as FrameLayout
         (root.getTag(R.id.focus_effect_job) as? Job)?.cancel()
         root.setOnFocusChangeListener(null)
     }

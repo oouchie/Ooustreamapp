@@ -8,11 +8,11 @@
 
     <!-- Cards -->
     <dimen name="card_min_width">120dp</dimen>
-    <dimen name="card_poster_width">120dp</dimen>
-    <dimen name="card_poster_height">180dp</dimen>
+    <dimen name="card_poster_width">180dp</dimen>
+    <dimen name="card_poster_height">270dp</dimen>
     <dimen name="card_channel_height">64dp</dimen>
     <dimen name="card_category_height">80dp</dimen>
-    <dimen name="card_corner_radius">12dp</dimen>
+    <dimen name="card_corner_radius">14dp</dimen>
 
     <!-- Focus Brackets -->
     <dimen name="focus_bracket_length">24dp</dimen>
@@ -39,11 +39,13 @@
     <dimen name="hero_height">220dp</dimen>
 
     <!-- Row heights -->
-    <dimen name="row_continue_watching_height">160dp</dimen>
-    <dimen name="row_for_you_height">160dp</dimen>
+    <dimen name="row_continue_watching_height">290dp</dimen>
+    <dimen name="row_for_you_height">290dp</dimen>
     <dimen name="row_for_you_live_height">72dp</dimen>
-    <dimen name="row_sections_height">120dp</dimen>
-    <dimen name="row_trending_height">200dp</dimen>
+    <dimen name="row_sections_height">180dp</dimen>
+    <dimen name="row_trending_height">290dp</dimen>
+    <dimen name="row_new_episodes_height">290dp</dimen>
+    <dimen name="row_watch_again_height">290dp</dimen>
 
     <!-- Grid -->
     <integer name="poster_columns">3</integer>

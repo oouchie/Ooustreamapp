@@ -336,6 +336,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         player?.prepare()
                         player?.play()
                         glue?.title = next.name
+                        controlsBar?.bindSeries(
+                            viewModel.streamName, viewModel.streamIcon,
+                            viewModel.seasonNum, viewModel.episodeNum
+                        )
 
                         Toast.makeText(requireContext(), next.name, Toast.LENGTH_SHORT).show()
                     } else {
@@ -1114,6 +1118,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 player?.prepare()
                 player?.play()
                 glue?.title = next.name
+                controlsBar?.bindSeries(
+                    viewModel.streamName, viewModel.streamIcon,
+                    viewModel.seasonNum, viewModel.episodeNum
+                )
 
                 Toast.makeText(requireContext(), next.name, Toast.LENGTH_SHORT).show()
             } else {

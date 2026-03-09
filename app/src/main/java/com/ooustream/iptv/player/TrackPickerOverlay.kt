@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import com.ooustream.iptv.R
 import android.widget.Toast
@@ -44,6 +45,16 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
     val isShowing: Boolean get() = visibility == VISIBLE
 
+    private var activePlayer: Player? = null
+    private val trackChangeListener = object : Player.Listener {
+        override fun onTracksChanged(tracks: Tracks) {
+            val p = activePlayer ?: return
+            if (isShowing && tracks.groups.isNotEmpty()) {
+                refreshTracks(p)
+            }
+        }
+    }
+
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_track_picker, this, true)
 
@@ -59,6 +70,41 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     }
 
     fun show(player: Player) {
+        // Register listener for track changes (handles late-arriving metadata)
+        activePlayer?.removeListener(trackChangeListener)
+        activePlayer = player
+        player.addListener(trackChangeListener)
+
+        refreshTracks(player)
+
+        // Show with slide animation — bring to front so we draw above controls bar
+        bringToFront()
+        visibility = VISIBLE
+        panel.translationX = dp(320).toFloat()
+        panel.animate()
+            .translationX(0f)
+            .setDuration(250)
+            .setListener(null)
+            .start()
+
+        scrim.alpha = 0f
+        scrim.animate()
+            .alpha(1f)
+            .setDuration(250)
+            .start()
+
+        // Focus on first track item
+        post {
+            val firstItem = if (audioContainer.childCount > 0) {
+                audioContainer.getChildAt(0)
+            } else if (subtitleContainer.childCount > 0) {
+                subtitleContainer.getChildAt(0)
+            } else null
+            firstItem?.requestFocus()
+        }
+    }
+
+    private fun refreshTracks(player: Player) {
         audioContainer.removeAllViews()
         subtitleContainer.removeAllViews()
 
@@ -96,36 +142,13 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         subtitleTracks.forEach { track ->
             addTrackItem(subtitleContainer, track, player)
         }
-
-        // Show with slide animation — bring to front so we draw above controls bar
-        bringToFront()
-        visibility = VISIBLE
-        panel.translationX = dp(320).toFloat()
-        panel.animate()
-            .translationX(0f)
-            .setDuration(250)
-            .setListener(null)
-            .start()
-
-        scrim.alpha = 0f
-        scrim.animate()
-            .alpha(1f)
-            .setDuration(250)
-            .start()
-
-        // Focus on first track item
-        post {
-            val firstItem = if (audioContainer.childCount > 0) {
-                audioContainer.getChildAt(0)
-            } else if (subtitleContainer.childCount > 0) {
-                subtitleContainer.getChildAt(0)
-            } else null
-            firstItem?.requestFocus()
-        }
     }
 
     fun dismiss() {
         if (!isShowing) return
+
+        activePlayer?.removeListener(trackChangeListener)
+        activePlayer = null
 
         panel.animate()
             .translationX(dp(320).toFloat())

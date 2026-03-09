@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Stronger gradient for poster cards - transparent to 85% black -->
+<!-- Steep gradient for poster cards — transparent to 90% black -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:type="linear"
         android:angle="270"
         android:startColor="#00000000"
-        android:centerColor="#40000000"
-        android:endColor="#D9000000" />
+        android:centerColor="#80000000"
+        android:endColor="#E6000000" />
 </shape>

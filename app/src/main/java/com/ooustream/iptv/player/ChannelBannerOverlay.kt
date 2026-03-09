@@ -11,8 +11,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.ChannelNameParser
 import com.ooustream.iptv.epg.InferredEpg
 import com.ooustream.iptv.epg.bindEpgText
 import java.text.SimpleDateFormat
@@ -32,6 +34,7 @@ class ChannelBannerOverlay @JvmOverloads constructor(
 
     private val card: LinearLayout
     private val logo: ImageView
+    private val initials: TextView
     private val channelName: TextView
     private val channelNum: TextView
     private val nowPlaying: TextView
@@ -44,6 +47,7 @@ class ChannelBannerOverlay @JvmOverloads constructor(
         LayoutInflater.from(context).inflate(R.layout.overlay_channel_banner, this, true)
         card = findViewById(R.id.banner_card)
         logo = findViewById(R.id.banner_logo)
+        initials = findViewById(R.id.banner_initials)
         channelName = findViewById(R.id.banner_channel_name)
         channelNum = findViewById(R.id.banner_channel_num)
         nowPlaying = findViewById(R.id.banner_now_playing)
@@ -58,16 +62,12 @@ class ChannelBannerOverlay @JvmOverloads constructor(
      * Optionally provide [epgPrograms] for current/next show info.
      */
     fun show(channel: LiveStream, channelIndex: Int, epgPrograms: List<EpgProgram> = emptyList(), inferredEpg: InferredEpg? = null) {
-        channelName.text = channel.name
+        val parsed = ChannelNameParser.parseForDisplay(channel.name)
+        channelName.text = parsed.name
         channelNum.text = "Ch ${channelIndex + 1}"
 
-        // Channel logo
-        if (!channel.streamIcon.isNullOrBlank()) {
-            logo.load(channel.streamIcon) { crossfade(200) }
-            logo.visibility = VISIBLE
-        } else {
-            logo.visibility = GONE
-        }
+        // Channel logo with initials fallback
+        ChannelDisplayHelper.loadLogo(logo, initials, channel.streamIcon, channel.name)
 
         // EPG: find current and next program
         val now = System.currentTimeMillis() / 1000

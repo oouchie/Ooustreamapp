@@ -158,7 +158,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="@string/continue_watching"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:visibility="gone"
@@ -177,6 +177,34 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
+                <!-- New Episodes Section -->
+                <TextView
+                    android:id="@+id/new_episodes_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="New Episodes"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/new_episodes_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/row_new_episodes_height"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
                 <!-- For You Section -->
                 <TextView
                     android:id="@+id/for_you_label"
@@ -186,7 +214,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="@string/for_you"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:visibility="gone"
@@ -214,7 +242,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="@string/for_you_live_now"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:visibility="gone"
@@ -242,7 +270,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="Browse"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -266,7 +294,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="Trending Now"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:visibility="gone"
@@ -285,6 +313,34 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
+                <!-- Watch It Again Section -->
+                <TextView
+                    android:id="@+id/watch_again_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="Watch It Again"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/watch_again_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/row_watch_again_height"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
                 <!-- Trending Series Section -->
                 <TextView
                     android:id="@+id/trending_series_label"
@@ -294,7 +350,7 @@
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
                     android:text="Trending Series"
-                    android:textColor="@color/text_accent"
+                    android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:visibility="gone"

@@ -34,6 +34,7 @@ import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.common.CategoryEmoji
 import com.ooustream.iptv.common.CategoryItem
 import com.ooustream.iptv.common.CategoryListAdapter
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.common.ChannelPresenter
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
 import com.ooustream.iptv.common.DeviceUtils
@@ -367,8 +368,12 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     val selectedPos = channelsList.selectedPosition
                     if (selectedPos >= 0 && selectedPos < filteredChannels.size) {
                         val channel = filteredChannels[selectedPos]
-                        val epgTextView = channelsList.findViewHolderForAdapterPosition(selectedPos)
-                            ?.itemView?.findViewById<TextView>(R.id.channel_epg)
+                        val itemView = channelsList.findViewHolderForAdapterPosition(selectedPos)?.itemView
+                        val epgTextView = itemView?.findViewById<TextView>(R.id.channel_epg)
+                        val epgTimeView = itemView?.findViewById<TextView>(R.id.epg_time)
+                        val epgContainer = itemView?.findViewById<View>(R.id.epg_container)
+                        val progressContainer = itemView?.findViewById<View>(R.id.epg_progress_container)
+                        val progressFill = itemView?.findViewById<View>(R.id.epg_progress_fill)
 
                         if (programs.isNotEmpty()) {
                             val now = System.currentTimeMillis() / 1000
@@ -379,7 +384,17 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                             }
                             if (current?.title != null) {
                                 epgTextView?.text = current.title
+                                epgTimeView?.text = ChannelDisplayHelper.formatEpgTimeCompact(current.start)
+                                epgContainer?.visibility = View.VISIBLE
                                 smartEpgFiller.learnPattern(channel.streamId, channel.name, current.title!!)
+
+                                // Progress bar
+                                val startTs = current.startTimestamp?.toLongOrNull()
+                                val stopTs = current.stopTimestamp?.toLongOrNull()
+                                val progress = ChannelDisplayHelper.calculateEpgProgress(startTs, stopTs)
+                                if (progressContainer != null && progressFill != null) {
+                                    ChannelDisplayHelper.setProgressBar(progressFill, progressContainer, progress)
+                                }
                             }
                         } else if (epgTextView != null) {
                             val categoryName = viewModel.categories.value
@@ -389,6 +404,14 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                                 null, channel.streamId, channel.name, categoryName
                             )
                             bindEpgText(epgTextView, inferred)
+                            // Show EPG container if inferred text is set
+                            if (epgTextView.text.isNotBlank()) {
+                                epgContainer?.visibility = View.VISIBLE
+                                epgTimeView?.text = ""
+                            } else {
+                                epgContainer?.visibility = View.GONE
+                            }
+                            progressContainer?.visibility = View.GONE
                         }
                     }
                 }

@@ -17,9 +17,11 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import coil.load
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.ChannelNameParser
 import com.ooustream.iptv.epg.EpgSource
 import com.ooustream.iptv.epg.InferredEpg
 import java.text.SimpleDateFormat
@@ -95,19 +97,11 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
 
         // Show channel logo, hide poster
         contentPoster.visibility = GONE
-        contentInitials.visibility = GONE
-        val logoUrl = channel.streamIcon
-        if (!logoUrl.isNullOrBlank()) {
-            channelLogo.visibility = VISIBLE
-            channelLogo.load(logoUrl) { crossfade(200) }
-        } else {
-            channelLogo.visibility = GONE
-            contentInitials.visibility = VISIBLE
-            contentInitials.text = getInitials(channel.name)
-        }
+        ChannelDisplayHelper.loadLogo(channelLogo, contentInitials, channel.streamIcon, channel.name)
 
-        // Title = channel name
-        infoTitle.text = channel.name
+        // Title = parsed channel name (without country/quality clutter)
+        val parsed = ChannelNameParser.parseForDisplay(channel.name)
+        infoTitle.text = parsed.name
 
         // EPG: find current and next program
         val now = System.currentTimeMillis() / 1000
@@ -305,12 +299,24 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         }
         qualityBadge.text = label
         qualityBadge.visibility = VISIBLE
-        val bgRes = when {
-            height >= 2160 -> R.drawable.bg_quality_badge_4k
-            height >= 720 -> R.drawable.bg_quality_badge_hd
-            else -> R.drawable.bg_quality_badge_sd
+        when {
+            height >= 2160 -> {
+                qualityBadge.setBackgroundResource(R.drawable.bg_quality_badge_4k)
+                qualityBadge.setTextColor(0xFF22C55E.toInt())
+            }
+            height >= 1080 -> {
+                qualityBadge.setBackgroundResource(R.drawable.bg_quality_badge_fhd)
+                qualityBadge.setTextColor(0xFFFFD700.toInt())
+            }
+            height >= 720 -> {
+                qualityBadge.setBackgroundResource(R.drawable.bg_quality_badge_hd)
+                qualityBadge.setTextColor(0x99FFD700.toInt())
+            }
+            else -> {
+                qualityBadge.setBackgroundResource(R.drawable.bg_quality_badge_sd)
+                qualityBadge.setTextColor(0x99FFFFFF.toInt())
+            }
         }
-        qualityBadge.setBackgroundResource(bgRes)
     }
 
     fun requestFocusOnPlayPause() {

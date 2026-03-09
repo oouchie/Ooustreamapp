@@ -1,63 +1,171 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/channel_root"
     android:layout_width="match_parent"
-    android:layout_height="56dp"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="6dp"
+    android:layout_marginVertical="3dp"
     android:background="@drawable/bg_channel_states"
     android:clipToOutline="true"
-    android:paddingHorizontal="10dp"
-    android:paddingVertical="2dp"
-    android:layout_marginBottom="4dp"
+    android:clipChildren="false"
     android:focusable="true"
     android:focusableInTouchMode="true">
 
-    <View
-        android:id="@+id/channel_accent_bar"
-        android:layout_width="3dp"
-        android:layout_height="32dp"
-        android:background="@color/brand_cyan" />
-
-    <ImageView
-        android:id="@+id/channel_logo"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:layout_marginStart="8dp"
-        android:scaleType="centerCrop"
-        tools:ignore="ContentDescription" />
-
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:layout_marginStart="12dp">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="10dp">
 
-        <TextView
-            android:id="@+id/channel_name"
+        <!-- Accent bar -->
+        <View
+            android:id="@+id/channel_accent_bar"
+            android:layout_width="2dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="10dp"
+            android:background="@color/brand_cyan" />
+
+        <!-- Logo container: 48dp rounded rect, centerInside -->
+        <FrameLayout
+            android:id="@+id/channel_logo_container"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_channel_logo_container">
+
+            <ImageView
+                android:id="@+id/channel_logo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerInside"
+                android:padding="4dp"
+                tools:ignore="ContentDescription" />
+
+            <!-- Fallback: letter abbreviation when no logo -->
+            <TextView
+                android:id="@+id/channel_initials"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif-condensed"
+                android:textStyle="bold"
+                android:textColor="#99FFFFFF"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Channel info column -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Channel name (2 lines max) -->
+            <TextView
+                android:id="@+id/channel_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#FFFFFF"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:lineSpacingExtra="-1dp" />
+
+            <!-- EPG: time + program title -->
+            <LinearLayout
+                android:id="@+id/epg_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="3dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/epg_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="10.5sp"
+                    android:fontFamily="monospace"
+                    android:textColor="#80FFD700"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:id="@+id/channel_epg"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textSize="11sp"
+                    android:textColor="#59FFFFFF"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- Mini progress bar -->
+            <FrameLayout
+                android:id="@+id/epg_progress_container"
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:layout_marginTop="6dp"
+                android:background="#0AFFFFFF"
+                android:visibility="gone">
+
+                <View
+                    android:id="@+id/epg_progress_fill"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:background="#4DFFD700" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- Right side: badges + favorite -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            android:textSize="15sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginStart="8dp">
 
-        <TextView
-            android:id="@+id/channel_epg"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_muted"
-            android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            <!-- Quality badge -->
+            <TextView
+                android:id="@+id/quality_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="8sp"
+                android:fontFamily="sans-serif-condensed"
+                android:textStyle="bold"
+                android:letterSpacing="0.05"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="2dp"
+                android:layout_marginEnd="4dp"
+                android:visibility="gone" />
+
+            <!-- Country badge -->
+            <TextView
+                android:id="@+id/country_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="8sp"
+                android:fontFamily="monospace"
+                android:textColor="#40FFFFFF"
+                android:background="@drawable/bg_country_badge"
+                android:paddingHorizontal="4dp"
+                android:paddingVertical="1dp"
+                android:layout_marginEnd="4dp"
+                android:visibility="gone" />
+
+            <!-- Favorite indicator -->
+            <ImageView
+                android:id="@+id/channel_favorite_star"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:visibility="gone"
+                tools:ignore="ContentDescription" />
+        </LinearLayout>
     </LinearLayout>
-
-    <ImageView
-        android:id="@+id/channel_favorite_star"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:visibility="gone"
-        tools:ignore="ContentDescription" />
-</LinearLayout>
+</FrameLayout>

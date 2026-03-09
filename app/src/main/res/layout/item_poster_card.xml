@@ -19,11 +19,25 @@
         android:background="@color/aurora_bg_elevated"
         tools:ignore="ContentDescription" />
 
+    <!-- Shimmer loading overlay (shown until image loads) -->
+    <com.facebook.shimmer.ShimmerFrameLayout
+        android:id="@+id/poster_shimmer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#1A1A24" />
+
+    </com.facebook.shimmer.ShimmerFrameLayout>
+
     <!-- Bottom gradient for title readability (bottom 60%) -->
     <View
         android:id="@+id/gradient_overlay"
         android:layout_width="match_parent"
-        android:layout_height="144dp"
+        android:layout_height="180dp"
         android:layout_gravity="bottom"
         android:background="@drawable/gradient_poster_aurora" />
 
@@ -71,7 +85,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="@color/text_primary"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:fontFamily="sans-serif-medium"
             android:maxLines="2"
             android:ellipsize="end"
@@ -94,6 +108,32 @@
             android:shadowDy="1"
             android:shadowRadius="4"
             android:visibility="gone" />
+
+        <!-- Metadata line (rating + quality or type) — shown on focus -->
+        <TextView
+            android:id="@+id/poster_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="10.5sp"
+            android:textColor="#80FFFFFF"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:paddingTop="0dp"
+            android:visibility="gone" />
+
+        <!-- Micro-CTA (Watch / Details) — shown on focus -->
+        <TextView
+            android:id="@+id/poster_cta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textSize="10sp"
+            android:textColor="#FFC107"
+            android:fontFamily="sans-serif-medium"
+            android:visibility="gone" />
+
     </LinearLayout>
 
     <!-- Watch progress bar (bottom edge) -->
@@ -101,11 +141,11 @@
         android:id="@+id/poster_progress_bar"
         style="@android:style/Widget.ProgressBar.Horizontal"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
+        android:layout_height="4dp"
         android:layout_gravity="bottom"
         android:max="1000"
         android:progress="0"
-        android:progressTint="#FF10B981"
+        android:progressTint="#FFC107"
         android:progressBackgroundTint="#33FFFFFF"
         android:visibility="gone" />
 </FrameLayout>

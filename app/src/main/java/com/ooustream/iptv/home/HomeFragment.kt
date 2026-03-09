@@ -23,6 +23,7 @@ import coil.request.CachePolicy
 import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AuroraBackgroundView
+import com.ooustream.iptv.common.BrowseCardFocusHelper
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.safeReplaceAll
 import com.ooustream.iptv.common.safeSetSelectedPosition
@@ -38,6 +39,7 @@ import com.ooustream.iptv.data.UserPlanManager
 import com.ooustream.iptv.multiview.MultiViewLockedPopup
 import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
+import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.LiveStream
@@ -87,10 +89,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var heroIndicators: LinearLayout
     private lateinit var continueWatchingLabel: TextView
     private lateinit var continueWatchingRow: HorizontalGridView
+    private lateinit var newEpisodesLabel: TextView
+    private lateinit var newEpisodesRow: HorizontalGridView
+    private lateinit var watchAgainLabel: TextView
+    private lateinit var watchAgainRow: HorizontalGridView
     private lateinit var forYouLabel: TextView
     private lateinit var forYouRow: HorizontalGridView
     private lateinit var forYouLiveLabel: TextView
     private lateinit var forYouLiveRow: HorizontalGridView
+    private lateinit var sectionsLabel: TextView
     private lateinit var sectionsRow: HorizontalGridView
     private lateinit var trendingLabel: TextView
     private lateinit var trendingRow: HorizontalGridView
@@ -100,6 +107,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // Adapters
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
+    private val newEpisodesObjectAdapter = ArrayObjectAdapter(NewEpisodesPresenter())
+    private val watchAgainObjectAdapter = ArrayObjectAdapter(WatchItAgainPresenter())
     private val forYouObjectAdapter = ArrayObjectAdapter(ForYouPresenter())
     private val forYouLiveObjectAdapter = ArrayObjectAdapter(ForYouLivePresenter())
     private val sectionPresenterSelector = ClassPresenterSelector().apply {
@@ -128,16 +137,20 @@ class HomeFragment : Fragment(), KeyEventHandler {
         setupSectionsRow()
         setupTrendingRow()
         setupContinueWatchingRow()
+        setupNewEpisodesRow()
         setupForYouRow()
         setupForYouLiveRow()
         setupHeroClickListener()
         observeFeaturedContent()
         observeContinueWatching()
+        observeNewEpisodes()
         observeForYouContent()
         observeForYouLiveContent()
         observeTrendingContent()
         setupTrendingSeriesRow()
         observeTrendingSeries()
+        setupWatchAgainRow()
+        observeWatchItAgain()
         loadFeatured()
         setupOnboarding(view)
 
@@ -169,6 +182,16 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 R.id.continue_watching_row -> {
                     viewModel.savedFocusRowId = R.id.continue_watching_row
                     viewModel.savedFocusPosition = continueWatchingRow.selectedPosition
+                    return
+                }
+                R.id.new_episodes_row -> {
+                    viewModel.savedFocusRowId = R.id.new_episodes_row
+                    viewModel.savedFocusPosition = newEpisodesRow.selectedPosition
+                    return
+                }
+                R.id.watch_again_row -> {
+                    viewModel.savedFocusRowId = R.id.watch_again_row
+                    viewModel.savedFocusPosition = watchAgainRow.selectedPosition
                     return
                 }
                 R.id.for_you_row -> {
@@ -221,6 +244,22 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 if (cwObjectAdapter.size() > 0) {
                     continueWatchingRow.safeSetSelectedPosition(pos, cwObjectAdapter.size())
                     continueWatchingRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
+            }
+            R.id.new_episodes_row -> newEpisodesRow.post {
+                if (newEpisodesObjectAdapter.size() > 0) {
+                    newEpisodesRow.safeSetSelectedPosition(pos, newEpisodesObjectAdapter.size())
+                    newEpisodesRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
+            }
+            R.id.watch_again_row -> watchAgainRow.post {
+                if (watchAgainObjectAdapter.size() > 0) {
+                    watchAgainRow.safeSetSelectedPosition(pos, watchAgainObjectAdapter.size())
+                    watchAgainRow.requestFocus()
                 } else {
                     heroWatchNow.requestFocus()
                 }
@@ -307,10 +346,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroIndicators = view.findViewById(R.id.hero_indicators)
         continueWatchingLabel = view.findViewById(R.id.continue_watching_label)
         continueWatchingRow = view.findViewById(R.id.continue_watching_row)
+        newEpisodesLabel = view.findViewById(R.id.new_episodes_label)
+        newEpisodesRow = view.findViewById(R.id.new_episodes_row)
+        watchAgainLabel = view.findViewById(R.id.watch_again_label)
+        watchAgainRow = view.findViewById(R.id.watch_again_row)
         forYouLabel = view.findViewById(R.id.for_you_label)
         forYouRow = view.findViewById(R.id.for_you_row)
         forYouLiveLabel = view.findViewById(R.id.for_you_live_label)
         forYouLiveRow = view.findViewById(R.id.for_you_live_row)
+        sectionsLabel = view.findViewById(R.id.sections_label)
         sectionsRow = view.findViewById(R.id.sections_row)
         trendingLabel = view.findViewById(R.id.trending_label)
         trendingRow = view.findViewById(R.id.trending_row)
@@ -331,6 +375,35 @@ class HomeFragment : Fragment(), KeyEventHandler {
             ViewGroup.LayoutParams.MATCH_PARENT
         )
         parent.addView(auroraBackground, index)
+    }
+
+    // ── Row Focus Dimming ─────────────────────────────────────────────────
+
+    /**
+     * Attach neighbor dimming + row header highlighting to a card view.
+     * Chains with any existing onFocusChangeListener set by the presenter.
+     */
+    private fun attachRowDimming(
+        gridView: HorizontalGridView,
+        label: TextView,
+        viewHolder: ItemBridgeAdapter.ViewHolder,
+        position: Int
+    ) {
+        val originalListener = viewHolder.itemView.onFocusChangeListener
+        viewHolder.itemView.onFocusChangeListener = View.OnFocusChangeListener { v, hasFocus ->
+            originalListener?.onFocusChange(v, hasFocus)
+            if (hasFocus) {
+                BrowseCardFocusHelper.applyNeighborDimming(gridView, position)
+                BrowseCardFocusHelper.highlightRowHeader(label, true)
+            } else {
+                v.postDelayed({
+                    if (!gridView.hasFocus()) {
+                        BrowseCardFocusHelper.clearDimming(gridView)
+                        BrowseCardFocusHelper.highlightRowHeader(label, false)
+                    }
+                }, 50)
+            }
+        }
     }
 
     // ── Frosted Header Scroll ─────────────────────────────────────────────
@@ -446,6 +519,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         screenPreWarmer?.onSectionBlurred()
                     }
                 }
+                attachRowDimming(sectionsRow, sectionsLabel, viewHolder, position)
             }
         })
 
@@ -479,6 +553,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                             .commit()
                     }
                 }
+                attachRowDimming(trendingRow, trendingLabel, viewHolder, position)
             }
         })
 
@@ -532,6 +607,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                             .commit()
                     }
                 }
+                attachRowDimming(trendingSeriesRow, trendingSeriesLabel, viewHolder, position)
             }
         })
         trendingSeriesRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
@@ -579,6 +655,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         navigateToContinueWatching(item)
                     }
                 }
+                attachRowDimming(continueWatchingRow, continueWatchingLabel, viewHolder, position)
             }
         })
 
@@ -607,6 +684,107 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    // ── New Episodes Row ──────────────────────────────────────────────
+
+    private fun setupNewEpisodesRow() {
+        val bridgeAdapter = ItemBridgeAdapter(newEpisodesObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = newEpisodesObjectAdapter.get(position)
+                    if (item is SeriesTrackingEntity) {
+                        val fragment = SeriesDetailFragment.newInstance(item.seriesId, item.seriesTitle)
+                        val tx = requireActivity().supportFragmentManager.beginTransaction()
+                        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+                        tx.replace(R.id.main_container, fragment)
+                            .addToBackStack(null)
+                            .commit()
+                    }
+                }
+                attachRowDimming(newEpisodesRow, newEpisodesLabel, viewHolder, position)
+            }
+        })
+        newEpisodesRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        newEpisodesRow.adapter = bridgeAdapter
+    }
+
+    private fun observeNewEpisodes() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.newEpisodes.collect { items ->
+                    newEpisodesObjectAdapter.safeReplaceAll(items)
+                    if (items.isNotEmpty()) {
+                        newEpisodesLabel.visibility = View.VISIBLE
+                        newEpisodesRow.visibility = View.VISIBLE
+                    } else {
+                        newEpisodesLabel.visibility = View.GONE
+                        newEpisodesRow.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Watch It Again Row ──────────────────────────────────────────────
+
+    private fun setupWatchAgainRow() {
+        val bridgeAdapter = ItemBridgeAdapter(watchAgainObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = watchAgainObjectAdapter.get(position)
+                    if (item is WatchProgressEntity) {
+                        if (item.type == "series" && item.seriesId != null) {
+                            val fragment = SeriesDetailFragment.newInstance(item.seriesId, item.name)
+                            val tx = requireActivity().supportFragmentManager.beginTransaction()
+                            FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+                            tx.replace(R.id.main_container, fragment)
+                                .addToBackStack(null)
+                                .commit()
+                        } else {
+                            val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
+                            val url = viewModel.buildVodStreamUrl(id, "mp4")
+                            val fragment = OoustreamPlaybackFragment.newInstance(
+                                streamUrl = url,
+                                contentType = ContentType.VOD,
+                                streamId = item.streamId,
+                                streamName = item.name,
+                                streamIcon = item.icon ?: ""
+                            )
+                            val tx = requireActivity().supportFragmentManager.beginTransaction()
+                            FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                            tx.replace(R.id.main_container, fragment)
+                                .addToBackStack(null)
+                                .commit()
+                        }
+                    }
+                }
+                attachRowDimming(watchAgainRow, watchAgainLabel, viewHolder, position)
+            }
+        })
+        watchAgainRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        watchAgainRow.adapter = bridgeAdapter
+    }
+
+    private fun observeWatchItAgain() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.watchItAgain.collect { items ->
+                    watchAgainObjectAdapter.safeReplaceAll(items)
+                    if (items.isNotEmpty()) {
+                        watchAgainLabel.visibility = View.VISIBLE
+                        watchAgainRow.visibility = View.VISIBLE
+                    } else {
+                        watchAgainLabel.visibility = View.GONE
+                        watchAgainRow.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
     // ── For You Row ────────────────────────────────────────────────────
 
     private fun setupForYouRow() {
@@ -620,6 +798,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         navigateToRecommendation(item)
                     }
                 }
+                attachRowDimming(forYouRow, forYouLabel, viewHolder, position)
             }
         })
 
@@ -661,6 +840,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         navigateToLiveChannel(item)
                     }
                 }
+                attachRowDimming(forYouLiveRow, forYouLiveLabel, viewHolder, position)
             }
         })
 
