@@ -2,6 +2,8 @@ package com.ooustream.iptv.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ooustream.iptv.data.local.OoustreamDatabase
 import com.ooustream.iptv.data.local.dao.ChannelScoreDao
 import com.ooustream.iptv.data.local.dao.ChannelWatchLogDao
@@ -27,6 +29,42 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    // v8→v9: Add poster_cache table
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `poster_cache` (
+                    `tmdb_id` TEXT NOT NULL PRIMARY KEY,
+                    `poster_url` TEXT,
+                    `backdrop_url` TEXT,
+                    `fetched_at` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+        }
+    }
+
+    // v9→v10: Add series_tracking table
+    private val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `series_tracking` (
+                    `seriesId` INTEGER NOT NULL PRIMARY KEY,
+                    `seriesTitle` TEXT NOT NULL DEFAULT '',
+                    `posterUrl` TEXT,
+                    `lastWatchedSeason` INTEGER NOT NULL DEFAULT 0,
+                    `lastWatchedEpisode` INTEGER NOT NULL DEFAULT 0,
+                    `lastWatchedEpisodeId` INTEGER NOT NULL DEFAULT 0,
+                    `lastWatchedAt` INTEGER NOT NULL DEFAULT 0,
+                    `lastKnownSeason` INTEGER NOT NULL DEFAULT 0,
+                    `lastKnownEpisode` INTEGER NOT NULL DEFAULT 0,
+                    `lastSyncedAt` INTEGER NOT NULL DEFAULT 0,
+                    `newEpisodeCount` INTEGER NOT NULL DEFAULT 0,
+                    `hasNewEpisodes` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): OoustreamDatabase {
@@ -34,7 +72,10 @@ object DatabaseModule {
             context,
             OoustreamDatabase::class.java,
             "ooustream_db"
-        ).fallbackToDestructiveMigration().build()
+        )
+            .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
+            .fallbackToDestructiveMigration() // safety net for ancient versions (pre-v8)
+            .build()
     }
 
     @Provides

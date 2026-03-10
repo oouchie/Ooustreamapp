@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 2.8.1 (versionCode 23)
+- **Current Version**: 2.9.0 (versionCode 24)
 
 ## Build
 ```bash
@@ -18,8 +18,8 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Architecture
 - **DI**: Hilt (`@AndroidEntryPoint`, `@HiltViewModel`, `@Singleton`)
-- **Database**: Room v8 with FTS4 (not FTS5 — minSdk 21 compat), 13 entities, 11 DAOs
-- **Background**: WorkManager (periodic score refresh for recommendations every 6h)
+- **Database**: Room v10 with FTS4 (not FTS5 — minSdk 21 compat), 14 entities, 12 DAOs
+- **Background**: WorkManager (periodic score refresh every 6h, new episode sync every 6h)
 - **Navigation**: Manual FragmentManager (no NavGraph)
 - **State**: StateFlow / MutableStateFlow
 - **Images**: Coil with progressive loading + dominant color placeholders (Palette)
@@ -177,6 +177,19 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **SafeAdapterUtils** (v2.8.1) — `safeReplaceAll()` for atomic adapter updates and `safeSetSelectedPosition()` with bounds checking. Applied to all Home screen rows (Continue Watching, For You, Trending, etc.). (`common/SafeAdapterUtils.kt`, `home/HomeFragment.kt`)
 - **Favorites empty fallback** (v2.8.1) — Live TV, Movies, Series pages default to Favorites but now auto-select the first real API category when favorites is empty, instead of showing a blank screen. (`livetv/LiveTvViewModel.kt`, `vod/VodViewModel.kt`, `series/SeriesViewModel.kt`)
 
+### Phase 9 — Watch History + Premium Home Redesign (v2.9.0)
+- **New Episodes row** — SeriesTrackingEntity tracks last watched episode per series. NewEpisodeSyncWorker (6h periodic) compares against API via NewEpisodeDetector. Home row shows series with unwatched episodes (green "NEW" badge + gold count). (`data/local/entity/SeriesTrackingEntity.kt`, `data/local/dao/SeriesTrackingDao.kt`, `recommendation/NewEpisodeDetector.kt`, `recommendation/NewEpisodeSyncWorker.kt`, `home/NewEpisodesPresenter.kt`)
+- **Watch It Again row** — Home row showing completed content (>95% watched) for easy rewatching. Deduped by COALESCE(seriesId, streamId). Gold checkmark badge. (`home/WatchItAgainPresenter.kt`)
+- **Continue Watching enhancements** — Episode badge ("S1 E5") for series, time remaining ("Nm left") on cards. Progress bar 3→4dp. (`home/ContinueWatchingPresenter.kt`, `res/layout/item_continue_watching.xml`)
+- **Clear Watch History** — Settings option to truncate watch_progress and series_tracking tables. (`settings/SettingsFragment.kt`, `settings/SettingsViewModel.kt`)
+- **Premium poster card redesign** — 120×180dp → 180×270dp, 14dp corners, steeper gradient overlay, focus-revealed metadata line + micro-CTA ("▶ Watch"/"▶ Details") with slide-up animation, shimmer loading via ShimmerFrameLayout, focus scale 1.06→1.08x. (`common/PosterPresenter.kt`, `res/layout/item_poster_card.xml`, drawables)
+- **Section card redesign** — 280×140dp → 320×160dp, glass border stroke (1dp #0DFFFFFF), shimmer accent line (3dp gold), CTA turns gold on focus. (`home/SectionCardPresenter.kt`, `res/layout/item_section_card.xml`)
+- **Neighbor dimming** — BrowseCardFocusHelper spotlight effect: focused card alpha 1.0, ±2 cards 0.65, distant 0.50. 250ms animated, 100ms debounced. Applied to all 8 home rows. (`common/BrowseCardFocusHelper.kt`)
+- **Row header highlighting** — Labels default white, turn gold (#FFC107) when any card in that row is focused. (`home/HomeFragment.kt`, `res/layout/fragment_home.xml`)
+- **Track picker fix** — TrackPickerOverlay registers Player.Listener for onTracksChanged while visible, auto-refreshes track list after channel/episode switch. (`player/TrackPickerOverlay.kt`)
+- **New app icon** — Cyan aurora TV icon across all mipmap densities + adaptive icon foreground. New branded TV banner for Fire TV home screen.
+- **All card layouts resized** — CW, NE, WA, FY cards all 180×270dp with 14dp corners for consistency.
+
 ## Deferred Features (Future Updates)
 
 These features were scoped but deferred for a future release:
@@ -258,8 +271,12 @@ These features were scoped but deferred for a future release:
 32. `multiview/MultiViewViewModel.kt` — layout mode, slot states, audio/focus tracking
 33. `data/UserPlanManager.kt` — Pro plan detection (maxConnections >= 4), device capability check
 34. `home/MultiViewHeroPresenter.kt` — Home screen MultiView promotional card
+35. `common/BrowseCardFocusHelper.kt` — neighbor dimming + row header gold highlight utility
+36. `home/NewEpisodesPresenter.kt` — New Episodes row presenter with green/gold badges
+37. `home/WatchItAgainPresenter.kt` — Watch It Again row presenter with checkmark badge
+38. `recommendation/NewEpisodeSyncWorker.kt` — periodic new episode detection worker
 
-## Source File Inventory (187 Kotlin files)
+## Source File Inventory (193 Kotlin files)
 
 ### By Package
 | Package | Files | Key Components |
@@ -267,10 +284,10 @@ These features were scoped but deferred for a future release:
 | `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
 | `auth/` | 2 | AuthViewModel, LoginFragment |
 | `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
-| `common/` | 34 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions |
-| `data/local/dao/` | 11 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao |
-| `data/local/entity/` | 13 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity |
-| `data/local/` | 1 | OoustreamDatabase (Room v8) |
+| `common/` | 36 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper |
+| `data/local/dao/` | 12 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao |
+| `data/local/entity/` | 14 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity |
+| `data/local/` | 1 | OoustreamDatabase (Room v10) |
 | `data/` | 1 | UserPlanManager |
 | `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
 | `data/remote/` | 3 | AuthInterceptor, SafeSeriesInfoDeserializer, XtreamApiService |
@@ -278,13 +295,13 @@ These features were scoped but deferred for a future release:
 | `di/` | 3 | AppModule, DatabaseModule, NetworkModule |
 | `epg/` | 2 | ChannelNameParser, SmartEpgFiller |
 | `favorites/` | 2 | FavoritesFragment, FavoritesViewModel |
-| `home/` | 8 | HomeFragment, HomeViewModel, ContinueWatchingPresenter, ForYouPresenter, ForYouLivePresenter, MultiViewHeroPresenter, PaletteExtractor, SectionCardPresenter |
+| `home/` | 10 | HomeFragment, HomeViewModel, ContinueWatchingPresenter, ForYouPresenter, ForYouLivePresenter, MultiViewHeroPresenter, PaletteExtractor, SectionCardPresenter, NewEpisodesPresenter, WatchItAgainPresenter |
 | `livetv/` | 2 | LiveTvFragment, LiveTvViewModel |
 | `multiview/` | 14 | MultiViewFragment, MultiViewViewModel, MultiViewPlayerManager, MultiViewSlotView, MultiViewStallDetector, PlaybackHealth, SlotActionPopup, MultiViewAutoFillUseCase, MultiViewTopBarController, MultiViewBottomBarController, MultiViewLockedPopup, ChannelPickerDialogFragment, QrUpgradeDialogFragment, QrCodeGenerator |
 | `onboarding/` | 1 | OnboardingOverlay |
 | `parental/` | 3 | ParentalControlManager, ParentalPinFragment, ParentalViewModel |
 | `player/` | 19 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager |
-| `recommendation/` | 4 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger |
+| `recommendation/` | 6 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker |
 | `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
 | `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
 | `settings/` | 3 | SettingsFragment, SettingsViewModel, SettingsConfirmFragment |
@@ -294,9 +311,9 @@ These features were scoped but deferred for a future release:
 | `vod/` | 4 | VodFragment, VodViewModel, VodDetailFragment, VodDetailViewModel |
 | Root | 2 | MainActivity, OoustreamApp |
 
-## Layout Files (53 XML)
+## Layout Files (55 XML)
 - **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail
-- **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_next_card, item_zap_channel
+- **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_new_episode, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_again, item_watch_next_card, item_zap_channel
 - **Overlays**: overlay_audio_only, overlay_binge_countdown, overlay_channel_banner, overlay_channel_zap, overlay_content_info, overlay_onboarding_step, overlay_player_controls, overlay_quick_sidebar, overlay_remote_hints, overlay_series_complete, overlay_stream_stats, overlay_track_picker, overlay_watch_next
 - **Dialogs**: dialog_channel_picker, dialog_qr_upgrade
 - **MultiView**: view_multiview_top_bar, view_multiview_bottom_bar
@@ -324,6 +341,15 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - v6: Phase 4 (destructive migration — added columns; resets user data)
 - v7: Continue Watching fix (completed/dismissed columns on watch_progress)
 - v8: Phase 5 AI features (ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity — destructive, no users yet). Unchanged through v2.5.2.
+- v9: poster_cache table (proper Migration, preserves user data)
+- v10: series_tracking table (proper Migration, preserves user data)
+
+### MANDATORY: Database Migration Rules
+- **NEVER use destructive migration for new DB versions.** Users have real data (favorites, watch progress, series tracking) that must survive updates.
+- Every new table or schema change MUST have an explicit `Migration(oldVersion, newVersion)` object in `DatabaseModule.kt` with the DDL SQL.
+- `fallbackToDestructiveMigration()` remains ONLY as a safety net for ancient pre-v8 installs — it must NEVER be the primary migration strategy.
+- All migrations are defined in `di/DatabaseModule.kt` and added via `.addMigrations(...)` before `.fallbackToDestructiveMigration()`.
+- Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
 - **v2.1.0** — Phase 4 premium playback UX (all overlays, track picker, controls bar)
@@ -339,3 +365,4 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v2.7.1** — Audio pipeline audit (AudioPipelineFactory, 3/4/5ch downmix, user track override, stage 2 fallback, preview audio isolation, stream stats audio row, logarithmic sleep fade, external player position handoff), watch progress indicators on poster/episode cards, MultiView unlocked
 - **v2.8.0** — Poster quality overhaul (TMDB w500 rewriting), 4-column grid spacing, favorites default on VOD/Series/Live TV, improved image caching
 - **v2.8.1** — Crash fixes (hero rotation divide-by-zero, VOD/Series grid IndexOutOfBoundsException), safe adapter updates via DiffCallback + SafeAdapterUtils, favorites fallback to first real category when empty
+- **v2.9.0** — Watch history rows (New Episodes, Watch It Again, enhanced Continue Watching), premium home card redesign (bigger cards, shimmer, metadata reveal, neighbor dimming, row highlights), track picker fix, new app icon/banner
