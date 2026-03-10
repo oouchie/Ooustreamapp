@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="120dp"
+    android:layout_marginTop="24dp"
+    android:layout_marginStart="@dimen/overscan_margin"
+    android:layout_marginEnd="@dimen/overscan_margin"
+    android:background="@drawable/bg_sports_banner"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clipChildren="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <!-- Channel Logo -->
+        <FrameLayout
+            android:layout_width="48dp"
+            android:layout_height="48dp">
+
+            <ImageView
+                android:id="@+id/sports_channel_logo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerInside"
+                android:padding="4dp"
+                tools:ignore="ContentDescription" />
+
+            <TextView
+                android:id="@+id/sports_channel_initials"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#9CA3AF"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Event Info -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="16dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <!-- Pulsing LIVE dot -->
+                <View
+                    android:id="@+id/sports_live_dot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/bg_live_dot" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="LIVE NOW"
+                    android:textColor="#EF4444"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/sports_event_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="#E0E0E0"
+                android:textSize="14sp"
+                android:textStyle="normal"
+                android:maxLines="1"
+                android:ellipsize="end"
+                tools:text="NFL: Cowboys vs Eagles" />
+
+            <TextView
+                android:id="@+id/sports_channel_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#9CA3AF"
+                android:textSize="13sp"
+                android:maxLines="1"
+                tools:text="ESPN HD" />
+        </LinearLayout>
+
+        <!-- Watch button indicator -->
+        <TextView
+            android:id="@+id/sports_watch_cta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Watch"
+            android:textColor="#9CA3AF"
+            android:textSize="13sp"
+            android:textStyle="normal"
+            android:drawableEnd="@drawable/ic_play_arrow_24"
+            android:drawablePadding="4dp" />
+    </LinearLayout>
+</FrameLayout>

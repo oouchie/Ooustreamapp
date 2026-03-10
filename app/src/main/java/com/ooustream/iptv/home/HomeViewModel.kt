@@ -3,6 +3,7 @@ package com.ooustream.iptv.home
 import android.graphics.Color
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.BaseViewModel
+import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
 import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
@@ -11,8 +12,13 @@ import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
+import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import kotlin.math.ln
+import com.ooustream.iptv.epg.ChannelContentType
+import com.ooustream.iptv.epg.ChannelNameParser
 import com.ooustream.iptv.epg.SmartEpgFiller
+import com.ooustream.iptv.recommendation.BecauseYouWatchedRow
 import com.ooustream.iptv.recommendation.ChannelRecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendedItem
@@ -38,6 +44,14 @@ data class FeaturedItem(
     val containerExtension: String = ""
 )
 
+data class LiveSportsEvent(
+    val channelId: Int,
+    val channelName: String,
+    val channelIcon: String?,
+    val eventTitle: String,
+    val streamUrl: String
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val watchProgressRepository: WatchProgressRepository,
@@ -47,18 +61,31 @@ class HomeViewModel @Inject constructor(
     private val channelRecommendationEngine: ChannelRecommendationEngine,
     private val smartEpgFiller: SmartEpgFiller,
     private val epgCacheRepository: EpgCacheRepository,
-    private val seriesTrackingDao: SeriesTrackingDao
+    private val seriesTrackingDao: SeriesTrackingDao,
+    private val watchAnalyticsRepository: WatchAnalyticsRepository,
+    private val favoriteDao: FavoriteDao
 ) : BaseViewModel() {
 
     init {
         // Kick off predictive pre-fetching of EPG data for top channels (WiFi only)
         predictivePreFetcher.prefetchIfNeeded()
 
-        // Load personalized recommendations in background
+        // Load personalized recommendations in background.
+        // Prefer grouped "Because You Watched" rows; fall back to flat For You row
+        // if no watch history exists.
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _forYouContent.value = recommendationEngine.getRecommendations()
-            } catch (_: Exception) { }
+                val grouped = recommendationEngine.getGroupedRecommendations()
+                if (grouped.isNotEmpty()) {
+                    _becauseYouWatchedRows.value = grouped
+                } else {
+                    _forYouContent.value = recommendationEngine.getRecommendations()
+                }
+            } catch (_: Exception) {
+                try {
+                    _forYouContent.value = recommendationEngine.getRecommendations()
+                } catch (_: Exception) { }
+            }
         }
 
         // Load "For You — Live Now" channel recommendations
@@ -90,6 +117,56 @@ class HomeViewModel @Inject constructor(
                 _forYouLiveNow.value = channels
             } catch (_: Exception) { }
         }
+
+        // Load Live Sports / Events banner
+        viewModelScope.launch(Dispatchers.IO) {
+            loadLiveSportsEvent()
+        }
+
+        // Load Quick Tune channel strip
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Try personalized channels first (requires enough watch data)
+                if (channelRecommendationEngine.hasEnoughData()) {
+                    channelRecommendationEngine.recomputeScores()
+                    val recs = channelRecommendationEngine.getRecommendations()
+                    if (recs.isNotEmpty()) {
+                        _channelStripItems.value = recs.take(20).map { rec ->
+                            ChannelStripItem(
+                                channelId = rec.channelId,
+                                channelName = rec.channelName,
+                                channelIcon = rec.channelIcon,
+                                streamUrl = contentRepository.buildLiveStreamUrl(rec.channelId)
+                            )
+                        }
+                        return@launch
+                    }
+                }
+                // Fallback: favorite live channels
+                val favLive = favoriteDao.getFavoritesListByType("live")
+                if (favLive.isNotEmpty()) {
+                    _channelStripItems.value = favLive.take(20).map { fav ->
+                        ChannelStripItem(
+                            channelId = fav.streamId,
+                            channelName = fav.name,
+                            channelIcon = fav.icon,
+                            streamUrl = contentRepository.buildLiveStreamUrl(fav.streamId)
+                        )
+                    }
+                } else {
+                    // No favorites yet — show first 20 live channels
+                    val streams = contentRepository.getLiveStreams()
+                    _channelStripItems.value = streams.take(20).map { stream ->
+                        ChannelStripItem(
+                            channelId = stream.streamId,
+                            channelName = stream.name,
+                            channelIcon = stream.streamIcon,
+                            streamUrl = contentRepository.buildLiveStreamUrl(stream.streamId)
+                        )
+                    }
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     val continueWatching: Flow<List<WatchProgressEntity>> =
@@ -107,8 +184,17 @@ class HomeViewModel @Inject constructor(
     private val _forYouContent = MutableStateFlow<List<RecommendedItem>>(emptyList())
     val forYouContent: StateFlow<List<RecommendedItem>> = _forYouContent.asStateFlow()
 
+    private val _becauseYouWatchedRows = MutableStateFlow<List<BecauseYouWatchedRow>>(emptyList())
+    val becauseYouWatchedRows: StateFlow<List<BecauseYouWatchedRow>> = _becauseYouWatchedRows.asStateFlow()
+
     private val _forYouLiveNow = MutableStateFlow<List<ForYouChannel>>(emptyList())
     val forYouLiveNow: StateFlow<List<ForYouChannel>> = _forYouLiveNow.asStateFlow()
+
+    private val _channelStripItems = MutableStateFlow<List<ChannelStripItem>>(emptyList())
+    val channelStripItems: StateFlow<List<ChannelStripItem>> = _channelStripItems.asStateFlow()
+
+    private val _liveSportsEvent = MutableStateFlow<LiveSportsEvent?>(null)
+    val liveSportsEvent: StateFlow<LiveSportsEvent?> = _liveSportsEvent.asStateFlow()
 
     private val _trendingContent = MutableStateFlow<List<VodStream>>(emptyList())
     val trendingContent: StateFlow<List<VodStream>> = _trendingContent.asStateFlow()
@@ -178,18 +264,16 @@ class HomeViewModel @Inject constructor(
                 )
             }
 
-            // Trending: next 20 titles
-            _trendingContent.value = sorted.drop(6).take(20)
+            // Trending Movies: rating × recency, boosted by user's watched categories
+            _trendingContent.value = scoreTrendingVod(vodStreams)
 
             // Fetch banner/backdrop images + trending series in parallel
             coroutineScope {
-                // Trending Series: most recently updated
+                // Trending Series: rating × recency, boosted by user preferences
                 launch {
                     try {
                         val seriesList = contentRepository.getSeries()
-                        _trendingSeries.value = seriesList
-                            .sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
-                            .take(20)
+                        _trendingSeries.value = scoreTrendingSeries(seriesList)
                     } catch (_: Exception) { }
                 }
 
@@ -209,7 +293,6 @@ class HomeViewModel @Inject constructor(
                                 containerExtension = info.movieData?.containerExtension ?: vod.containerExtension ?: "mp4"
                             )
                         } catch (_: Exception) {
-                            // Fall back to poster if info fetch fails
                             FeaturedItem(
                                 title = vod.name,
                                 backdropUrl = vod.streamIcon,
@@ -227,5 +310,138 @@ class HomeViewModel @Inject constructor(
             _featuredContent.value = emptyList()
             _trendingContent.value = emptyList()
         }
+    }
+
+    /**
+     * Score VOD streams for "Trending Now" using:
+     * - Rating (50%): TMDB rating normalized to 0-1 (filter out < 5.0)
+     * - Recency (30%): logarithmic decay — newer content scores higher
+     * - User affinity (20%): boost categories the user actually watches
+     */
+    private suspend fun scoreTrendingVod(allStreams: List<VodStream>): List<VodStream> {
+        val userCategoryCounts = try {
+            watchAnalyticsRepository.getCategoryWatchCounts("vod")
+                .associate { it.categoryId to it.totalCount }
+        } catch (_: Exception) { emptyMap() }
+        val maxUserCount = userCategoryCounts.values.maxOrNull()?.toFloat() ?: 1f
+
+        val now = System.currentTimeMillis() / 1000
+        // Only score content with a rating >= 5.0 (filters out junk)
+        val scored = allStreams
+            .filter { (it.rating5based ?: 0.0) >= 2.5 || (it.rating?.toDoubleOrNull() ?: 0.0) >= 5.0 }
+            .map { vod ->
+                val rating10 = vod.rating?.toDoubleOrNull()
+                    ?: ((vod.rating5based ?: 0.0) * 2.0)
+                val ratingScore = (rating10 / 10.0).coerceIn(0.0, 1.0)
+
+                val addedTs = vod.added?.toLongOrNull() ?: 0L
+                val ageDays = ((now - addedTs) / 86400.0).coerceAtLeast(1.0)
+                // Logarithmic decay: score 1.0 at day 1, ~0.5 at day 30, ~0.3 at day 180
+                val recencyScore = (1.0 / ln(ageDays + 1.0)).coerceIn(0.0, 1.0)
+
+                val userCount = userCategoryCounts[vod.categoryId] ?: 0
+                val affinityScore = if (maxUserCount > 0) userCount / maxUserCount else 0f
+
+                val total = ratingScore * 0.50 + recencyScore * 0.30 + affinityScore * 0.20
+                vod to total
+            }
+            .sortedByDescending { it.second }
+            .take(20)
+            .map { it.first }
+
+        // Fallback: if scoring filters everything, return recently added
+        return scored.ifEmpty {
+            allStreams.sortedByDescending { it.added?.toLongOrNull() ?: 0L }.take(20)
+        }
+    }
+
+    /**
+     * Score series for "Trending Series" using rating × recency × user affinity.
+     * Series objects already have rating and lastModified fields.
+     */
+    private suspend fun scoreTrendingSeries(allSeries: List<Series>): List<Series> {
+        val userCategoryCounts = try {
+            watchAnalyticsRepository.getCategoryWatchCounts("series")
+                .associate { it.categoryId to it.totalCount }
+        } catch (_: Exception) { emptyMap() }
+        val maxUserCount = userCategoryCounts.values.maxOrNull()?.toFloat() ?: 1f
+
+        val now = System.currentTimeMillis() / 1000
+        val scored = allSeries
+            .filter { (it.rating5based ?: 0.0) >= 2.5 || (it.rating?.toDoubleOrNull() ?: 0.0) >= 5.0 }
+            .map { series ->
+                val rating10 = series.rating?.toDoubleOrNull()
+                    ?: ((series.rating5based ?: 0.0) * 2.0)
+                val ratingScore = (rating10 / 10.0).coerceIn(0.0, 1.0)
+
+                val modifiedTs = series.lastModified?.toLongOrNull() ?: 0L
+                val ageDays = ((now - modifiedTs) / 86400.0).coerceAtLeast(1.0)
+                val recencyScore = (1.0 / ln(ageDays + 1.0)).coerceIn(0.0, 1.0)
+
+                val userCount = userCategoryCounts[series.categoryId] ?: 0
+                val affinityScore = if (maxUserCount > 0) userCount / maxUserCount else 0f
+
+                val total = ratingScore * 0.50 + recencyScore * 0.30 + affinityScore * 0.20
+                series to total
+            }
+            .sortedByDescending { it.second }
+            .take(20)
+            .map { it.first }
+
+        return scored.ifEmpty {
+            allSeries.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }.take(20)
+        }
+    }
+
+    private suspend fun loadLiveSportsEvent() {
+        try {
+            val streams = contentRepository.getLiveStreams()
+            val categories = contentRepository.getLiveCategories()
+            val categoryMap = categories.associate { it.categoryId to it.categoryName }
+
+            // Filter to sports channels (capped to avoid too many EPG requests)
+            val sportsChannels = streams.filter { stream ->
+                val catName = categoryMap[stream.categoryId] ?: ""
+                val parsed = ChannelNameParser.parse(stream.name, catName)
+                parsed.contentType == ChannelContentType.SPORTS
+            }.take(20)
+
+            if (sportsChannels.isEmpty()) return
+
+            val now = System.currentTimeMillis() / 1000
+
+            // Check EPG for each sports channel to find a live event
+            // Uses epgCacheRepository.getEpg() which decodes base64-encoded titles
+            for (channel in sportsChannels) {
+                try {
+                    val programs = epgCacheRepository.getEpg(channel.streamId)
+                    val liveProgram = programs.firstOrNull { program ->
+                        val start = program.startTimestamp?.toLongOrNull() ?: return@firstOrNull false
+                        val stop = program.stopTimestamp?.toLongOrNull() ?: return@firstOrNull false
+                        now in start..stop && !program.title.isNullOrBlank()
+                    }
+                    if (liveProgram != null) {
+                        _liveSportsEvent.value = LiveSportsEvent(
+                            channelId = channel.streamId,
+                            channelName = channel.name,
+                            channelIcon = channel.streamIcon,
+                            eventTitle = liveProgram.title ?: "Live Sports",
+                            streamUrl = contentRepository.buildLiveStreamUrl(channel.streamId)
+                        )
+                        return // Found a live event — done
+                    }
+                } catch (_: Exception) { }
+            }
+
+            // No live EPG found — show top sports channel with generic title
+            val topSports = sportsChannels.firstOrNull() ?: return
+            _liveSportsEvent.value = LiveSportsEvent(
+                channelId = topSports.streamId,
+                channelName = topSports.name,
+                channelIcon = topSports.streamIcon,
+                eventTitle = "Live Sports",
+                streamUrl = contentRepository.buildLiveStreamUrl(topSports.streamId)
+            )
+        } catch (_: Exception) { }
     }
 }

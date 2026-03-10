@@ -17,6 +17,7 @@ import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.FocusBracketDrawable
 import com.ooustream.iptv.common.GoldGlowFocusDrawable
+import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.common.ProgressiveImageLoader
 
 class FavoritesAdapter(
@@ -191,6 +192,7 @@ class FavoritesAdapter(
 
     inner class ListViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val logo: ImageView = itemView.findViewById(R.id.fav_logo)
+        private val logoInitials: TextView = itemView.findViewById(R.id.fav_logo_initials)
         private val name: TextView = itemView.findViewById(R.id.fav_name)
         private val category: TextView = itemView.findViewById(R.id.fav_category)
         private val epgTitle: TextView = itemView.findViewById(R.id.fav_epg_title)
@@ -203,8 +205,13 @@ class FavoritesAdapter(
             name.text = item.name
             category.text = item.categoryName ?: item.categoryGroup
 
-            // Image
-            ProgressiveImageLoader.loadThumbnail(logo, item.icon, "fav_${item.id}", 6f)
+            // Image — use ChannelDisplayHelper for live channels (matches Live TV screen)
+            if (item.isLive) {
+                ChannelDisplayHelper.loadLogo(logo, logoInitials, item.icon, item.name)
+            } else {
+                logoInitials.visibility = View.GONE
+                ProgressiveImageLoader.loadThumbnail(logo, item.icon, "fav_${item.id}", 6f)
+            }
 
             // EPG
             epgTitle.text = item.epgTitle ?: ""

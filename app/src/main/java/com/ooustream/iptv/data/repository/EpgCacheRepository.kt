@@ -18,10 +18,15 @@ class EpgCacheRepository @Inject constructor(
     private val epgListType = object : TypeToken<List<EpgProgram>>() {}.type
 
     suspend fun getEpg(streamId: Int): List<EpgProgram> {
-        // Check cache first
+        // Check cache first — apply decodeBase64 as safety for stale pre-fix cache entries
         val cached = epgCacheDao.get(streamId)
         if (cached != null && !isExpired(cached.fetchedAt)) {
-            return deserializePrograms(cached.programs)
+            return deserializePrograms(cached.programs).map { p ->
+                p.copy(
+                    title = decodeBase64(p.title),
+                    description = decodeBase64(p.description)
+                )
+            }
         }
 
         // Fetch from network and decode Base64 title/description

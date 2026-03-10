@@ -1,7 +1,7 @@
 {
-  "version_name": "2.9.1",
-  "version_code": 25,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v2.9.1/app-release.apk",
-  "changelog": "v2.9.1 — Data Protection Update\n\n• Proper Room migrations — favorites, watch progress, and series tracking now survive app updates\n• No more data loss on version bumps",
+  "version_name": "3.0.0",
+  "version_code": 26,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.0.0/app-release.apk",
+  "changelog": "v3.0.0 — Streaming Cinema Experience\n\n• Hero Trailer Auto-Play — movies preview automatically after 4s dwell, full-bleed muted video\n• D-pad left/right to browse hero movies\n• Parallax hero scroll — backdrop moves at 40% speed for depth effect\n• Time-of-Day Aurora — background shifts warm/cool/dark based on time\n• Quick Tune Channel Strip — circular channel logos for instant playback, pulls from favorites\n• Because You Watched — personalized rows matched by genre & cast overlap\n• Live Sports Banner — real-time sports events with EPG data, auto-rotating\n• Smart Trending — movies/series ranked by rating, recency & your watch habits\n• Enhanced aurora background — more visible atmospheric lighting\n• Favorites live TV logos now match Live TV screen style\n• EPG base64 cache fix — no more encoded text in sports banner",
   "mandatory": false
 }

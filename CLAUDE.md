@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 2.9.1 (versionCode 25)
+- **Current Version**: 3.0.0 (versionCode 26)
 
 ## Build
 ```bash
@@ -190,6 +190,19 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **New app icon** — Cyan aurora TV icon across all mipmap densities + adaptive icon foreground. New branded TV banner for Fire TV home screen.
 - **All card layouts resized** — CW, NE, WA, FY cards all 180×270dp with 14dp corners for consistency.
 
+### Phase 10 — Streaming Cinema Experience (v3.0.0)
+- **Hero Trailer Auto-Play** — After 4s dwell on hero item, muted VOD preview fades in over backdrop. ExoPlayer with TextureView, `resize_mode="zoom"` for full-bleed, seeks past 2min of logos. 15s max preview. Cross-protocol redirects enabled for IPTV 302s. Overlays/gradients fade out during playback, restore on release. Skip on low-memory devices. (`home/HomeFragment.kt`, `res/layout/fragment_home.xml`)
+- **D-pad Hero Navigation** — Left/right on hero buttons cycles through featured items, releases active preview, resets hero rotation. (`home/HomeFragment.kt`)
+- **Parallax Hero Scroll** — Hero backdrop moves at 40% scroll speed (`translationY = -scrollY * 0.4f`) with `clipChildren="true"` to prevent bleed. (`home/HomeFragment.kt`, `res/layout/fragment_home.xml`)
+- **Time-of-Day Aurora Theming** — Aurora orb colors shift by time bucket: warm amber (morning), cool blue/teal (afternoon), deep purple/crimson (evening), near-black (night). Animated transitions via `ValueAnimator.ofArgb()`. (`common/AuroraBackgroundView.kt`)
+- **Enhanced Aurora Visibility** — Orb alpha boosted ~2x (140/110/100), larger radii (0.7/0.6/0.65), more saturated palette colors for TV-visible atmospheric lighting. (`common/AuroraBackgroundView.kt`)
+- **Quick Tune Channel Strip** — Circular 56dp channel logos with name labels in HorizontalGridView. Priority: personalized watch data → favorite live channels → first 20 live streams. Gold ring on focus, 1.1x scale. `centerInside` scaleType with 6dp padding for proper logo display. (`home/ChannelStripPresenter.kt`, `res/layout/item_channel_strip.xml`, `home/HomeViewModel.kt`)
+- **"Because You Watched" Rows** — Up to 3 personalized rows seeded by recently watched VOD/series. Genre/cast overlap scoring (60% genre, 40% cast) via `getVodInfo()` API. Searches all VOD (40 random candidates) for variety, not just same category. Series use existing genre/cast fields. (`recommendation/RecommendationEngine.kt`, `home/HomeFragment.kt`, `home/HomeViewModel.kt`)
+- **Live Sports Banner** — Full-width rotating banner showing live sports events. EPG-driven, auto-advances every 6s. Sports channels detected via `ChannelNameParser`. Personalized sort by channel scores. (`home/LiveSportsBannerView.kt`, `res/layout/view_live_sports_banner.xml`, `home/HomeViewModel.kt`)
+- **Smart Trending Algorithm** — Replaced "recently added" sorting with composite score: Rating (50%, TMDB 0-10 normalized) + Recency (30%, logarithmic decay) + User Affinity (20%, from watch history category counts). Applied to both Trending Movies and Trending Series. (`home/HomeViewModel.kt`)
+- **EPG Base64 Cache Fix** — `EpgCacheRepository` now applies `decodeBase64()` on cache reads, fixing stale pre-fix entries that showed raw base64 in sports banner. (`data/repository/EpgCacheRepository.kt`)
+- **Favorites Live TV Logo Fix** — List mode uses `ChannelDisplayHelper.loadLogo()` with 48dp container, `centerInside` scaleType, and initials fallback — matching Live TV screen style. (`favorites/FavoritesAdapter.kt`, `res/layout/item_favorite_list.xml`)
+
 ## Deferred Features (Future Updates)
 
 These features were scoped but deferred for a future release:
@@ -366,3 +379,5 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v2.8.0** — Poster quality overhaul (TMDB w500 rewriting), 4-column grid spacing, favorites default on VOD/Series/Live TV, improved image caching
 - **v2.8.1** — Crash fixes (hero rotation divide-by-zero, VOD/Series grid IndexOutOfBoundsException), safe adapter updates via DiffCallback + SafeAdapterUtils, favorites fallback to first real category when empty
 - **v2.9.0** — Watch history rows (New Episodes, Watch It Again, enhanced Continue Watching), premium home card redesign (bigger cards, shimmer, metadata reveal, neighbor dimming, row highlights), track picker fix, new app icon/banner
+- **v2.9.1** — Proper Room migrations for favorites, watch progress, and series tracking (no more data loss on version bumps)
+- **v3.0.0** — Streaming Cinema Experience: hero trailer auto-play, D-pad hero navigation, parallax scroll, time-of-day aurora theming, Quick Tune channel strip, "Because You Watched" genre/cast rows, Live Sports banner, smart trending algorithm, enhanced aurora visibility, favorites logo fix

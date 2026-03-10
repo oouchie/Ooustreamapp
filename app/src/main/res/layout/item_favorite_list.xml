@@ -11,13 +11,30 @@
     android:focusable="true">
 
     <!-- Channel logo / poster thumbnail -->
-    <ImageView
-        android:id="@+id/fav_logo"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:scaleType="centerCrop"
-        android:contentDescription="Logo"
-        tools:background="#1A1A2E" />
+    <FrameLayout
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="@drawable/bg_channel_logo_container">
+
+        <ImageView
+            android:id="@+id/fav_logo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="4dp"
+            android:scaleType="centerInside"
+            android:contentDescription="Logo"
+            tools:background="#1A1A2E" />
+
+        <TextView
+            android:id="@+id/fav_logo_initials"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textColor="#9CA3AF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <!-- Channel/content info -->
     <LinearLayout

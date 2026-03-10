@@ -1,5 +1,6 @@
 package com.ooustream.iptv.home
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -8,6 +9,14 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.ui.PlayerView
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -49,6 +58,7 @@ import com.ooustream.iptv.livetv.LiveTvFragment
 import com.ooustream.iptv.onboarding.OnboardingOverlay
 import com.ooustream.iptv.player.ChannelListHolder
 import com.ooustream.iptv.player.OoustreamPlaybackFragment
+import com.ooustream.iptv.recommendation.BecauseYouWatchedRow
 import com.ooustream.iptv.recommendation.RecommendedItem
 import com.ooustream.iptv.search.SearchFragment
 import com.ooustream.iptv.series.SeriesDetailFragment
@@ -61,6 +71,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 @AndroidEntryPoint
 class HomeFragment : Fragment(), KeyEventHandler {
@@ -80,6 +91,16 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private var heroIndex = 0
     private var heroRotationJob: Job? = null
 
+    // Hero trailer auto-play
+    private var heroPreviewPlayer: ExoPlayer? = null
+    private var heroPreviewView: PlayerView? = null
+    private var heroDwellJob: Job? = null
+    private var heroPreviewActive = false
+    private var isLowMemoryDevice = false
+    private var heroContentOverlay: View? = null // LinearLayout with title/genre/buttons
+    private var heroGradientBottom: View? = null
+    private var heroGradientLeft: View? = null
+
     // Views
     private lateinit var heroBackdrop: ImageView
     private lateinit var heroTitle: TextView
@@ -97,6 +118,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var forYouRow: HorizontalGridView
     private lateinit var forYouLiveLabel: TextView
     private lateinit var forYouLiveRow: HorizontalGridView
+    private lateinit var channelStripLabel: TextView
+    private lateinit var channelStripRow: HorizontalGridView
     private lateinit var sectionsLabel: TextView
     private lateinit var sectionsRow: HorizontalGridView
     private lateinit var trendingLabel: TextView
@@ -104,6 +127,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var trendingSeriesLabel: TextView
     private lateinit var trendingSeriesRow: HorizontalGridView
     private lateinit var auroraBackground: AuroraBackgroundView
+    private lateinit var becauseYouWatchedContainer: LinearLayout
+    private lateinit var sportsBanner: View
 
     // Adapters
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
@@ -111,6 +136,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private val watchAgainObjectAdapter = ArrayObjectAdapter(WatchItAgainPresenter())
     private val forYouObjectAdapter = ArrayObjectAdapter(ForYouPresenter())
     private val forYouLiveObjectAdapter = ArrayObjectAdapter(ForYouLivePresenter())
+    private val channelStripObjectAdapter = ArrayObjectAdapter(ChannelStripPresenter())
     private val sectionPresenterSelector = ClassPresenterSelector().apply {
         addClassPresenter(SectionItem::class.java, SectionCardPresenter())
         addClassPresenter(MultiViewHeroItem::class.java, MultiViewHeroPresenter())
@@ -131,6 +157,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
         super.onViewCreated(view, savedInstanceState)
         screenPreWarmer = ScreenPreWarmer(viewLifecycleOwner.lifecycleScope)
         bindViews(view)
+        // Hero trailer: check device memory and bind the preview PlayerView
+        val activityManager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        isLowMemoryDevice = activityManager.memoryClass <= 128
+        heroPreviewView = view.findViewById(R.id.hero_preview_player)
+        heroContentOverlay = view.findViewById(R.id.hero_content_overlay)
+        heroGradientBottom = view.findViewById(R.id.hero_gradient_bottom)
+        heroGradientLeft = view.findViewById(R.id.hero_gradient_left)
         setupAuroraBackground(view)
         setupFrostedHeaderScroll(view)
         setupHeaderIcons(view)
@@ -140,11 +173,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
         setupNewEpisodesRow()
         setupForYouRow()
         setupForYouLiveRow()
+        setupChannelStripRow()
+        observeChannelStrip()
         setupHeroClickListener()
         observeFeaturedContent()
         observeContinueWatching()
+        observeLiveSports()
         observeNewEpisodes()
         observeForYouContent()
+        observeBecauseYouWatched()
         observeForYouLiveContent()
         observeTrendingContent()
         setupTrendingSeriesRow()
@@ -161,11 +198,17 @@ class HomeFragment : Fragment(), KeyEventHandler {
     override fun onDestroyView() {
         // Save focus position for restoration on back navigation
         saveFocusState()
+        releaseHeroPreview()
         heroRotationJob?.cancel()
         screenPreWarmer?.reset()
         screenPreWarmer = null
         onboardingOverlay = null
         super.onDestroyView()
+    }
+
+    override fun onPause() {
+        releaseHeroPreview()
+        super.onPause()
     }
 
     private fun saveFocusState() {
@@ -204,6 +247,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     viewModel.savedFocusPosition = forYouLiveRow.selectedPosition
                     return
                 }
+                R.id.channel_strip_row -> {
+                    viewModel.savedFocusRowId = R.id.channel_strip_row
+                    viewModel.savedFocusPosition = channelStripRow.selectedPosition
+                    return
+                }
                 R.id.trending_row -> {
                     viewModel.savedFocusRowId = R.id.trending_row
                     viewModel.savedFocusPosition = trendingRow.selectedPosition
@@ -217,6 +265,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
             }
             val p = current.parent
             current = if (p is View) p else null
+        }
+        // Sports banner
+        if (focused.id == R.id.sports_banner) {
+            viewModel.savedFocusRowId = R.id.sports_banner
+            return
         }
         // Hero buttons
         if (focused.id == R.id.hero_watch_now || focused.id == R.id.hero_more_info) {
@@ -280,6 +333,14 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     heroWatchNow.requestFocus()
                 }
             }
+            R.id.channel_strip_row -> channelStripRow.post {
+                if (channelStripObjectAdapter.size() > 0) {
+                    channelStripRow.safeSetSelectedPosition(pos, channelStripObjectAdapter.size())
+                    channelStripRow.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
+            }
             R.id.trending_row -> trendingRow.post {
                 if (trendingObjectAdapter.size() > 0) {
                     trendingRow.safeSetSelectedPosition(pos, trendingObjectAdapter.size())
@@ -296,6 +357,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     heroWatchNow.requestFocus()
                 }
             }
+            R.id.sports_banner -> sportsBanner.post {
+                if (sportsBanner.visibility == View.VISIBLE) {
+                    sportsBanner.requestFocus()
+                } else {
+                    heroWatchNow.requestFocus()
+                }
+            }
             R.id.hero_watch_now -> heroWatchNow.post { heroWatchNow.requestFocus() }
             R.id.hero_more_info -> heroMoreInfo.post { heroMoreInfo.requestFocus() }
             else -> heroWatchNow.post { heroWatchNow.requestFocus() }
@@ -305,8 +373,33 @@ class HomeFragment : Fragment(), KeyEventHandler {
     // ── KeyEventHandler ────────────────────────────────────────────────
 
     override fun onKeyEvent(keyCode: Int): Boolean {
-        val overlay = onboardingOverlay ?: return false
-        return overlay.handleKeyEvent(keyCode)
+        val overlay = onboardingOverlay
+        if (overlay != null) return overlay.handleKeyEvent(keyCode)
+
+        // D-pad left/right on hero area switches featured movies
+        val focused = view?.findFocus()
+        val isHeroFocused = focused?.id == R.id.hero_watch_now || focused?.id == R.id.hero_more_info
+        if (isHeroFocused && featuredItems.size > 1) {
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    releaseHeroPreview()
+                    heroRotationJob?.cancel()
+                    heroIndex = if (heroIndex <= 0) featuredItems.size - 1 else heroIndex - 1
+                    displayHeroItem(featuredItems[heroIndex], animate = true)
+                    startHeroRotation()
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    releaseHeroPreview()
+                    heroRotationJob?.cancel()
+                    heroIndex = (heroIndex + 1) % featuredItems.size
+                    displayHeroItem(featuredItems[heroIndex], animate = true)
+                    startHeroRotation()
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     // ── Onboarding ─────────────────────────────────────────────────────
@@ -354,12 +447,16 @@ class HomeFragment : Fragment(), KeyEventHandler {
         forYouRow = view.findViewById(R.id.for_you_row)
         forYouLiveLabel = view.findViewById(R.id.for_you_live_label)
         forYouLiveRow = view.findViewById(R.id.for_you_live_row)
+        channelStripLabel = view.findViewById(R.id.channel_strip_label)
+        channelStripRow = view.findViewById(R.id.channel_strip_row)
         sectionsLabel = view.findViewById(R.id.sections_label)
         sectionsRow = view.findViewById(R.id.sections_row)
         trendingLabel = view.findViewById(R.id.trending_label)
         trendingRow = view.findViewById(R.id.trending_row)
         trendingSeriesLabel = view.findViewById(R.id.trending_series_label)
         trendingSeriesRow = view.findViewById(R.id.trending_series_row)
+        becauseYouWatchedContainer = view.findViewById(R.id.because_you_watched_container)
+        sportsBanner = view.findViewById(R.id.sports_banner)
     }
 
     // ── Aurora Background ──────────────────────────────────────────────────
@@ -375,6 +472,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
             ViewGroup.LayoutParams.MATCH_PARENT
         )
         parent.addView(auroraBackground, index)
+        // Apply time-of-day aurora theming
+        auroraBackground.setTimeOfDayTheme(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
     }
 
     // ── Row Focus Dimming ─────────────────────────────────────────────────
@@ -425,6 +524,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 if (heroHeight > 0) {
                     val progress = (scrollY / heroHeight).coerceIn(0f, 1f)
                     frostedHeader.alpha = progress
+                    // Parallax: backdrop scrolls up slower than content for depth effect
+                    heroBackdrop.translationY = -scrollY * 0.4f
+                    // Release hero preview when scrolled past half the hero
+                    if (scrollY > heroHeight * 0.5f) {
+                        if (heroPreviewActive) releaseHeroPreview()
+                    }
                 }
             }
         )
@@ -684,6 +789,78 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    // ── Live Sports Banner ────────────────────────────────────────────
+
+    private fun observeLiveSports() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.liveSportsEvent.collect { event ->
+                    if (event != null) {
+                        sportsBanner.visibility = View.VISIBLE
+                        val logo = sportsBanner.findViewById<ImageView>(R.id.sports_channel_logo)
+                        val initials = sportsBanner.findViewById<TextView>(R.id.sports_channel_initials)
+                        val title = sportsBanner.findViewById<TextView>(R.id.sports_event_title)
+                        val channelName = sportsBanner.findViewById<TextView>(R.id.sports_channel_name)
+                        val liveDot = sportsBanner.findViewById<View>(R.id.sports_live_dot)
+
+                        title.text = event.eventTitle
+                        channelName.text = event.channelName
+
+                        if (!event.channelIcon.isNullOrBlank()) {
+                            logo.visibility = View.VISIBLE
+                            initials.visibility = View.GONE
+                            logo.load(event.channelIcon) {
+                                crossfade(true)
+                                listener(onError = { _, _ ->
+                                    logo.visibility = View.GONE
+                                    initials.visibility = View.VISIBLE
+                                    initials.text = event.channelName.take(3).uppercase()
+                                })
+                            }
+                        } else {
+                            logo.visibility = View.GONE
+                            initials.visibility = View.VISIBLE
+                            initials.text = event.channelName.take(3).uppercase()
+                        }
+
+                        // Pulsing LIVE dot animation
+                        liveDot.animate().cancel()
+                        android.animation.ObjectAnimator.ofFloat(liveDot, "alpha", 1f, 0.2f, 1f).apply {
+                            duration = 1500
+                            repeatCount = android.animation.ValueAnimator.INFINITE
+                            start()
+                        }
+
+                        // Focus effect: subtle scale — no SurfaceView inside, scaling is safe
+                        sportsBanner.onFocusChangeListener = View.OnFocusChangeListener { v, hasFocus ->
+                            v.animate()
+                                .scaleX(if (hasFocus) 1.02f else 1f)
+                                .scaleY(if (hasFocus) 1.02f else 1f)
+                                .setDuration(200)
+                                .start()
+                        }
+
+                        sportsBanner.setOnClickListener {
+                            val fragment = OoustreamPlaybackFragment.newInstance(
+                                streamUrl = event.streamUrl,
+                                contentType = ContentType.LIVE,
+                                streamId = event.channelId.toString(),
+                                streamName = event.channelName
+                            )
+                            val tx = requireActivity().supportFragmentManager.beginTransaction()
+                            FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                            tx.replace(R.id.main_container, fragment)
+                                .addToBackStack(null)
+                                .commit()
+                        }
+                    } else {
+                        sportsBanner.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
     // ── New Episodes Row ──────────────────────────────────────────────
 
     private fun setupNewEpisodesRow() {
@@ -827,6 +1004,84 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    // ── Because You Watched Rows ──────────────────────────────────────
+
+    private fun observeBecauseYouWatched() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.becauseYouWatchedRows.collect { rows ->
+                    renderBecauseYouWatchedRows(rows)
+                }
+            }
+        }
+    }
+
+    private fun renderBecauseYouWatchedRows(rows: List<BecauseYouWatchedRow>) {
+        becauseYouWatchedContainer.removeAllViews()
+        if (rows.isEmpty()) {
+            becauseYouWatchedContainer.visibility = View.GONE
+            return
+        }
+
+        // Hide the generic flat "For You" row — the grouped rows replace it
+        forYouLabel.visibility = View.GONE
+        forYouRow.visibility = View.GONE
+        becauseYouWatchedContainer.visibility = View.VISIBLE
+
+        val spacingMd = resources.getDimensionPixelSize(R.dimen.spacing_md)
+        val overscanMargin = resources.getDimensionPixelSize(R.dimen.overscan_margin)
+        val rowHeight = resources.getDimensionPixelSize(R.dimen.row_for_you_height)
+
+        for (row in rows) {
+            // Row label
+            val label = TextView(requireContext()).apply {
+                text = "Because You Watched ${row.seedTitle}"
+                setTextColor(resources.getColor(R.color.text_primary, null))
+                textSize = 18f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(overscanMargin, 0, overscanMargin, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 24.dp }
+            }
+
+            // HorizontalGridView for this row's cards
+            val gridView = androidx.leanback.widget.HorizontalGridView(requireContext()).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    rowHeight
+                ).apply { topMargin = 12.dp }
+                setPadding(overscanMargin, 0, 0, 0)
+                clipToPadding = false
+                clipChildren = false
+                isFocusable = true
+                descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                setItemSpacing(spacingMd)
+            }
+
+            val objectAdapter = ArrayObjectAdapter(ForYouPresenter())
+            objectAdapter.addAll(0, row.recommendations)
+            val bridge = ItemBridgeAdapter(objectAdapter)
+            bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+                override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                    val position = viewHolder.adapterPosition
+                    viewHolder.itemView.setOnClickListener {
+                        val item = objectAdapter.get(position)
+                        if (item is RecommendedItem) {
+                            navigateToRecommendation(item)
+                        }
+                    }
+                    attachRowDimming(gridView, label, viewHolder, position)
+                }
+            })
+            gridView.adapter = bridge
+
+            becauseYouWatchedContainer.addView(label)
+            becauseYouWatchedContainer.addView(gridView)
+        }
+    }
+
     // ── For You — Live Now Row ─────────────────────────────────────────
 
     private fun setupForYouLiveRow() {
@@ -859,6 +1114,53 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     } else {
                         forYouLiveLabel.visibility = View.GONE
                         forYouLiveRow.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Channel Strip (Quick Tune) Row ────────────────────────────────────
+
+    private fun setupChannelStripRow() {
+        val bridgeAdapter = ItemBridgeAdapter(channelStripObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = channelStripObjectAdapter.get(position)
+                    if (item is ChannelStripItem) {
+                        val fragment = OoustreamPlaybackFragment.newInstance(
+                            streamUrl = item.streamUrl,
+                            contentType = ContentType.LIVE,
+                            streamId = item.channelId.toString(),
+                            streamName = item.channelName
+                        )
+                        val tx = requireActivity().supportFragmentManager.beginTransaction()
+                        FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                        tx.replace(R.id.main_container, fragment)
+                            .addToBackStack(null)
+                            .commit()
+                    }
+                }
+                attachRowDimming(channelStripRow, channelStripLabel, viewHolder, position)
+            }
+        })
+        channelStripRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        channelStripRow.adapter = bridgeAdapter
+    }
+
+    private fun observeChannelStrip() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.channelStripItems.collect { items ->
+                    channelStripObjectAdapter.safeReplaceAll(items)
+                    if (items.isNotEmpty()) {
+                        channelStripLabel.visibility = View.VISIBLE
+                        channelStripRow.visibility = View.VISIBLE
+                    } else {
+                        channelStripLabel.visibility = View.GONE
+                        channelStripRow.visibility = View.GONE
                     }
                 }
             }
@@ -921,6 +1223,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun displayHeroItem(item: FeaturedItem, animate: Boolean) {
+        releaseHeroPreview()
         if (animate) {
             heroBackdrop.animate()
                 .alpha(0f)
@@ -941,6 +1244,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
             heroGenre.text = item.genre
         }
         updateHeroIndicators(featuredItems.size, heroIndex)
+        startHeroDwellTimer()
     }
 
     private fun loadHeroImage(item: FeaturedItem) {
@@ -964,6 +1268,152 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    // ── Hero Trailer Auto-Play ──────────────────────────────────────────
+
+    private fun startHeroDwellTimer() {
+        if (isLowMemoryDevice) {
+            android.util.Log.w("OOUSTREAM", "Hero trailer: skipping — low memory device")
+            return
+        }
+        heroDwellJob?.cancel()
+        heroDwellJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(4_000)
+            if (!isActive) return@launch
+            val items = featuredItems
+            val item = items.getOrNull(heroIndex)
+            if (item == null) {
+                android.util.Log.w("OOUSTREAM", "Hero trailer: no item at index $heroIndex (items=${items.size})")
+                return@launch
+            }
+            val streamId = item.streamId.toIntOrNull()
+            if (streamId == null) {
+                android.util.Log.w("OOUSTREAM", "Hero trailer: invalid streamId '${item.streamId}'")
+                return@launch
+            }
+            val url = viewModel.buildVodStreamUrl(streamId, item.containerExtension)
+            android.util.Log.w("OOUSTREAM", "Hero trailer: starting preview for '${item.title}' url=$url")
+            startHeroPreview(url)
+        }
+    }
+
+    private fun startHeroPreview(url: String) {
+        val playerView = heroPreviewView
+        if (playerView == null) {
+            android.util.Log.w("OOUSTREAM", "Hero trailer: playerView is null — can't start")
+            return
+        }
+        releaseHeroPreview()
+        val context = requireContext()
+        val trackSelector = DefaultTrackSelector(context).apply {
+            setParameters(
+                buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .setMaxVideoSize(854, 480)
+            )
+        }
+        // Use DefaultHttpDataSource with redirect following enabled (server returns 302)
+        val dataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        val player = ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(com.ooustream.iptv.player.BufferConfigs.forContentType(ContentType.VOD))
+            .setTrackSelector(trackSelector)
+            .build().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    false
+                )
+                volume = 0f
+                repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                setMediaItem(MediaItem.fromUri(url))
+            }
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val stateName = when (playbackState) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN($playbackState)"
+                }
+                android.util.Log.w("OOUSTREAM", "Hero trailer: state=$stateName")
+            }
+
+            override fun onRenderedFirstFrame() {
+                android.util.Log.w("OOUSTREAM", "Hero trailer: first frame rendered, heroPreviewActive=$heroPreviewActive")
+                if (!heroPreviewActive) return
+                // Crossfade: video in, backdrop + overlays out
+                playerView.animate().alpha(1f).setDuration(500).start()
+                heroBackdrop.animate().alpha(0f).setDuration(500).start()
+                // Fade out title/genre/buttons/indicators and gradients for clean full-bleed video
+                heroContentOverlay?.animate()?.alpha(0f)?.setDuration(400)?.start()
+                heroGradientBottom?.animate()?.alpha(0f)?.setDuration(400)?.start()
+                heroGradientLeft?.animate()?.alpha(0f)?.setDuration(400)?.start()
+                heroRotationJob?.cancel()
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                android.util.Log.w("OOUSTREAM", "Hero trailer: player error — ${error.errorCode}: ${error.message}", error.cause)
+                releaseHeroPreview()
+            }
+        })
+        heroPreviewPlayer = player
+        // Make PlayerView visible but transparent so TextureView creates its Surface
+        // (GONE = no Surface = onRenderedFirstFrame never fires)
+        playerView.alpha = 0f
+        playerView.visibility = View.VISIBLE
+        playerView.player = player
+        heroPreviewActive = true
+        player.prepare()
+        player.play()
+        // Seek past opening logos/credits to show actual movie content
+        player.seekTo(120_000L) // 2 minutes in
+        viewLifecycleOwner.lifecycleScope.launch {
+            delay(15_000) // 15s preview, not 20
+            if (heroPreviewActive) {
+                releaseHeroPreview()
+                startHeroRotation()
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            delay(5_000)
+            if (heroPreviewActive && playerView.alpha < 0.5f) {
+                android.util.Log.w("OOUSTREAM", "Hero trailer: 5s buffer timeout — no first frame, releasing")
+                releaseHeroPreview()
+            }
+        }
+    }
+
+    private fun releaseHeroPreview() {
+        heroDwellJob?.cancel()
+        heroPreviewActive = false
+        heroPreviewPlayer?.let { player ->
+            player.stop()
+            player.release()
+        }
+        heroPreviewPlayer = null
+        heroPreviewView?.let { pv ->
+            pv.player = null
+            if (pv.visibility == View.VISIBLE) {
+                pv.animate().alpha(0f).setDuration(300).withEndAction {
+                    pv.visibility = View.GONE
+                }.start()
+                heroBackdrop.animate().alpha(1f).setDuration(300).start()
+                // Restore hero content + gradients
+                heroContentOverlay?.animate()?.alpha(1f)?.setDuration(300)?.start()
+                heroGradientBottom?.animate()?.alpha(1f)?.setDuration(300)?.start()
+                heroGradientLeft?.animate()?.alpha(1f)?.setDuration(300)?.start()
+            } else {
+                pv.visibility = View.GONE
+            }
+        }
+    }
+
     private fun startHeroRotation() {
         heroRotationJob?.cancel()
         if (featuredItems.size <= 1) return
@@ -977,6 +1427,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 heroIndex = (heroIndex + 1) % size
                 val item = items.getOrNull(heroIndex) ?: break
                 displayHeroItem(item, animate = true)
+                // Refresh aurora theme on rotation (catches time boundary crossings)
+                auroraBackground.setTimeOfDayTheme(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
             }
         }
     }

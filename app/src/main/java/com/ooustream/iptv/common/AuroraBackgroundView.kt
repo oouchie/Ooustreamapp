@@ -1,10 +1,10 @@
 package com.ooustream.iptv.common
 
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
@@ -17,6 +17,9 @@ import android.view.animation.LinearInterpolator
  * Renders a slow-drifting aurora atmospheric background using radial gradients.
  * Three colour orbs float across the canvas in a gentle loop, creating an ambient
  * cinema feel without demanding GPU resources (no shaders / RenderScript).
+ *
+ * Supports time-of-day theming: orb colors shift based on the hour to create
+ * a living atmosphere (warm mornings, cool afternoons, deep evenings, dark nights).
  */
 class AuroraBackgroundView @JvmOverloads constructor(
     context: Context,
@@ -32,8 +35,9 @@ class AuroraBackgroundView @JvmOverloads constructor(
 
     // Three colour orbs that drift slowly
     private data class Orb(
-        val color: Int,
+        val baseColor: Int,
         val alpha: Int, // 0-255
+        var currentColor: Int = baseColor,
         var cx: Float = 0f,
         var cy: Float = 0f,
         var radius: Float = 0f,
@@ -43,9 +47,9 @@ class AuroraBackgroundView @JvmOverloads constructor(
     )
 
     private val orbs = listOf(
-        Orb(Color.parseColor("#0A1628"), alpha = 80, dxFactor = 0.3f, dyFactor = 0.2f, radiusFactor = 0.6f),
-        Orb(Color.parseColor("#12081F"), alpha = 60, dxFactor = -0.2f, dyFactor = 0.35f, radiusFactor = 0.5f),
-        Orb(Color.parseColor("#081A1A"), alpha = 50, dxFactor = 0.25f, dyFactor = -0.15f, radiusFactor = 0.55f)
+        Orb(Color.parseColor("#0A1628"), alpha = 140, dxFactor = 0.3f, dyFactor = 0.2f, radiusFactor = 0.7f),
+        Orb(Color.parseColor("#12081F"), alpha = 110, dxFactor = -0.2f, dyFactor = 0.35f, radiusFactor = 0.6f),
+        Orb(Color.parseColor("#081A1A"), alpha = 100, dxFactor = 0.25f, dyFactor = -0.15f, radiusFactor = 0.65f)
     )
 
     private val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -60,10 +64,82 @@ class AuroraBackgroundView @JvmOverloads constructor(
 
     private var progress = 0f
     private var animator: ValueAnimator? = null
+    private var colorAnimator: ValueAnimator? = null
+    private var lastTimeBucket: Int = -1
+
+    // Time-of-day color palettes (all very dark for cinematic feel)
+    private object TimeTheme {
+        // Morning (6-11): warm sunrise
+        val MORNING = intArrayOf(
+            Color.parseColor("#2D2010"), // warm amber
+            Color.parseColor("#2D1420"), // dusty rose
+            Color.parseColor("#2D2400")  // burnt gold
+        )
+        // Afternoon (12-17): cool default
+        val AFTERNOON = intArrayOf(
+            Color.parseColor("#142848"), // blue
+            Color.parseColor("#1E1038"), // purple
+            Color.parseColor("#103030")  // teal
+        )
+        // Evening (18-23): deep cinematic
+        val EVENING = intArrayOf(
+            Color.parseColor("#1E1038"), // deep purple
+            Color.parseColor("#141040"), // indigo
+            Color.parseColor("#2D1010")  // dark crimson
+        )
+        // Night (0-5): near-black minimal
+        val NIGHT = intArrayOf(
+            Color.parseColor("#0C1020"), // dark navy
+            Color.parseColor("#101010"), // near-black
+            Color.parseColor("#0A0A10")  // void
+        )
+
+        fun forHour(hour: Int): IntArray = when (hour) {
+            in 6..11 -> MORNING
+            in 12..17 -> AFTERNOON
+            in 18..23 -> EVENING
+            else -> NIGHT
+        }
+
+        fun bucketForHour(hour: Int): Int = when (hour) {
+            in 6..11 -> 0
+            in 12..17 -> 1
+            in 18..23 -> 2
+            else -> 3
+        }
+    }
+
+    /**
+     * Shift aurora orb colors based on time of day.
+     * Only animates if the time bucket has changed.
+     */
+    fun setTimeOfDayTheme(hour: Int) {
+        val bucket = TimeTheme.bucketForHour(hour)
+        if (bucket == lastTimeBucket) return
+        lastTimeBucket = bucket
+
+        val palette = TimeTheme.forHour(hour)
+        colorAnimator?.cancel()
+
+        val startColors = intArrayOf(orbs[0].currentColor, orbs[1].currentColor, orbs[2].currentColor)
+        colorAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 2000L
+            val evaluator = ArgbEvaluator()
+            addUpdateListener { anim ->
+                val fraction = anim.animatedValue as Float
+                for (i in orbs.indices) {
+                    orbs[i].currentColor = evaluator.evaluate(fraction, startColors[i], palette[i]) as Int
+                }
+                // No need to invalidate — the main animation cycle already does it every frame
+            }
+            start()
+        }
+    }
 
     init {
-        // Use software layer since radial gradients can be heavy on some TV GPUs
         setLayerType(LAYER_TYPE_HARDWARE, null)
+        // Initialize currentColor from baseColor
+        orbs.forEach { it.currentColor = it.baseColor }
     }
 
     override fun onAttachedToWindow() {
@@ -74,6 +150,8 @@ class AuroraBackgroundView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         animator?.cancel()
         animator = null
+        colorAnimator?.cancel()
+        colorAnimator = null
         super.onDetachedFromWindow()
     }
 
@@ -112,7 +190,7 @@ class AuroraBackgroundView @JvmOverloads constructor(
             val gradient = RadialGradient(
                 orb.cx, orb.cy, orb.radius,
                 intArrayOf(
-                    Color.argb(orb.alpha, Color.red(orb.color), Color.green(orb.color), Color.blue(orb.color)),
+                    Color.argb(orb.alpha, Color.red(orb.currentColor), Color.green(orb.currentColor), Color.blue(orb.currentColor)),
                     Color.TRANSPARENT
                 ),
                 floatArrayOf(0f, 1f),

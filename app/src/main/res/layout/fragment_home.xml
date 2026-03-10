@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -33,7 +34,9 @@
             <FrameLayout
                 android:id="@+id/hero_container"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/hero_height">
+                android:layout_height="@dimen/hero_height"
+                android:clipChildren="true"
+                android:clipToPadding="true">
 
                 <ImageView
                     android:id="@+id/hero_backdrop"
@@ -42,8 +45,19 @@
                     android:scaleType="centerCrop"
                     tools:ignore="ContentDescription" />
 
+                <!-- Hero trailer preview (auto-play on dwell) -->
+                <androidx.media3.ui.PlayerView
+                    android:id="@+id/hero_preview_player"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:visibility="gone"
+                    app:use_controller="false"
+                    app:surface_type="texture_view"
+                    app:resize_mode="zoom" />
+
                 <!-- Bottom gradient melt -->
                 <View
+                    android:id="@+id/hero_gradient_bottom"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
                     android:layout_gravity="bottom"
@@ -51,12 +65,14 @@
 
                 <!-- Left gradient for text readability -->
                 <View
+                    android:id="@+id/hero_gradient_left"
                     android:layout_width="300dp"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_hero_gradient_left" />
 
                 <!-- Hero content -->
                 <LinearLayout
+                    android:id="@+id/hero_content_overlay"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|start"
@@ -177,6 +193,15 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
+                <!-- Live Sports / Events Banner -->
+                <include
+                    android:id="@+id/sports_banner"
+                    layout="@layout/view_live_sports_banner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
                 <!-- New Episodes Section -->
                 <TextView
                     android:id="@+id/new_episodes_label"
@@ -233,6 +258,16 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
+                <!-- Because You Watched Container (dynamic rows, replaces flat For You when populated) -->
+                <LinearLayout
+                    android:id="@+id/because_you_watched_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:visibility="gone" />
+
                 <!-- For You — Live Now Section -->
                 <TextView
                     android:id="@+id/for_you_live_label"
@@ -252,6 +287,34 @@
                     android:id="@id/for_you_live_row"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/row_for_you_live_height"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
+                <!-- Quick Tune Channel Strip -->
+                <TextView
+                    android:id="@+id/channel_strip_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="Quick Tune"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/channel_strip_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="100dp"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -313,34 +376,6 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
-                <!-- Watch It Again Section -->
-                <TextView
-                    android:id="@+id/watch_again_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:paddingEnd="@dimen/overscan_margin"
-                    android:layout_marginTop="24dp"
-                    android:text="Watch It Again"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
-
-                <androidx.leanback.widget.HorizontalGridView
-                    android:id="@+id/watch_again_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="@dimen/row_watch_again_height"
-                    android:layout_marginTop="12dp"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:clipToPadding="false"
-                    android:clipChildren="false"
-                    android:visibility="gone"
-                    android:focusable="true"
-                    android:descendantFocusability="afterDescendants"
-                    tools:visibility="visible" />
-
                 <!-- Trending Series Section -->
                 <TextView
                     android:id="@+id/trending_series_label"
@@ -360,6 +395,34 @@
                     android:id="@+id/trending_series_row"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/row_trending_height"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    tools:visibility="visible" />
+
+                <!-- Watch It Again Section (bottom of home) -->
+                <TextView
+                    android:id="@+id/watch_again_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="Watch It Again"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/watch_again_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/row_watch_again_height"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
