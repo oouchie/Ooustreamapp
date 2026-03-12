@@ -50,6 +50,7 @@ class VodFragment : Fragment(), KeyEventHandler {
     private var searchOpen = false
     private var filteredMovies: List<com.ooustream.iptv.data.model.VodStream> = emptyList()
     private var categoryAdapter: CategoryListAdapter? = null
+    private var updatePending = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_vod, container, false)
@@ -268,31 +269,38 @@ class VodFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateMovieList(posterAdapter: ArrayObjectAdapter) {
-        val movies = viewModel.movies.value
-        val progressMap = viewModel.watchProgressMap.value
-        filteredMovies = if (searchFilter.isEmpty()) {
-            movies
-        } else {
-            movies.filter { it.name.lowercase().contains(searchFilter) }
+        val grid = view?.findViewById<VerticalGridView>(R.id.vod_grid) ?: return
+        if (updatePending) return
+        updatePending = true
+        grid.post {
+            updatePending = false
+            if (!isAdded) return@post
+            val movies = viewModel.movies.value
+            val progressMap = viewModel.watchProgressMap.value
+            filteredMovies = if (searchFilter.isEmpty()) {
+                movies
+            } else {
+                movies.filter { it.name.lowercase().contains(searchFilter) }
+            }
+            val newItems = filteredMovies.map { movie ->
+                val progress = progressMap[movie.streamId.toString()]
+                PosterItem(
+                    id = movie.streamId,
+                    title = movie.name,
+                    imageUrl = movie.streamIcon,
+                    rating = movie.rating,
+                    extension = movie.containerExtension,
+                    type = "vod",
+                    watchCompleted = progress?.completed == true,
+                    watchProgress = progress?.progressPercent ?: 0f,
+                    tmdbId = movie.tmdbId
+                )
+            }
+            posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
+                override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
+                override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
+            })
         }
-        val newItems = filteredMovies.map { movie ->
-            val progress = progressMap[movie.streamId.toString()]
-            PosterItem(
-                id = movie.streamId,
-                title = movie.name,
-                imageUrl = movie.streamIcon,
-                rating = movie.rating,
-                extension = movie.containerExtension,
-                type = "vod",
-                watchCompleted = progress?.completed == true,
-                watchProgress = progress?.progressPercent ?: 0f,
-                tmdbId = movie.tmdbId
-            )
-        }
-        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
-            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
-            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
-        })
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

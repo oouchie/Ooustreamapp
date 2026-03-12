@@ -48,6 +48,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
     private var searchOpen = false
     private var filteredSeries: List<com.ooustream.iptv.data.model.Series> = emptyList()
     private var categoryAdapter: CategoryListAdapter? = null
+    private var updatePending = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_series, container, false)
@@ -237,27 +238,34 @@ class SeriesFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateSeriesList(posterAdapter: ArrayObjectAdapter) {
-        val series = viewModel.seriesList.value
-        filteredSeries = if (searchFilter.isEmpty()) {
-            series
-        } else {
-            series.filter { it.name.lowercase().contains(searchFilter) }
+        val grid = view?.findViewById<VerticalGridView>(R.id.series_grid) ?: return
+        if (updatePending) return
+        updatePending = true
+        grid.post {
+            updatePending = false
+            if (!isAdded) return@post
+            val series = viewModel.seriesList.value
+            filteredSeries = if (searchFilter.isEmpty()) {
+                series
+            } else {
+                series.filter { it.name.lowercase().contains(searchFilter) }
+            }
+            val newItems = filteredSeries.map { s ->
+                PosterItem(
+                    id = s.seriesId,
+                    title = s.name,
+                    imageUrl = s.cover,
+                    rating = s.rating,
+                    extension = null,
+                    type = "series",
+                    tmdbId = s.tmdbId
+                )
+            }
+            posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
+                override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
+                override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
+            })
         }
-        val newItems = filteredSeries.map { s ->
-            PosterItem(
-                id = s.seriesId,
-                title = s.name,
-                imageUrl = s.cover,
-                rating = s.rating,
-                extension = null,
-                type = "series",
-                tmdbId = s.tmdbId
-            )
-        }
-        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
-            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
-            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
-        })
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

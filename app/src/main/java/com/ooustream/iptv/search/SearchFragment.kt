@@ -580,7 +580,8 @@ class SearchFragment : Fragment(), KeyEventHandler {
             streamUrl = url,
             contentType = ContentType.LIVE,
             streamId = channel.streamId.toString(),
-            streamName = channel.name
+            streamName = channel.name,
+            streamIcon = channel.streamIcon ?: ""
         )
         requireActivity().supportFragmentManager.beginTransaction()
             .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
@@ -598,7 +599,8 @@ class SearchFragment : Fragment(), KeyEventHandler {
                     streamUrl = url,
                     contentType = ContentType.VOD,
                     streamId = item.id.toString(),
-                    streamName = item.title
+                    streamName = item.title,
+                    streamIcon = item.imageUrl ?: ""
                 )
                 requireActivity().supportFragmentManager.beginTransaction()
                     .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }

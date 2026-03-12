@@ -96,6 +96,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
     private var userTrackOverrideActive = false
+    private var subtitlesTemporarilyEnabled = false
     private var channelSwitchJob: Job? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -419,10 +420,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         trackPicker.onDismissed = {
             controlsManager?.resumeAutoHide()
+            // Re-disable subtitles if picker was dismissed without selecting one
+            if (subtitlesTemporarilyEnabled) {
+                subtitlesTemporarilyEnabled = false
+                player?.let { p ->
+                    p.trackSelectionParameters = p.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        .build()
+                }
+            }
         }
         trackPicker.onTrackSelected = { trackType ->
             if (trackType == C.TRACK_TYPE_AUDIO) {
                 userTrackOverrideActive = true
+            }
+            if (trackType == C.TRACK_TYPE_TEXT) {
+                // User explicitly chose a subtitle (or "Off") — don't re-disable on dismiss
+                subtitlesTemporarilyEnabled = false
             }
         }
         trackPickerOverlay = trackPicker
@@ -1244,7 +1259,38 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private fun showTrackPicker() {
         val p = player ?: return
         controlsManager?.pauseAutoHide()
-        trackPickerOverlay?.show(p)
+        // Temporarily enable TEXT track type so ExoPlayer exposes subtitle tracks
+        // for enumeration. If user picks "Off", TrackPickerOverlay re-disables it.
+        val wasTextDisabled = p.trackSelectionParameters
+            .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        if (wasTextDisabled) {
+            subtitlesTemporarilyEnabled = true
+            p.trackSelectionParameters = p.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .build()
+            // Wait for tracks to refresh before showing picker, with safety timeout
+            var pickerShown = false
+            val listener = object : Player.Listener {
+                override fun onTracksChanged(tracks: Tracks) {
+                    if (pickerShown) return
+                    pickerShown = true
+                    p.removeListener(this)
+                    trackPickerOverlay?.show(p)
+                }
+            }
+            p.addListener(listener)
+            // Fallback: show picker after 500ms if onTracksChanged doesn't fire
+            view?.postDelayed({
+                if (!pickerShown) {
+                    pickerShown = true
+                    p.removeListener(listener)
+                    trackPickerOverlay?.show(p)
+                }
+            }, 500)
+        } else {
+            trackPickerOverlay?.show(p)
+        }
     }
 
     private fun showExternalPlayerDialog() {
