@@ -270,37 +270,46 @@ class VodFragment : Fragment(), KeyEventHandler {
 
     private fun updateMovieList(posterAdapter: ArrayObjectAdapter) {
         val grid = view?.findViewById<VerticalGridView>(R.id.vod_grid) ?: return
-        if (updatePending) return
-        updatePending = true
-        grid.post {
-            updatePending = false
-            if (!isAdded) return@post
-            val movies = viewModel.movies.value
-            val progressMap = viewModel.watchProgressMap.value
-            filteredMovies = if (searchFilter.isEmpty()) {
-                movies
-            } else {
-                movies.filter { it.name.lowercase().contains(searchFilter) }
+        if (grid.isComputingLayout) {
+            // Defer if grid is mid-layout to prevent IndexOutOfBoundsException
+            if (!updatePending) {
+                updatePending = true
+                grid.post {
+                    updatePending = false
+                    if (isAdded) updateMovieListInternal(posterAdapter)
+                }
             }
-            val newItems = filteredMovies.map { movie ->
-                val progress = progressMap[movie.streamId.toString()]
-                PosterItem(
-                    id = movie.streamId,
-                    title = movie.name,
-                    imageUrl = movie.streamIcon,
-                    rating = movie.rating,
-                    extension = movie.containerExtension,
-                    type = "vod",
-                    watchCompleted = progress?.completed == true,
-                    watchProgress = progress?.progressPercent ?: 0f,
-                    tmdbId = movie.tmdbId
-                )
-            }
-            posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
-                override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
-                override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
-            })
+            return
         }
+        updateMovieListInternal(posterAdapter)
+    }
+
+    private fun updateMovieListInternal(posterAdapter: ArrayObjectAdapter) {
+        val movies = viewModel.movies.value
+        val progressMap = viewModel.watchProgressMap.value
+        filteredMovies = if (searchFilter.isEmpty()) {
+            movies
+        } else {
+            movies.filter { it.name.lowercase().contains(searchFilter) }
+        }
+        val newItems = filteredMovies.map { movie ->
+            val progress = progressMap[movie.streamId.toString()]
+            PosterItem(
+                id = movie.streamId,
+                title = movie.name,
+                imageUrl = movie.streamIcon,
+                rating = movie.rating,
+                extension = movie.containerExtension,
+                type = "vod",
+                watchCompleted = progress?.completed == true,
+                watchProgress = progress?.progressPercent ?: 0f,
+                tmdbId = movie.tmdbId
+            )
+        }
+        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
+            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
+            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
+        })
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {
