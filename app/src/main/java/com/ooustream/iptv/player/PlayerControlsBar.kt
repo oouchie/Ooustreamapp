@@ -64,7 +64,11 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onSeekForward: (() -> Unit)? = null
     var onExternalPlayer: (() -> Unit)? = null
     var onTracksClicked: (() -> Unit)? = null
+    var onCcToggle: (() -> Unit)? = null
     var onDpadSeek: ((Long) -> Unit)? = null
+    private var ccButton: LinearLayout? = null
+    private var ccIcon: ImageView? = null
+    private var ccLabel: TextView? = null
 
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_player_controls, this, true)
@@ -347,7 +351,8 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         addActionButton(R.drawable.ic_skip_previous_24, "Prev Ch") { onPrevChannel?.invoke() }
         addActionButton(R.drawable.ic_live_tv, "Channels") { onChannelList?.invoke() }
         addActionButton(R.drawable.ic_aspect_ratio_24, "Aspect") { onAspectRatio?.invoke() }
-        addActionButton(R.drawable.ic_audio_track, "Tracks") { onTracksClicked?.invoke() }
+        addCcButton()
+        addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }
         addActionButton(R.drawable.ic_skip_next_24, "Next Ch") { onNextChannel?.invoke() }
     }
 
@@ -357,8 +362,81 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         addActionButton(R.drawable.ic_play_arrow_24, "Play") { onPlayPause?.invoke() }
         addActionButton(R.drawable.ic_forward_10_24, "+10s") { onSeekForward?.invoke() }
         addActionButton(R.drawable.ic_aspect_ratio_24, "Aspect") { onAspectRatio?.invoke() }
-        addActionButton(R.drawable.ic_audio_track, "Tracks") { onTracksClicked?.invoke() }
+        addCcButton()
+        addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }
         addActionButton(R.drawable.ic_external_player, "External") { onExternalPlayer?.invoke() }
+    }
+
+    private fun addCcButton() {
+        val btn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            isFocusable = true
+            isClickable = true
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = ContextCompat.getDrawable(context, R.drawable.bg_action_button_states)
+
+            val icon = ImageView(context).apply {
+                setImageResource(R.drawable.ic_subtitles)
+                layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                    gravity = Gravity.CENTER
+                }
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                isFocusable = false
+            }
+            addView(icon)
+            ccIcon = icon
+
+            val text = TextView(context).apply {
+                this.text = "CC"
+                textSize = 11f
+                setTextColor(Color.parseColor("#CCFFFFFF"))
+                gravity = Gravity.CENTER
+                maxLines = 1
+                isFocusable = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(2)
+                    gravity = Gravity.CENTER
+                }
+            }
+            addView(text)
+            ccLabel = text
+
+            setOnClickListener { onCcToggle?.invoke() }
+
+            setOnFocusChangeListener { v, hasFocus ->
+                if (hasFocus) {
+                    v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(150).start()
+                    text.setTextColor(Color.WHITE)
+                } else {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                    // Restore color based on CC state
+                    text.setTextColor(text.tag as? Int ?: Color.parseColor("#CCFFFFFF"))
+                }
+            }
+        }
+        ccButton = btn
+        actionButtonsRow.addView(btn)
+    }
+
+    fun updateCcState(enabled: Boolean) {
+        val goldColor = 0xFFFFC107.toInt()
+        val defaultColor = Color.parseColor("#CCFFFFFF")
+        if (enabled) {
+            ccIcon?.setColorFilter(goldColor)
+            ccLabel?.text = "CC On"
+            ccLabel?.setTextColor(goldColor)
+            ccLabel?.tag = goldColor
+        } else {
+            ccIcon?.clearColorFilter()
+            ccLabel?.text = "CC"
+            ccLabel?.setTextColor(defaultColor)
+            ccLabel?.tag = defaultColor
+        }
     }
 
     private fun addActionButton(iconRes: Int, label: String, onClick: () -> Unit) {

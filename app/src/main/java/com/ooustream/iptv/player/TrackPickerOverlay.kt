@@ -221,7 +221,9 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     private fun buildTrackName(format: Format, trackType: Int, index: Int): String {
         val baseName = when {
             !format.label.isNullOrBlank() -> format.label!!
-            !format.language.isNullOrBlank() -> Locale(format.language!!).displayLanguage
+            !format.language.isNullOrBlank() -> try {
+                Locale(format.language!!).displayLanguage.replaceFirstChar { it.uppercase() }
+            } catch (_: Exception) { format.language!! }
             else -> {
                 val typeLabel = if (trackType == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitle"
                 "$typeLabel Track $index"
@@ -232,6 +234,12 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
                 formatCodecLabel(format.sampleMimeType),
                 formatChannelLabel(format.channelCount)
             )
+            if (parts.isNotEmpty()) return "$baseName (${parts.joinToString(" ")})"
+        }
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            val parts = mutableListOf<String>()
+            formatSubtitleCodecLabel(format.sampleMimeType)?.let { parts.add(it) }
+            if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) parts.add("Forced")
             if (parts.isNotEmpty()) return "$baseName (${parts.joinToString(" ")})"
         }
         return baseName
@@ -248,6 +256,19 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         "audio/flac" -> "FLAC"
         "audio/true-hd" -> "TrueHD"
         "audio/vorbis" -> "Vorbis"
+        else -> null
+    }
+
+    private fun formatSubtitleCodecLabel(mime: String?): String? = when (mime) {
+        "application/x-subrip" -> "SRT"
+        "text/vtt" -> "WebVTT"
+        "application/cea-608" -> "CC"
+        "application/cea-708" -> "CC"
+        "application/dvbsubs" -> "DVB"
+        "text/x-ssa" -> "SSA"
+        "application/ttml+xml" -> "TTML"
+        "application/pgs" -> "PGS"
+        "application/x-mp4-vtt" -> "MP4VTT"
         else -> null
     }
 

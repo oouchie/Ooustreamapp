@@ -5,6 +5,7 @@ import coil.ImageLoader
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.data.repository.CredentialStore
+import com.ooustream.iptv.player.SubtitlePreferences
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -32,5 +33,11 @@ object AppModule {
     @Singleton
     fun provideNetworkMonitor(@ApplicationContext context: Context): NetworkMonitor {
         return NetworkMonitor(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSubtitlePreferences(@ApplicationContext context: Context): SubtitlePreferences {
+        return SubtitlePreferences(context)
     }
 }

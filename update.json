@@ -1,7 +1,7 @@
 {
-  "version_name": "3.0.2",
-  "version_code": 28,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.0.2/app-release.apk",
-  "changelog": "v3.0.2 — Bug Fixes\n\n• Fixed missing posters on Continue Watching after playing from Search\n• Fixed VOD/Series grid crash (IndexOutOfBoundsException) — only defers updates during active layout\n• Fixed subtitles not showing in Track Picker — captions can now be turned on\n• Fixed garbled EPG text — no more diamond characters in program descriptions",
+  "version_name": "3.1.0",
+  "version_code": 29,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.1.0/app-release.apk",
+  "changelog": "v3.1.0 — Closed Captions & Subtitle System\n\n• CC button on player controls — toggle subtitles on/off instantly\n• Remote CC key support (KEYCODE_CAPTIONS)\n• Netflix-style subtitle rendering — bold outline text, no background box\n• Subtitle preferences persist across sessions (language, size, style)\n• Track Picker shows subtitle format badges (SRT, WebVTT, CC, DVB, SSA)\n• Subtitle Settings page — customize text size, color, background, edge style\n• CEA-608 closed caption detection for US IPTV streams\n• Preferred language auto-selection on channel switch",
   "mandatory": false
 }

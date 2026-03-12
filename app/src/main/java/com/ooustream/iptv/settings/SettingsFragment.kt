@@ -42,6 +42,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_CRASH_LOG = 10L
         private const val ACTION_AUDIO_DECODER = 11L
         private const val ACTION_CLEAR_HISTORY = 12L
+        private const val ACTION_SUBTITLE_SETTINGS = 13L
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -77,6 +78,15 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .id(ACTION_PARENTAL)
                 .title("Parental Controls")
                 .description("Manage PIN and content restrictions")
+                .build()
+        )
+
+        // Subtitle Settings
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_SUBTITLE_SETTINGS)
+                .title("Subtitle Settings")
+                .description("Customize captions and subtitle appearance")
                 .build()
         )
 
@@ -186,6 +196,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         when (action.id) {
             ACTION_ACCOUNT -> navigateToFragment(AccountDashboardFragment())
             ACTION_PARENTAL -> navigateToFragment(ParentalPinFragment())
+            ACTION_SUBTITLE_SETTINGS -> navigateToFragment(SubtitleSettingsFragment())
             ACTION_BACKUP -> navigateToFragment(BackupFragment())
             ACTION_SPEED_TEST -> navigateToFragment(SpeedTestFragment())
             ACTION_UPDATE -> navigateToFragment(UpdateFragment())

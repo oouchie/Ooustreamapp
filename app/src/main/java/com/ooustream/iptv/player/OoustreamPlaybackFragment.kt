@@ -21,6 +21,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -29,10 +30,12 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
+import androidx.media3.ui.SubtitleView
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.AudioLogger
@@ -61,6 +64,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     @Inject lateinit var epgCacheRepository: com.ooustream.iptv.data.repository.EpgCacheRepository
     @Inject lateinit var smartEpgFiller: SmartEpgFiller
     @Inject lateinit var watchSessionLogger: WatchSessionLogger
+    @Inject lateinit var subtitlePreferences: SubtitlePreferences
 
     private val viewModel: PlayerViewModel by viewModels()
     private var player: ExoPlayer? = null
@@ -76,6 +80,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var seriesCompleteOverlay: SeriesCompleteOverlay? = null
     private var seekFeedback: SeekFeedbackOverlay? = null
     private var trackPickerOverlay: TrackPickerOverlay? = null
+    private var subtitleView: SubtitleView? = null
     private var audioStatusOverlay: AudioStatusOverlay? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var isAudioOnly = false
@@ -135,8 +140,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         MimeTypes.AUDIO_DTS_HD,
                     )
                     .setPreferredAudioLanguage("en")
-                    .setPreferredTextLanguage("en")
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .setPreferredTextLanguage(subtitlePreferences.preferredLanguage)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlePreferences.subtitlesEnabled)
                     .setTunnelingEnabled(false) // Tunneled playback bypasses audio processor chain
             )
         }
@@ -148,7 +153,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
             .build()
 
         // Audio focus: ExoPlayer handles pause/duck/resume automatically
@@ -253,6 +258,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             onNextEpisode = { skipToNextEpisode() }
             isTrackPickerShowing = { trackPickerOverlay?.isShowing == true }
             onDismissTrackPicker = { trackPickerOverlay?.dismiss() }
+            onCcToggle = { toggleClosedCaptions() }
             // Back handling moved to OnBackPressedCallback below (glue's onKey
             // only intercepts when focus is inside Leanback's BrowseFrameLayout,
             // which is bypassed when our custom controls bar has focus)
@@ -423,11 +429,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // Re-disable subtitles if picker was dismissed without selecting one
             if (subtitlesTemporarilyEnabled) {
                 subtitlesTemporarilyEnabled = false
-                player?.let { p ->
-                    p.trackSelectionParameters = p.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                        .build()
+                if (!subtitlePreferences.subtitlesEnabled) {
+                    player?.let { p ->
+                        p.trackSelectionParameters = p.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            .build()
+                    }
                 }
             }
         }
@@ -438,6 +446,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             if (trackType == C.TRACK_TYPE_TEXT) {
                 // User explicitly chose a subtitle (or "Off") — don't re-disable on dismiss
                 subtitlesTemporarilyEnabled = false
+                // Check if subtitles are now disabled (user chose "Off") or enabled
+                val textDisabled = player?.trackSelectionParameters
+                    ?.disabledTrackTypes?.contains(C.TRACK_TYPE_TEXT) == true
+                subtitlePreferences.subtitlesEnabled = !textDisabled
+                controlsBar?.updateCcState(!textDisabled)
+                // Save selected language for future sessions
+                if (!textDisabled) {
+                    saveSelectedSubtitleLanguage()
+                }
             }
         }
         trackPickerOverlay = trackPicker
@@ -502,6 +519,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         view.findViewById<View>(androidx.leanback.R.id.playback_fragment_background)
             ?.setBackgroundResource(R.drawable.bg_playback_scrim)
 
+        // Configure SubtitleView with TV-optimized defaults
+        configureSubtitleView(view)
+
         // Hide Leanback default controls permanently — we use custom PlayerControlsBar
         hideControlsOverlay(false)
 
@@ -547,6 +567,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
             bar.onAspectRatio = { cycleAspectRatio() }
             bar.onTracksClicked = { showTrackPicker() }
+            bar.onCcToggle = { toggleClosedCaptions() }
+            bar.updateCcState(subtitlePreferences.subtitlesEnabled)
             bar.onExternalPlayer = { showExternalPlayerDialog() }
             bar.onDpadSeek = { deltaMs ->
                 player?.let { p ->
@@ -1165,9 +1187,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         userTrackOverrideActive = false
 
         // Re-enable audio in case it was disabled by Stage 2 fallback
+        // Re-apply subtitle preference (enabled/disabled + preferred language)
         player?.trackSelectionParameters = player?.trackSelectionParameters
             ?.buildUpon()
             ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            ?.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlePreferences.subtitlesEnabled)
+            ?.setPreferredTextLanguage(subtitlePreferences.preferredLanguage)
             ?.build() ?: return
 
         // Log session for previous channel before switching
@@ -1290,6 +1315,78 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }, 500)
         } else {
             trackPickerOverlay?.show(p)
+        }
+    }
+
+    /** Create SubtitleView, add to view hierarchy, wire cues from player, apply TV styling. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun configureSubtitleView(root: View) {
+        val sv = SubtitleView(requireContext())
+        (root as? ViewGroup)?.addView(
+            sv,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        subtitleView = sv
+
+        // Netflix-style subtitle rendering
+        sv.setStyle(subtitlePreferences.buildCaptionStyle())
+        sv.setFractionalTextSize(subtitlePreferences.textSizeFraction)
+        sv.setApplyEmbeddedStyles(false)
+        sv.setApplyEmbeddedFontSizes(false)
+        // Bottom padding — Netflix positions subs ~8% from bottom edge for comfortable viewing
+        val screenHeight = resources.displayMetrics.heightPixels
+        sv.setPadding(0, 0, 0, (screenHeight * 0.08f).toInt())
+
+        // Forward subtitle cues from player to our SubtitleView
+        player?.addListener(object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) {
+                sv.setCues(cueGroup.cues)
+            }
+        })
+    }
+
+    /** Toggle closed captions on/off. CC button + KEYCODE_CAPTIONS remote key. */
+    private fun toggleClosedCaptions() {
+        val p = player ?: return
+        val isCurrentlyDisabled = p.trackSelectionParameters
+            .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val newEnabled = isCurrentlyDisabled // toggling: was disabled → now enable
+
+        p.trackSelectionParameters = p.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !newEnabled)
+            .setPreferredTextLanguage(subtitlePreferences.preferredLanguage)
+            .build()
+
+        subtitlePreferences.subtitlesEnabled = newEnabled
+        controlsBar?.updateCcState(newEnabled)
+
+        val msg = if (newEnabled) "Subtitles On" else "Subtitles Off"
+        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+
+        // Show controls briefly so user sees CC button state change
+        if (controlsManager?.isVisible != true) {
+            controlsManager?.show()
+        }
+    }
+
+    /** Save the language of the currently selected subtitle track to preferences. */
+    private fun saveSelectedSubtitleLanguage() {
+        val p = player ?: return
+        val textGroups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        for (group in textGroups) {
+            for (i in 0 until group.length) {
+                if (group.isTrackSelected(i)) {
+                    val lang = group.getTrackFormat(i).language
+                    if (!lang.isNullOrBlank()) {
+                        subtitlePreferences.preferredLanguage = lang
+                    }
+                    return
+                }
+            }
         }
     }
 

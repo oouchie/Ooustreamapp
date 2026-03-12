@@ -32,6 +32,7 @@ class OoustreamPlaybackGlue(
     var onAudioOnlyToggled: (() -> Unit)? = null
     var isTrackPickerShowing: (() -> Boolean)? = null
     var onDismissTrackPicker: (() -> Unit)? = null
+    var onCcToggle: (() -> Unit)? = null
 
     // Seek/navigation callbacks (wired by fragment)
     var onSeekForward: ((Long) -> Unit)? = null
@@ -137,11 +138,12 @@ class OoustreamPlaybackGlue(
 
         // ACTION_UP handling
         if (event?.action != KeyEvent.ACTION_DOWN) {
-            // Always consume media buttons and MENU
+            // Always consume media buttons, MENU, and CAPTIONS
             if (keyCode in intArrayOf(
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_REWIND,
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
-                    KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MENU
+                    KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MENU,
+                    KeyEvent.KEYCODE_CAPTIONS
                 )) return true
 
             // D-pad Left/Right for VOD/Series: always consume (seek handled on DOWN)
@@ -274,6 +276,10 @@ class OoustreamPlaybackGlue(
 
             KeyEvent.KEYCODE_MENU -> {
                 onStatsToggle?.invoke()
+                return true
+            }
+            KeyEvent.KEYCODE_CAPTIONS -> {
+                onCcToggle?.invoke()
                 return true
             }
         }
