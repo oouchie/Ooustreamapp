@@ -67,6 +67,9 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         divider = findViewById(R.id.track_picker_divider)
 
         visibility = GONE
+
+        // Tap scrim to dismiss (mobile touch support)
+        scrim.setOnClickListener { dismiss() }
     }
 
     fun show(player: Player) {
@@ -80,7 +83,7 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         // Show with slide animation — bring to front so we draw above controls bar
         bringToFront()
         visibility = VISIBLE
-        panel.translationX = dp(320).toFloat()
+        panel.translationX = resources.getDimension(R.dimen.track_picker_width)
         panel.animate()
             .translationX(0f)
             .setDuration(250)
@@ -151,7 +154,7 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         activePlayer = null
 
         panel.animate()
-            .translationX(dp(320).toFloat())
+            .translationX(resources.getDimension(R.dimen.track_picker_width))
             .setDuration(200)
             .setListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {

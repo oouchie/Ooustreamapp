@@ -13,7 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
-import androidx.leanback.widget.DiffCallback
+
 import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.VerticalGridView
@@ -244,21 +244,22 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                 updatePending = true
                 grid.post {
                     updatePending = false
-                    if (isAdded) updateSeriesListInternal(posterAdapter)
+                    if (isAdded) updateSeriesListInternal(posterAdapter, grid)
                 }
             }
             return
         }
-        updateSeriesListInternal(posterAdapter)
+        updateSeriesListInternal(posterAdapter, grid)
     }
 
-    private fun updateSeriesListInternal(posterAdapter: ArrayObjectAdapter) {
+    private fun updateSeriesListInternal(posterAdapter: ArrayObjectAdapter, grid: VerticalGridView) {
         val series = viewModel.seriesList.value
         filteredSeries = if (searchFilter.isEmpty()) {
             series
         } else {
             series.filter { it.name.lowercase().contains(searchFilter) }
         }
+        val savedPos = grid.selectedPosition
         val newItems = filteredSeries.map { s ->
             PosterItem(
                 id = s.seriesId,
@@ -270,10 +271,12 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                 tmdbId = s.tmdbId
             )
         }
-        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
-            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
-            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
-        })
+        // Use atomic notifyDataSetChanged (null DiffCallback) to prevent
+        // VerticalGridView position -1 crash from granular diff notifications
+        posterAdapter.setItems(newItems, null)
+        if (newItems.isNotEmpty() && savedPos >= 0) {
+            grid.selectedPosition = savedPos.coerceAtMost(newItems.size - 1)
+        }
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

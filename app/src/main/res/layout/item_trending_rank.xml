@@ -2,8 +2,9 @@
 <!-- Trending rank card: large rank number behind poster card -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="180dp"
-    android:layout_height="240dp"
+    android:layout_width="@dimen/card_poster_width"
+    android:layout_height="@dimen/card_poster_height"
+    android:foreground="?android:attr/selectableItemBackground"
     android:focusable="true"
     android:focusableInTouchMode="true"
     android:layout_marginEnd="12dp">
@@ -56,7 +57,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
             android:layout_margin="6dp"
-            android:textSize="9sp"
+            android:textSize="@dimen/text_badge"
             android:textStyle="bold"
             android:letterSpacing="0.05"
             android:paddingHorizontal="6dp"

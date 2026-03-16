@@ -2,8 +2,11 @@ package com.ooustream.iptv.home
 
 import android.app.ActivityManager
 import android.content.Context
+import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -176,6 +179,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         setupChannelStripRow()
         observeChannelStrip()
         setupHeroClickListener()
+        if (!DeviceUtils.isTV(requireContext())) setupHeroSwipeGesture()
         observeFeaturedContent()
         observeContinueWatching()
         observeLiveSports()
@@ -1239,6 +1243,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 }
                 .start()
         } else {
+            heroBackdrop.animate().cancel()
+            heroBackdrop.alpha = 1f
+            heroContentOverlay?.alpha = 1f
+            heroGradientBottom?.alpha = 1f
+            heroGradientLeft?.alpha = 1f
             loadHeroImage(item)
             heroTitle.text = item.title
             heroGenre.text = item.genre
@@ -1249,22 +1258,32 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun loadHeroImage(item: FeaturedItem) {
         if (!item.backdropUrl.isNullOrBlank()) {
-            heroBackdrop.load(PosterUrlRewriter.rewriteBackdrop(item.backdropUrl)) {
+            val url = PosterUrlRewriter.rewriteBackdrop(item.backdropUrl)
+            android.util.Log.w("OOUSTREAM", "Hero image: loading '${item.title}' url=$url")
+            heroBackdrop.load(url) {
                 crossfade(false)
                 memoryCachePolicy(CachePolicy.ENABLED)
                 allowHardware(false) // Required for Palette extraction
-                listener(onSuccess = { _, result ->
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        try {
-                            val bitmap = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
-                            if (bitmap != null) {
-                                val color = PaletteExtractor.extractDominant(bitmap)
-                                auroraBackground.setAmbientColor(color)
-                            }
-                        } catch (_: Exception) { }
+                listener(
+                    onSuccess = { _, result ->
+                        android.util.Log.w("OOUSTREAM", "Hero image: loaded '${item.title}' successfully")
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            try {
+                                val bitmap = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                                if (bitmap != null) {
+                                    val color = PaletteExtractor.extractDominant(bitmap)
+                                    auroraBackground.setAmbientColor(color)
+                                }
+                            } catch (_: Exception) { }
+                        }
+                    },
+                    onError = { _, result ->
+                        android.util.Log.w("OOUSTREAM", "Hero image: FAILED '${item.title}' url=$url error=${result.throwable.message}")
                     }
-                })
+                )
             }
+        } else {
+            android.util.Log.w("OOUSTREAM", "Hero image: no backdrop URL for '${item.title}'")
         }
     }
 
@@ -1481,6 +1500,38 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroMoreInfo.setOnClickListener {
             heroWatchNow.performClick()
         }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupHeroSwipeGesture() {
+        val heroContainer = view?.findViewById<View>(R.id.hero_container) ?: return
+        val gestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                val startX = e1?.x ?: return false
+                val deltaX = e2.x - startX
+                if (kotlin.math.abs(deltaX) < 80 || kotlin.math.abs(velocityX) < 200) return false
+                if (featuredItems.size <= 1) return false
+
+                releaseHeroPreview()
+                heroRotationJob?.cancel()
+                if (deltaX > 0) {
+                    heroIndex = if (heroIndex <= 0) featuredItems.size - 1 else heroIndex - 1
+                } else {
+                    heroIndex = (heroIndex + 1) % featuredItems.size
+                }
+                displayHeroItem(featuredItems[heroIndex], animate = true)
+                startHeroRotation()
+                return true
+            }
+
+            override fun onDown(e: MotionEvent): Boolean = true
+        })
+        heroContainer.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
     }
 
     // ── Navigation ───────────────────────────────────────────────────────

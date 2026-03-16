@@ -9,6 +9,7 @@
     android:background="@drawable/bg_channel_states"
     android:clipToOutline="true"
     android:clipChildren="false"
+    android:foreground="?android:attr/selectableItemBackground"
     android:focusable="true"
     android:focusableInTouchMode="true">
 
@@ -136,7 +137,7 @@
                 android:id="@+id/quality_badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="8sp"
+                android:textSize="@dimen/text_micro"
                 android:fontFamily="sans-serif-condensed"
                 android:textStyle="bold"
                 android:letterSpacing="0.05"
@@ -150,7 +151,7 @@
                 android:id="@+id/country_badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="8sp"
+                android:textSize="@dimen/text_micro"
                 android:fontFamily="monospace"
                 android:textColor="#40FFFFFF"
                 android:background="@drawable/bg_country_badge"

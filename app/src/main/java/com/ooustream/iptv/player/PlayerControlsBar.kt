@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import coil.load
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.ChannelDisplayHelper
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
@@ -66,6 +67,7 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onTracksClicked: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
     var onDpadSeek: ((Long) -> Unit)? = null
+    var onStatsToggle: (() -> Unit)? = null
     private var ccButton: LinearLayout? = null
     private var ccIcon: ImageView? = null
     private var ccLabel: TextView? = null
@@ -354,6 +356,10 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         addCcButton()
         addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }
         addActionButton(R.drawable.ic_skip_next_24, "Next Ch") { onNextChannel?.invoke() }
+        // Stats button — phone only (TV has MENU key)
+        if (!DeviceUtils.isTV(context)) {
+            addActionButton(R.drawable.ic_stream_stats, "Stats") { onStatsToggle?.invoke() }
+        }
     }
 
     private fun setupVodActionButtons() {
@@ -365,6 +371,10 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         addCcButton()
         addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }
         addActionButton(R.drawable.ic_external_player, "External") { onExternalPlayer?.invoke() }
+        // Stats button — phone only (TV has MENU key)
+        if (!DeviceUtils.isTV(context)) {
+            addActionButton(R.drawable.ic_stream_stats, "Stats") { onStatsToggle?.invoke() }
+        }
     }
 
     private fun addCcButton() {

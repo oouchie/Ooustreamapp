@@ -2,10 +2,11 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/ne_root"
-    android:layout_width="180dp"
-    android:layout_height="270dp"
+    android:layout_width="@dimen/card_poster_width"
+    android:layout_height="@dimen/card_poster_height"
     android:background="@drawable/bg_aurora_card"
     android:clipToOutline="true"
+    android:foreground="?android:attr/selectableItemBackground"
     android:focusable="true"
     android:focusableInTouchMode="true">
 
@@ -30,7 +31,7 @@
         android:paddingBottom="2dp"
         android:text="NEW"
         android:textColor="#FFFFFF"
-        android:textSize="9sp"
+        android:textSize="@dimen/text_badge"
         android:textStyle="bold" />
 
     <!-- Top-right gold count badge: "3 NEW" -->
@@ -46,7 +47,7 @@
         android:paddingTop="2dp"
         android:paddingBottom="2dp"
         android:textColor="#FFFFFF"
-        android:textSize="9sp"
+        android:textSize="@dimen/text_badge"
         android:textStyle="bold"
         tools:text="3 NEW" />
 

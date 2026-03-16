@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Screen margins (mobile defaults; TV overrides in values-television/) -->
-    <dimen name="overscan_margin">16dp</dimen>
-    <dimen name="overscan_horizontal">16dp</dimen>
+    <!-- Screen margins (phone defaults; TV overrides in values-television/) -->
+    <dimen name="overscan_margin">12dp</dimen>
+    <dimen name="overscan_horizontal">12dp</dimen>
     <dimen name="overscan_vertical">0dp</dimen>
     <dimen name="screen_top_clearance">0dp</dimen>
 
-    <!-- Cards -->
-    <dimen name="card_min_width">120dp</dimen>
-    <dimen name="card_poster_width">180dp</dimen>
-    <dimen name="card_poster_height">270dp</dimen>
-    <dimen name="card_channel_height">64dp</dimen>
-    <dimen name="card_category_height">80dp</dimen>
-    <dimen name="card_corner_radius">14dp</dimen>
+    <!-- Cards (phone defaults; tablet overrides in values-sw600dp/, TV in values-television/) -->
+    <dimen name="card_min_width">100dp</dimen>
+    <dimen name="card_poster_width">110dp</dimen>
+    <dimen name="card_poster_height">165dp</dimen>
+    <dimen name="card_channel_height">56dp</dimen>
+    <dimen name="card_category_height">72dp</dimen>
+    <dimen name="card_section_width">240dp</dimen>
+    <dimen name="card_section_height">120dp</dimen>
+    <dimen name="card_corner_radius">12dp</dimen>
 
     <!-- Focus Brackets -->
     <dimen name="focus_bracket_length">24dp</dimen>
@@ -24,6 +26,8 @@
     <dimen name="text_title">16sp</dimen>
     <dimen name="text_body">14sp</dimen>
     <dimen name="text_caption">12sp</dimen>
+    <dimen name="text_badge">11sp</dimen>
+    <dimen name="text_micro">10sp</dimen>
 
     <!-- Spacing -->
     <dimen name="spacing_xs">4dp</dimen>
@@ -36,22 +40,25 @@
     <dimen name="logo_height">32dp</dimen>
     <dimen name="logo_width">140dp</dimen>
     <dimen name="header_height">48dp</dimen>
-    <dimen name="hero_height">220dp</dimen>
+    <dimen name="hero_height">200dp</dimen>
 
     <!-- Row heights -->
-    <dimen name="row_continue_watching_height">290dp</dimen>
-    <dimen name="row_for_you_height">290dp</dimen>
-    <dimen name="row_for_you_live_height">72dp</dimen>
-    <dimen name="row_sections_height">180dp</dimen>
-    <dimen name="row_trending_height">290dp</dimen>
-    <dimen name="row_new_episodes_height">290dp</dimen>
-    <dimen name="row_watch_again_height">290dp</dimen>
+    <dimen name="row_continue_watching_height">185dp</dimen>
+    <dimen name="row_for_you_height">185dp</dimen>
+    <dimen name="row_for_you_live_height">64dp</dimen>
+    <dimen name="row_sections_height">160dp</dimen>
+    <dimen name="row_trending_height">185dp</dimen>
+    <dimen name="row_new_episodes_height">185dp</dimen>
+    <dimen name="row_watch_again_height">185dp</dimen>
 
     <!-- Grid -->
     <integer name="poster_columns">3</integer>
     <integer name="category_columns">2</integer>
     <dimen name="poster_grid_h_spacing">8dp</dimen>
     <dimen name="poster_grid_v_spacing">12dp</dimen>
+
+    <!-- Overlays -->
+    <dimen name="track_picker_width">260dp</dimen>
 
     <!-- Bottom navigation -->
     <dimen name="bottom_nav_height">56dp</dimen>

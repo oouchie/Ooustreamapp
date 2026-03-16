@@ -1,7 +1,7 @@
 {
-  "version_name": "3.1.0",
-  "version_code": 29,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.1.0/app-release.apk",
-  "changelog": "v3.1.0 — Closed Captions & Subtitle System\n\n• CC button on player controls — toggle subtitles on/off instantly\n• Remote CC key support (KEYCODE_CAPTIONS)\n• Netflix-style subtitle rendering — bold outline text, no background box\n• Subtitle preferences persist across sessions (language, size, style)\n• Track Picker shows subtitle format badges (SRT, WebVTT, CC, DVB, SSA)\n• Subtitle Settings page — customize text size, color, background, edge style\n• CEA-608 closed caption detection for US IPTV streams\n• Preferred language auto-selection on channel switch",
+  "version_name": "3.2.0",
+  "version_code": 31,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.2.0/app-release.apk",
+  "changelog": "v3.2.0 — Mobile Touch Overhaul\n\n• Player touch gestures: tap for controls, double-tap play/pause, swipe to seek/zap\n• Fixed poster card overflow on phone screens (responsive card sizing)\n• Ripple touch feedback on all interactive cards\n• Stats button in player controls (phone)\n• Hero swipe gesture for featured content rotation\n• Track picker responsive width + tap-to-dismiss scrim\n• MultiView touch support: tap to select slot, long-press to change channel, landscape lock\n• Readable text sizes on phones (11sp minimum badges)\n• Boosted text contrast for daylight phone usage\n• Fixed VerticalGridView position -1 crash on VOD/Series grids",
   "mandatory": false
 }

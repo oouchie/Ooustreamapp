@@ -124,7 +124,7 @@
         android:paddingHorizontal="6dp"
         android:text="LIVE"
         android:textColor="#EF4444"
-        android:textSize="9sp"
+        android:textSize="@dimen/text_badge"
         android:fontFamily="sans-serif-medium"
         android:visibility="gone"
         tools:visibility="visible" />

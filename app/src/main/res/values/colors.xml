@@ -22,8 +22,8 @@
 
     <!-- Text -->
     <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#9CA3AF</color>
-    <color name="text_muted">#6B7280</color>
+    <color name="text_secondary">#C0C8D3</color>
+    <color name="text_muted">#8B93A0</color>
 
     <!-- Status -->
     <color name="error">#EF4444</color>

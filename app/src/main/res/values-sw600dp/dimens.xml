@@ -6,16 +6,25 @@
 
     <!-- Cards -->
     <dimen name="card_poster_width">140dp</dimen>
-    <dimen name="card_poster_height">200dp</dimen>
+    <dimen name="card_poster_height">210dp</dimen>
+    <dimen name="card_section_width">280dp</dimen>
+    <dimen name="card_section_height">140dp</dimen>
+    <dimen name="card_corner_radius">14dp</dimen>
 
     <!-- Hero -->
     <dimen name="hero_height">280dp</dimen>
 
     <!-- Row heights -->
-    <dimen name="row_continue_watching_height">180dp</dimen>
-    <dimen name="row_for_you_height">180dp</dimen>
-    <dimen name="row_sections_height">140dp</dimen>
-    <dimen name="row_trending_height">220dp</dimen>
+    <dimen name="row_continue_watching_height">230dp</dimen>
+    <dimen name="row_for_you_height">230dp</dimen>
+    <dimen name="row_for_you_live_height">72dp</dimen>
+    <dimen name="row_sections_height">160dp</dimen>
+    <dimen name="row_trending_height">230dp</dimen>
+    <dimen name="row_new_episodes_height">230dp</dimen>
+    <dimen name="row_watch_again_height">230dp</dimen>
+
+    <!-- Overlays -->
+    <dimen name="track_picker_width">320dp</dimen>
 
     <!-- Grid -->
     <integer name="poster_columns">4</integer>

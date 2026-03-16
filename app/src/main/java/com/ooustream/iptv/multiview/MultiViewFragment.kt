@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.transition.AutoTransition
 import android.transition.TransitionManager
+import android.content.pm.ActivityInfo
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -24,6 +25,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.epg.SmartEpgFiller
@@ -91,6 +93,22 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                 }
             }
         }
+    }
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        // Lock to landscape on phones — MultiView is unusable in portrait
+        if (!DeviceUtils.isTV(context)) {
+            requireActivity().requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+    }
+
+    override fun onDetach() {
+        // Restore default orientation
+        if (!DeviceUtils.isTV(requireContext())) {
+            requireActivity().requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        super.onDetach()
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -171,6 +189,22 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                 if (hasFocus) {
                     viewModel.setFocusedSlot(i)
                     playerManager?.setFocusedSlot(i)
+                }
+            }
+
+            // Mobile touch: tap to select slot + switch audio, long-press to change channel
+            if (!DeviceUtils.isTV(requireContext())) {
+                slotFrames[i]?.setOnClickListener {
+                    viewModel.setFocusedSlot(i)
+                    playerManager?.setFocusedSlot(i)
+                    playerManager?.setAudioSlot(i)
+                    slotFrames[i]?.requestFocus()
+                    showControls()
+                }
+                slotFrames[i]?.setOnLongClickListener {
+                    viewModel.setFocusedSlot(i)
+                    openChannelPicker(i)
+                    true
                 }
             }
         }

@@ -13,7 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.leanback.widget.ArrayObjectAdapter
-import androidx.leanback.widget.DiffCallback
+
 import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.VerticalGridView
@@ -276,15 +276,15 @@ class VodFragment : Fragment(), KeyEventHandler {
                 updatePending = true
                 grid.post {
                     updatePending = false
-                    if (isAdded) updateMovieListInternal(posterAdapter)
+                    if (isAdded) updateMovieListInternal(posterAdapter, grid)
                 }
             }
             return
         }
-        updateMovieListInternal(posterAdapter)
+        updateMovieListInternal(posterAdapter, grid)
     }
 
-    private fun updateMovieListInternal(posterAdapter: ArrayObjectAdapter) {
+    private fun updateMovieListInternal(posterAdapter: ArrayObjectAdapter, grid: VerticalGridView) {
         val movies = viewModel.movies.value
         val progressMap = viewModel.watchProgressMap.value
         filteredMovies = if (searchFilter.isEmpty()) {
@@ -292,6 +292,7 @@ class VodFragment : Fragment(), KeyEventHandler {
         } else {
             movies.filter { it.name.lowercase().contains(searchFilter) }
         }
+        val savedPos = grid.selectedPosition
         val newItems = filteredMovies.map { movie ->
             val progress = progressMap[movie.streamId.toString()]
             PosterItem(
@@ -306,10 +307,12 @@ class VodFragment : Fragment(), KeyEventHandler {
                 tmdbId = movie.tmdbId
             )
         }
-        posterAdapter.setItems(newItems, object : DiffCallback<PosterItem>() {
-            override fun areItemsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem.id == newItem.id
-            override fun areContentsTheSame(oldItem: PosterItem, newItem: PosterItem) = oldItem == newItem
-        })
+        // Use atomic notifyDataSetChanged (null DiffCallback) to prevent
+        // VerticalGridView position -1 crash from granular diff notifications
+        posterAdapter.setItems(newItems, null)
+        if (newItems.isNotEmpty() && savedPos >= 0) {
+            grid.selectedPosition = savedPos.coerceAtMost(newItems.size - 1)
+        }
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {

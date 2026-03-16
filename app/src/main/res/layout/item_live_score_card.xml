@@ -36,7 +36,7 @@
             android:paddingHorizontal="5dp"
             android:paddingVertical="1dp"
             android:textColor="@color/focus_gold"
-            android:textSize="8sp"
+            android:textSize="@dimen/text_micro"
             android:fontFamily="monospace"
             android:visibility="gone"
             tools:text="Q4 3:12"

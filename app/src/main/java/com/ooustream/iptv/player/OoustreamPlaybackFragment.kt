@@ -1,9 +1,12 @@
 package com.ooustream.iptv.player
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.view.View
 import android.view.ViewGroup
@@ -40,6 +43,7 @@ import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.AudioPipelineFactory
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.RemoteHintOverlay
@@ -180,8 +184,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         })
 
         // [Fix 2.1] MediaSession: tells system media is active (screensaver defense + Now Playing)
+        // Release any lingering session from a previous fragment instance
+        mediaSession?.release()
+        mediaSession = null
         mediaSession = MediaSession.Builder(requireContext(), player!!)
-            .setId("ooustream_playback")
+            .setId("ooustream_playback_${System.nanoTime()}")
             .build()
 
         // Warn on low bandwidth before VOD/Series playback
@@ -570,6 +577,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             bar.onCcToggle = { toggleClosedCaptions() }
             bar.updateCcState(subtitlePreferences.subtitlesEnabled)
             bar.onExternalPlayer = { showExternalPlayerDialog() }
+            bar.onStatsToggle = { statsOverlay?.toggle() }
             bar.onDpadSeek = { deltaMs ->
                 player?.let { p ->
                     val newPos = (p.currentPosition + deltaMs).coerceAtLeast(0)
@@ -658,6 +666,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
             }
         )
+
+        // ─── Mobile Touch Gestures ──────────────────────────────────────────
+        // On non-TV devices: single tap toggles controls, double tap play/pause,
+        // horizontal fling seeks (VOD/Series) or zaps channels (Live)
+        if (!DeviceUtils.isTV(requireContext())) {
+            setupTouchGestures(view)
+        }
 
         // Position update coroutine (1s interval) for controls bar
         viewLifecycleOwner.lifecycleScope.launch {
@@ -1174,6 +1189,62 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             delay(300)
             tuneToChannel(channel)
         }
+    }
+
+    // ─── Mobile Touch Gesture Setup ────────────────────────────────────────
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupTouchGestures(rootView: View) {
+        val gestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                controlsManager?.toggle()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val p = player ?: return false
+                if (p.isPlaying) p.pause() else p.play()
+                controlsManager?.show()
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                val startX = e1?.x ?: return false
+                val deltaX = e2.x - startX
+                if (kotlin.math.abs(deltaX) < 100 || kotlin.math.abs(velocityX) < 300) return false
+
+                if (viewModel.contentType == ContentType.LIVE) {
+                    // Horizontal fling → channel zap
+                    val direction = if (deltaX > 0) -1 else 1
+                    val newChannel = viewModel.switchChannel(direction)
+                    if (newChannel != null) {
+                        zapOverlay?.show(viewModel.channels.value, viewModel.currentChannelIndex.value)
+                        debouncedTune(newChannel)
+                    }
+                } else {
+                    // Horizontal fling → seek ±10s
+                    val p = player ?: return false
+                    if (deltaX > 0) {
+                        p.seekTo((p.currentPosition + 10_000).coerceAtMost(p.duration))
+                        seekFeedback?.showSeek(10_000)
+                    } else {
+                        p.seekTo((p.currentPosition - 10_000).coerceAtLeast(0))
+                        seekFeedback?.showSeek(-10_000)
+                    }
+                    controlsBar?.updatePosition(p.currentPosition, p.duration)
+                    controlsManager?.show()
+                }
+                return true
+            }
+
+            override fun onDown(e: MotionEvent): Boolean = true
+        })
+
+        rootView.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
     }
 
     /** Switch playback to [channel] and update viewModel + glue state. */

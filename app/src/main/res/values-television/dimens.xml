@@ -9,10 +9,14 @@
     <!-- Cards -->
     <dimen name="card_poster_width">160dp</dimen>
     <dimen name="card_poster_height">240dp</dimen>
+    <dimen name="card_section_width">320dp</dimen>
+    <dimen name="card_section_height">160dp</dimen>
 
     <!-- Typography -->
     <dimen name="text_headline">28sp</dimen>
     <dimen name="text_title">18sp</dimen>
+    <dimen name="text_badge">9sp</dimen>
+    <dimen name="text_micro">8sp</dimen>
 
     <!-- Hero -->
     <dimen name="hero_height">320dp</dimen>
@@ -23,6 +27,9 @@
     <dimen name="row_for_you_live_height">96dp</dimen>
     <dimen name="row_sections_height">160dp</dimen>
     <dimen name="row_trending_height">240dp</dimen>
+
+    <!-- Overlays -->
+    <dimen name="track_picker_width">320dp</dimen>
 
     <!-- Grid -->
     <integer name="poster_columns">4</integer>

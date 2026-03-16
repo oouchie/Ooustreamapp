@@ -13,11 +13,11 @@
     <!-- Right-side panel -->
     <ScrollView
         android:id="@+id/track_picker_panel"
-        android:layout_width="320dp"
+        android:layout_width="@dimen/track_picker_width"
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:background="#E6141414"
-        android:translationX="320dp"
+        android:translationX="@dimen/track_picker_width"
         android:fillViewport="true">
 
         <LinearLayout
