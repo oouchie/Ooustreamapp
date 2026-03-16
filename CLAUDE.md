@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.0.0 (versionCode 26)
+- **Current Version**: 3.2.0 (versionCode 31)
 
 ## Build
 ```bash
@@ -249,10 +249,30 @@ These features were scoped but deferred for a future release:
 - Restricted category access
 - Estimated effort: Medium
 
+### Phase 11 — Mobile Touch Overhaul (v3.2.0)
+- **Player touch gestures** — GestureDetector on OoustreamPlaybackFragment (phone only): single tap toggles controls, double tap play/pause, horizontal fling seeks ±10s (VOD/Series) or zaps channels (Live). (`player/OoustreamPlaybackFragment.kt`)
+- **Responsive card sizing** — Phone poster cards reduced from 180×270dp to 110×165dp. Created `values-sw320dp/dimens.xml` for small phones (100×150dp). Section cards also dimensioned. All item layouts use `@dimen/` references instead of hardcoded dp. (`values/dimens.xml`, `values-sw320dp/dimens.xml`, 6 item layout XMLs)
+- **Ripple touch feedback** — `android:foreground="?android:attr/selectableItemBackground"` on 8 FrameLayout card roots (poster, continue watching, for you, new episode, watch again, section, trending, channel). Touch-triggered so invisible on TV.
+- **Stats button in player controls** — "Stats" action button added to PlayerControlsBar (phone only, TV has MENU key), wired to `statsOverlay?.toggle()`. New `ic_stream_stats.xml` icon. (`player/PlayerControlsBar.kt`)
+- **Track picker scrim dismiss** — `scrim.setOnClickListener { dismiss() }` for tap-outside-to-close on phones. (`player/TrackPickerOverlay.kt`)
+- **Hero swipe gesture** — Horizontal fling on hero container rotates featured items (phone only). (`home/HomeFragment.kt`)
+- **Minimum text sizes** — Extracted 8-9sp hardcoded text to `@dimen/text_badge` (11sp phone, 9sp TV) and `@dimen/text_micro` (10sp phone, 8sp TV) across 8 item layouts. Readable on phone screens.
+- **MultiView touch support** — Tap slot to select + switch audio, long-press to open channel picker. Phones locked to landscape via `requestedOrientation`. (`multiview/MultiViewFragment.kt`)
+- **Track picker responsive width** — Panel width extracted to `@dimen/track_picker_width` (260dp phone, 320dp tablet/TV). Animation uses `resources.getDimension()`. (`overlay_track_picker.xml`, `player/TrackPickerOverlay.kt`)
+- **Phone color adjustments** — `text_secondary` boosted from `#9CA3AF` to `#C0C8D3`, `text_muted` boosted for daylight readability. TV keeps dim originals via `values-television/colors.xml`.
+- **VerticalGridView crash fix** — Replaced `setItems(list, DiffCallback)` with `setItems(list, null)` (atomic `notifyDataSetChanged()`) to prevent position -1 crash from granular diff notifications. Selected position saved/restored with bounds clamping. (`vod/VodFragment.kt`, `series/SeriesFragment.kt`)
+
+### Resource Qualifier Structure
+- `values/` — Phone defaults (360dp+)
+- `values-sw320dp/` — Extra-small phones (320-359dp)
+- `values-sw600dp/` — Tablets (600dp+)
+- `values-television/` — Android TV (Fire TV Stick)
+- `layout-television/` — TV-only layouts (activity_main sidebar variant)
+
 ## Key Files (Most Modified)
 1. `MainActivity.kt` — sidebar, transitions, deep links, MultiView navigation, onFullKeyEvent dispatch
-2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming, MultiView hero card
-3. `OoustreamPlaybackFragment.kt` — ExoPlayer + AudioPipelineFactory init, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, AC3 audio fallback, user track override protection, low-memory buffers, friendly error messages
+2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming, MultiView hero card, hero swipe gesture (mobile)
+3. `OoustreamPlaybackFragment.kt` — ExoPlayer + AudioPipelineFactory init, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, AC3 audio fallback, user track override protection, low-memory buffers, friendly error messages, mobile touch gestures (GestureDetector)
 4. `OoustreamPlaybackGlue.kt` — ALL key handling (DPAD, media buttons, channel zap, seek, back), gold-tinted action icons, Back-dismisses-controls fix
 5. `OoustreamDatabase.kt` — v8, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern entities
 6. `PlayerViewModel.kt` — analytics recording, stream URL building, Watch Next suggestions (RecommendationEngine), NonCancellable saveProgress
@@ -289,7 +309,7 @@ These features were scoped but deferred for a future release:
 37. `home/WatchItAgainPresenter.kt` — Watch It Again row presenter with checkmark badge
 38. `recommendation/NewEpisodeSyncWorker.kt` — periodic new episode detection worker
 
-## Source File Inventory (193 Kotlin files)
+## Source File Inventory (193 Kotlin files, 56 XML layouts)
 
 ### By Package
 | Package | Files | Key Components |
@@ -324,7 +344,7 @@ These features were scoped but deferred for a future release:
 | `vod/` | 4 | VodFragment, VodViewModel, VodDetailFragment, VodDetailViewModel |
 | Root | 2 | MainActivity, OoustreamApp |
 
-## Layout Files (55 XML)
+## Layout Files (56 XML)
 - **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail
 - **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_new_episode, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_again, item_watch_next_card, item_zap_channel
 - **Overlays**: overlay_audio_only, overlay_binge_countdown, overlay_channel_banner, overlay_channel_zap, overlay_content_info, overlay_onboarding_step, overlay_player_controls, overlay_quick_sidebar, overlay_remote_hints, overlay_series_complete, overlay_stream_stats, overlay_track_picker, overlay_watch_next
@@ -381,3 +401,5 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v2.9.0** — Watch history rows (New Episodes, Watch It Again, enhanced Continue Watching), premium home card redesign (bigger cards, shimmer, metadata reveal, neighbor dimming, row highlights), track picker fix, new app icon/banner
 - **v2.9.1** — Proper Room migrations for favorites, watch progress, and series tracking (no more data loss on version bumps)
 - **v3.0.0** — Streaming Cinema Experience: hero trailer auto-play, D-pad hero navigation, parallax scroll, time-of-day aurora theming, Quick Tune channel strip, "Because You Watched" genre/cast rows, Live Sports banner, smart trending algorithm, enhanced aurora visibility, favorites logo fix
+- **v3.1.0** — Closed Captions & Subtitle System
+- **v3.2.0** — Mobile Touch Overhaul: player touch gestures (tap/double-tap/swipe), responsive card sizing for phones, ripple touch feedback, stats button, hero swipe, track picker responsive width + scrim dismiss, MultiView touch support with landscape lock, minimum text sizes, phone color contrast boost, VerticalGridView position -1 crash fix
