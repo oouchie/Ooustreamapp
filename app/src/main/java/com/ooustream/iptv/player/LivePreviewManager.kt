@@ -4,12 +4,13 @@ import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
-import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.data.model.ContentType
 import okhttp3.OkHttpClient
 
@@ -32,12 +33,16 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
         release()
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
 
-        // Always use track selector: disable audio (visual-only preview), optional 480p cap
         trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)  // No audio in preview
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)    // No subtitles
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)    // No subtitles in preview
+                    .setPreferredAudioLanguage("en")
+                    .setPreferredAudioMimeTypes(
+                        MimeTypes.AUDIO_AAC,
+                        MimeTypes.AUDIO_E_AC3,
+                        MimeTypes.AUDIO_AC3
+                    )
                     .apply {
                         if (lowBitrateEnabled) {
                             setMaxVideoSize(854, 480)
@@ -46,7 +51,11 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
             )
         }
 
+        // Use shared audio pipeline for codec support (AC3/DTS/EAC3 via FFmpeg + stereo downmix)
+        val renderersFactory = AudioPipelineFactory.createRenderersFactory(context)
+
         val builder = ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setLoadControl(BufferConfigs.forContentType(ContentType.LIVE))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setTrackSelector(trackSelector!!)
@@ -57,9 +66,9 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build(),
-                /* handleAudioFocus = */ false  // Preview must NOT steal audio focus
+                /* handleAudioFocus = */ true  // Preview owns audio focus while browsing
             )
-            volume = 0f  // Belt-and-suspenders: mute even though audio track is disabled
+            volume = 1f
             setMediaItem(MediaItem.fromUri(streamUrl))
             prepare()
             play()

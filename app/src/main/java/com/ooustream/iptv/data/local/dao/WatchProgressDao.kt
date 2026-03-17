@@ -36,12 +36,12 @@ interface WatchProgressDao {
     @Query("""
         SELECT wp.* FROM watch_progress wp
         INNER JOIN (
-            SELECT COALESCE(seriesId, streamId) AS groupKey, MAX(lastWatched) AS maxWatched
+            SELECT seriesId AS groupKey, MAX(lastWatched) AS maxWatched
             FROM watch_progress
-            WHERE completed = 1
+            WHERE completed = 1 AND seriesId IS NOT NULL
             GROUP BY groupKey
-        ) grouped ON COALESCE(wp.seriesId, wp.streamId) = grouped.groupKey AND wp.lastWatched = grouped.maxWatched
-        WHERE wp.completed = 1
+        ) grouped ON wp.seriesId = grouped.groupKey AND wp.lastWatched = grouped.maxWatched
+        WHERE wp.completed = 1 AND wp.seriesId IS NOT NULL
         ORDER BY wp.lastWatched DESC
         LIMIT 15
     """)

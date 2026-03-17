@@ -221,15 +221,35 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         })
 
         // Stream diagnostic listener — logs all ExoPlayer events to rolling file
-        val initialChannelName = viewModel.channels.value.getOrNull(
-            viewModel.currentChannelIndex.value)?.name ?: "unknown"
-        diagnosticListener = ExoPlayerDiagnosticListener(streamDiagnosticLogger, initialChannelName)
+        // Resolve content name: live TV uses channel list, VOD/Series uses streamName
+        val initialContentName = if (viewModel.contentType == ContentType.LIVE) {
+            viewModel.channels.value.getOrNull(viewModel.currentChannelIndex.value)?.name
+                ?: viewModel.streamName.ifBlank { "unknown" }
+        } else {
+            viewModel.streamName.ifBlank { "unknown" }
+        }
+        diagnosticListener = ExoPlayerDiagnosticListener(streamDiagnosticLogger, initialContentName)
         player!!.addListener(diagnosticListener!!)
         player!!.addAnalyticsListener(diagnosticListener!!)
 
+        // Log stream start for all content types
+        streamDiagnosticLogger.logStreamStart(
+            channelName = initialContentName,
+            url = viewModel.streamUrl,
+            codec = null, // filled by ExoPlayerDiagnosticListener on decoder init
+            resolution = null,
+            protocol = when {
+                viewModel.streamUrl.contains(".m3u8", ignoreCase = true) -> "HLS"
+                viewModel.streamUrl.contains(".mpd", ignoreCase = true) -> "DASH"
+                viewModel.streamUrl.contains(".ts", ignoreCase = true) -> "MPEG-TS"
+                else -> "HTTP"
+            }
+        )
+        streamDiagnosticLogger.logAppEvent("CONTENT_TYPE", "type=${viewModel.contentType.name}, id=${viewModel.streamId}")
+
         // Playback health monitor — periodic buffer/memory/black screen checks
         healthMonitor = PlaybackHealthMonitor(streamDiagnosticLogger, lifecycleScope).apply {
-            channelName = initialChannelName
+            channelName = initialContentName
             start(player!!)
         }
 
