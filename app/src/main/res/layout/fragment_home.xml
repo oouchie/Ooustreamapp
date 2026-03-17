@@ -30,13 +30,15 @@
             android:clipChildren="false"
             android:clipToPadding="false">
 
-            <!-- Hero Banner -->
+            <!-- Hero Banner — clipChildren + clipToPadding prevent Ken Burns overflow -->
             <FrameLayout
                 android:id="@+id/hero_container"
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/hero_height"
                 android:clipChildren="true"
-                android:clipToPadding="true">
+                android:clipToPadding="true"
+                android:outlineProvider="bounds"
+                android:clipToOutline="true">
 
                 <ImageView
                     android:id="@+id/hero_backdrop"
@@ -55,39 +57,104 @@
                     app:surface_type="texture_view"
                     app:resize_mode="zoom" />
 
-                <!-- Bottom gradient melt -->
+                <!-- Ambient color wash (set programmatically from Palette) -->
+                <View
+                    android:id="@+id/hero_ambient_wash"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0" />
+
+                <!-- Layer 1: Top vignette (header protection) -->
+                <View
+                    android:id="@+id/hero_gradient_top"
+                    android:layout_width="match_parent"
+                    android:layout_height="120dp"
+                    android:layout_gravity="top"
+                    android:background="@drawable/bg_hero_gradient_top" />
+
+                <!-- Layer 2: Bottom gradient — match_parent, gradient handles the fade -->
                 <View
                     android:id="@+id/hero_gradient_bottom"
                     android:layout_width="match_parent"
-                    android:layout_height="180dp"
-                    android:layout_gravity="bottom"
+                    android:layout_height="match_parent"
                     android:background="@drawable/bg_hero_gradient_bottom" />
 
-                <!-- Left gradient for text readability -->
+                <!-- Layer 3: Left gradient for text readability (60% width) -->
                 <View
                     android:id="@+id/hero_gradient_left"
-                    android:layout_width="300dp"
+                    android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_hero_gradient_left" />
 
-                <!-- Hero content -->
+                <!-- Hero content overlay -->
                 <LinearLayout
                     android:id="@+id/hero_content_overlay"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|start"
                     android:orientation="vertical"
                     android:paddingStart="@dimen/overscan_margin"
                     android:paddingEnd="@dimen/overscan_margin"
-                    android:paddingBottom="32dp">
+                    android:paddingBottom="28dp">
 
+                    <!-- Metadata chips: rating | year | genre -->
+                    <LinearLayout
+                        android:id="@+id/hero_metadata_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <TextView
+                            android:id="@+id/hero_rating"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#FFC107"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            tools:text="★ 8.7" />
+
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="12dp"
+                            android:layout_marginHorizontal="10dp"
+                            android:background="#4DFFC107" />
+
+                        <TextView
+                            android:id="@+id/hero_year"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="12sp"
+                            tools:text="2024" />
+
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="12dp"
+                            android:layout_marginHorizontal="10dp"
+                            android:background="#4DFFC107" />
+
+                        <TextView
+                            android:id="@+id/hero_genre_chip"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="12sp"
+                            tools:text="Action, Crime" />
+                    </LinearLayout>
+
+                    <!-- Title (large, cinematic) -->
                     <TextView
                         android:id="@+id/hero_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:textColor="@color/text_primary"
-                        android:textSize="28sp"
+                        android:textSize="@dimen/text_headline"
                         android:textStyle="bold"
+                        android:letterSpacing="-0.02"
                         android:maxLines="2"
                         android:ellipsize="end"
                         android:shadowColor="#80000000"
@@ -96,21 +163,40 @@
                         android:shadowRadius="8"
                         tools:text="Featured Movie Title" />
 
+                    <!-- Genre line (kept for backward compat) -->
                     <TextView
                         android:id="@+id/hero_genre"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
+                        android:layout_marginTop="4dp"
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp"
+                        android:visibility="gone"
                         tools:text="Action, Drama • 2024" />
 
-                    <!-- Action buttons -->
-                    <LinearLayout
+                    <!-- Description (2-line plot summary) -->
+                    <TextView
+                        android:id="@+id/hero_description"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:maxWidth="560dp"
+                        android:maxLines="2"
+                        android:ellipsize="end"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="13sp"
+                        android:lineSpacingMultiplier="1.3"
+                        android:visibility="gone"
+                        tools:visibility="visible"
+                        tools:text="A gripping thriller that takes you on a journey..." />
+
+                    <!-- Action buttons row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:orientation="horizontal">
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
                         <TextView
                             android:id="@+id/hero_watch_now"
@@ -143,16 +229,25 @@
                             android:textSize="14sp"
                             android:focusable="true"
                             android:focusableInTouchMode="true" />
-                    </LinearLayout>
 
-                    <!-- Hero page indicators -->
-                    <LinearLayout
-                        android:id="@+id/hero_indicators"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:orientation="horizontal" />
+                        <!-- Spacer -->
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
+
+                        <!-- Hero page indicators (right-aligned) -->
+                        <LinearLayout
+                            android:id="@+id/hero_indicators"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/overscan_margin"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical" />
+                    </LinearLayout>
                 </LinearLayout>
+
+                <!-- clipToOutline on hero_container handles clean bottom edge -->
             </FrameLayout>
 
             <!-- Content Rows Container -->
@@ -172,7 +267,7 @@
                     android:layout_height="wrap_content"
                     android:paddingStart="@dimen/overscan_margin"
                     android:paddingEnd="@dimen/overscan_margin"
-                    android:layout_marginTop="24dp"
+                    android:layout_marginTop="0dp"
                     android:text="@string/continue_watching"
                     android:textColor="@color/text_primary"
                     android:textSize="18sp"

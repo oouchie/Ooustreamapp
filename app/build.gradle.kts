@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics.plugin)
 }
 
 android {
@@ -16,8 +18,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 31
-        versionName = "3.2.0"
+        versionCode = 32
+        versionName = "3.3.0"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -145,6 +147,12 @@ dependencies {
 
     // WorkManager
     implementation(libs.work.runtime)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.storage)
 
     // Core library desugaring (required by media3-ffmpeg-decoder)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")

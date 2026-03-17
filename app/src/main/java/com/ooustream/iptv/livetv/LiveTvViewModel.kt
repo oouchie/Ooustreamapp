@@ -10,6 +10,7 @@ import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
+import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +23,8 @@ class LiveTvViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val favoriteRepository: FavoriteRepository,
     private val epgCacheRepository: EpgCacheRepository,
-    private val contentCacheRepository: ContentCacheRepository
+    private val contentCacheRepository: ContentCacheRepository,
+    private val contentFilterManager: ContentFilterManager
 ) : BaseViewModel() {
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
@@ -57,7 +59,7 @@ class LiveTvViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 contentCacheRepository.getCategories("live").collect { categories ->
-                    _categories.value = categories
+                    _categories.value = contentFilterManager.filterCategories("live", categories)
                     if (_selectedCategoryId.value == FAVORITES_ID) {
                         val favCount = favoriteRepository.getFavoritesListByType("live").size
                         if (favCount == 0) {
@@ -99,7 +101,8 @@ class LiveTvViewModel @Inject constructor(
                             )
                         }
                 } else {
-                    _channels.value = contentRepository.getLiveStreams(categoryId)
+                    val streams = contentRepository.getLiveStreams(categoryId)
+                    _channels.value = contentFilterManager.filterContent("live", streams) { it.categoryId }
                 }
             } catch (e: Exception) {
                 _error.emit(e.message ?: "Failed to load channels")

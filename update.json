@@ -1,7 +1,7 @@
 {
-  "version_name": "3.2.0",
-  "version_code": 31,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.2.0/app-release.apk",
-  "changelog": "v3.2.0 — Mobile Touch Overhaul\n\n• Player touch gestures: tap for controls, double-tap play/pause, swipe to seek/zap\n• Fixed poster card overflow on phone screens (responsive card sizing)\n• Ripple touch feedback on all interactive cards\n• Stats button in player controls (phone)\n• Hero swipe gesture for featured content rotation\n• Track picker responsive width + tap-to-dismiss scrim\n• MultiView touch support: tap to select slot, long-press to change channel, landscape lock\n• Readable text sizes on phones (11sp minimum badges)\n• Boosted text contrast for daylight phone usage\n• Fixed VerticalGridView position -1 crash on VOD/Series grids",
+  "version_name": "3.3.0",
+  "version_code": 32,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.0/app-release.apk",
+  "changelog": "v3.3.0 — Parental Controls, Diagnostics & Cinematic Hero\n\n• Parental Controls: Block any category in Live TV, Movies, or Series — blocked content invisible everywhere\n• PIN-gated settings with category toggles, Block All Adult auto-detection\n• Auto-blocks adult categories on first PIN setup, 30-min temporary unlock\n• Stream Diagnostic Logger: rolling file black box for playback events\n• Send Debug Log: upload diagnostics to Firebase, QR code for TV support\n• Firebase Crashlytics: automatic crash reporting\n• ExoPlayer event logging: state changes, errors, decoder info, buffer health\n• Black screen detector: logs no-frame events with full diagnostic context\n• Cinematic Hero Banner: 65% screen height, 4-layer gradient system, Ken Burns zoom\n• Metadata chips (rating, year, genre), 2-line plot description on hero\n• Progress bar countdown, slide transitions, enhanced parallax scroll\n• Leanback green brand color fix: forced dark theme on all internal surfaces\n• Larger hero title (36sp on TV), right-aligned page indicators",
   "mandatory": false
 }

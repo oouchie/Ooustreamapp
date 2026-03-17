@@ -46,6 +46,7 @@
     <!-- Gold Focus System -->
     <color name="focus_gold_glow">#4DFFC107</color>
     <color name="focus_gold_soft">#1AFFC107</color>
+    <color name="focus_gold_dark">#FF8F00</color>
 
     <!-- Playback Controls -->
     <color name="playback_progress_buffered">#33FFC107</color>

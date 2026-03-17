@@ -113,6 +113,33 @@ class ParentalControlManager @Inject constructor(
         return false
     }
 
+    // --- Temporary Unlock (in-memory only, expires on app restart) ---
+
+    private var temporaryUnlockExpiry: Long = 0L
+
+    /**
+     * Grant a temporary unlock session. All blocked content becomes visible
+     * for [durationMinutes] minutes without disabling parental controls.
+     */
+    fun temporaryUnlock(durationMinutes: Int = 30) {
+        temporaryUnlockExpiry = System.currentTimeMillis() + durationMinutes * 60 * 1000L
+    }
+
+    /**
+     * Whether a temporary unlock session is active.
+     * Returns false after the session expires or after app restart.
+     */
+    fun isTemporarilyUnlocked(): Boolean {
+        return System.currentTimeMillis() < temporaryUnlockExpiry
+    }
+
+    /**
+     * Clear any active temporary unlock session.
+     */
+    fun clearTemporaryUnlock() {
+        temporaryUnlockExpiry = 0L
+    }
+
     /**
      * Lock parental controls. Content will be blocked until unlocked.
      */
@@ -220,8 +247,8 @@ class ParentalControlManager @Inject constructor(
         private const val KEY_ENABLED = "enabled"
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
         private const val KEY_LAST_FAILED_TIME = "last_failed_time"
-        private const val MAX_FAILED_ATTEMPTS = 3
-        private const val LOCKOUT_DURATION_MS = 30_000L // 30 seconds
+        private const val MAX_FAILED_ATTEMPTS = 5
+        private const val LOCKOUT_DURATION_MS = 60_000L // 60 seconds
         private const val PBKDF2_ITERATIONS = 100_000
     }
 }

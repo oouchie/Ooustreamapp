@@ -103,6 +103,16 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private var heroContentOverlay: View? = null // LinearLayout with title/genre/buttons
     private var heroGradientBottom: View? = null
     private var heroGradientLeft: View? = null
+    private var heroGradientTop: View? = null
+    private var heroAmbientWash: View? = null
+    // heroProgress removed — clean hero transitions
+    private var heroDescription: TextView? = null
+    private var heroMetadataRow: View? = null
+    private var heroRating: TextView? = null
+    private var heroYear: TextView? = null
+    private var heroGenreChip: TextView? = null
+    private var heroContainer: View? = null
+    private var kenBurnsJob: Job? = null
 
     // Views
     private lateinit var heroBackdrop: ImageView
@@ -167,6 +177,31 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroContentOverlay = view.findViewById(R.id.hero_content_overlay)
         heroGradientBottom = view.findViewById(R.id.hero_gradient_bottom)
         heroGradientLeft = view.findViewById(R.id.hero_gradient_left)
+        heroGradientTop = view.findViewById(R.id.hero_gradient_top)
+        heroAmbientWash = view.findViewById(R.id.hero_ambient_wash)
+        // heroProgress removed
+        heroDescription = view.findViewById(R.id.hero_description)
+        heroMetadataRow = view.findViewById(R.id.hero_metadata_row)
+        heroRating = view.findViewById(R.id.hero_rating)
+        heroYear = view.findViewById(R.id.hero_year)
+        heroGenreChip = view.findViewById(R.id.hero_genre_chip)
+        heroContainer = view.findViewById(R.id.hero_container)
+
+        // Percentage-based hero height — adapts to any screen/density
+        val screenHeight = resources.displayMetrics.heightPixels
+        val heroPercent = resources.getInteger(R.integer.hero_height_percent) / 100f
+        heroContainer?.layoutParams = heroContainer?.layoutParams?.apply {
+            height = (screenHeight * heroPercent).toInt()
+        }
+        // Size gradient layers relative to hero
+        heroContainer?.post {
+            val heroH = heroContainer?.height ?: return@post
+            // Left gradient: 60% of hero width
+            heroGradientLeft?.layoutParams = heroGradientLeft?.layoutParams?.apply {
+                width = (resources.displayMetrics.widthPixels * 0.60f).toInt()
+            }
+        }
+
         setupAuroraBackground(view)
         setupFrostedHeaderScroll(view)
         setupHeaderIcons(view)
@@ -527,9 +562,26 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 val heroHeight = heroContainer.height.toFloat()
                 if (heroHeight > 0) {
                     val progress = (scrollY / heroHeight).coerceIn(0f, 1f)
+
+                    // Frosted header: fade in as hero scrolls away
                     frostedHeader.alpha = progress
-                    // Parallax: backdrop scrolls up slower than content for depth effect
+
+                    // Backdrop: parallax at 0.4x + fade + subtle scale down
                     heroBackdrop.translationY = -scrollY * 0.4f
+                    heroBackdrop.alpha = 1f - progress
+                    heroBackdrop.scaleX = 1f - (progress * 0.05f)
+                    heroBackdrop.scaleY = 1f - (progress * 0.05f)
+
+                    // Content overlay: faster parallax (0.6x) + faster fade
+                    heroContentOverlay?.translationY = -scrollY * 0.6f
+                    heroContentOverlay?.alpha = 1f - (progress * 1.3f).coerceAtMost(1f)
+
+                    // Bottom gradient: intensifies on scroll
+                    heroGradientBottom?.alpha = 0.95f + (progress * 0.05f)
+
+                    // Ambient wash fades out
+                    heroAmbientWash?.alpha = (0.08f * (1f - progress)).coerceAtLeast(0f)
+
                     // Release hero preview when scrolled past half the hero
                     if (scrollY > heroHeight * 0.5f) {
                         if (heroPreviewActive) releaseHeroPreview()
@@ -1228,32 +1280,90 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun displayHeroItem(item: FeaturedItem, animate: Boolean) {
         releaseHeroPreview()
+        kenBurnsJob?.cancel()
+
+        // Reset Ken Burns
+
         if (animate) {
+            // Content slides out left
+            heroContentOverlay?.animate()
+                ?.translationX(-20f.dp)?.alpha(0f)
+                ?.setDuration(250)?.start()
+
             heroBackdrop.animate()
                 .alpha(0f)
                 .setDuration(300)
                 .withEndAction {
                     loadHeroImage(item)
-                    heroTitle.text = item.title
-                    heroGenre.text = item.genre
+                    bindHeroContent(item)
+                    // Reset Ken Burns
+                    heroBackdrop.scaleX = 1f
+                    heroBackdrop.scaleY = 1f
                     heroBackdrop.animate()
                         .alpha(1f)
                         .setDuration(500)
                         .start()
+                    // Content slides in from right
+                    heroContentOverlay?.translationX = 20f.dp
+                    heroContentOverlay?.animate()
+                        ?.translationX(0f)?.alpha(1f)
+                        ?.setDuration(350)?.setStartDelay(100)?.start()
                 }
                 .start()
         } else {
             heroBackdrop.animate().cancel()
             heroBackdrop.alpha = 1f
+            heroBackdrop.scaleX = 1f
+            heroBackdrop.scaleY = 1f
             heroContentOverlay?.alpha = 1f
+            heroContentOverlay?.translationX = 0f
             heroGradientBottom?.alpha = 1f
             heroGradientLeft?.alpha = 1f
             loadHeroImage(item)
-            heroTitle.text = item.title
-            heroGenre.text = item.genre
+            bindHeroContent(item)
         }
         updateHeroIndicators(featuredItems.size, heroIndex)
         startHeroDwellTimer()
+        startKenBurns()
+    }
+
+    private fun bindHeroContent(item: FeaturedItem) {
+        heroTitle.text = item.title
+
+        // Metadata chips
+        if (item.rating.isNotBlank() || item.year.isNotBlank() || item.genre.isNotBlank()) {
+            heroMetadataRow?.visibility = View.VISIBLE
+            heroRating?.text = if (item.rating.isNotBlank()) "\u2605 ${item.rating}" else ""
+            heroRating?.visibility = if (item.rating.isNotBlank()) View.VISIBLE else View.GONE
+            heroYear?.text = item.year
+            heroYear?.visibility = if (item.year.isNotBlank()) View.VISIBLE else View.GONE
+            heroGenreChip?.text = item.genre
+            heroGenreChip?.visibility = if (item.genre.isNotBlank()) View.VISIBLE else View.GONE
+        } else {
+            heroMetadataRow?.visibility = View.GONE
+        }
+
+        // Description
+        if (!item.plot.isNullOrBlank()) {
+            heroDescription?.text = item.plot
+            heroDescription?.visibility = View.VISIBLE
+        } else {
+            heroDescription?.visibility = View.GONE
+        }
+
+        // Legacy genre field hidden when metadata chips are shown
+        heroGenre.visibility = if (heroMetadataRow?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        heroGenre.text = item.genre
+    }
+
+    /** Ken Burns: slow zoom 1.0→1.05x over 8 seconds */
+    private fun startKenBurns() {
+        kenBurnsJob?.cancel()
+        heroBackdrop.animate()
+            .scaleX(1.05f).scaleY(1.05f)
+            .setDuration(8_000)
+            .setInterpolator(android.view.animation.LinearInterpolator())
+            .start()
     }
 
     private fun loadHeroImage(item: FeaturedItem) {
@@ -1273,6 +1383,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                 if (bitmap != null) {
                                     val color = PaletteExtractor.extractDominant(bitmap)
                                     auroraBackground.setAmbientColor(color)
+                                    // Ambient color wash on hero
+                                    heroAmbientWash?.setBackgroundColor(color)
+                                    heroAmbientWash?.animate()?.alpha(0.08f)?.setDuration(600)?.start()
                                 }
                             } catch (_: Exception) { }
                         }
@@ -1326,7 +1439,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false) // Audio enabled for trailer
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                     .setMaxVideoSize(854, 480)
             )
@@ -1345,9 +1458,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         .setUsage(C.USAGE_MEDIA)
                         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                         .build(),
-                    false
+                    true // Handle audio focus
                 )
-                volume = 0f
+                volume = 0.6f // Trailer audio
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
                 setMediaItem(MediaItem.fromUri(url))
             }

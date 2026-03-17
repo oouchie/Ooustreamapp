@@ -10,6 +10,7 @@ import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,8 @@ class VodViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val favoriteRepository: FavoriteRepository,
     private val contentCacheRepository: ContentCacheRepository,
-    private val watchProgressRepository: WatchProgressRepository
+    private val watchProgressRepository: WatchProgressRepository,
+    private val contentFilterManager: ContentFilterManager
 ) : BaseViewModel() {
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
@@ -53,7 +55,7 @@ class VodViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 contentCacheRepository.getCategories("vod").collect { categories ->
-                    _categories.value = categories
+                    _categories.value = contentFilterManager.filterCategories("vod", categories)
                     if (_selectedCategoryId.value == FAVORITES_ID) {
                         val favCount = favoriteRepository.getFavoritesListByType("vod").size
                         if (favCount == 0) {
@@ -98,13 +100,15 @@ class VodViewModel @Inject constructor(
                     }
                     RECENTLY_ADDED_ID -> {
                         val all = contentRepository.getVodStreams()
-                        _movies.value = all.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                        val filtered = contentFilterManager.filterContent("vod", all) { it.categoryId }
+                        _movies.value = filtered.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
                     }
                     NEW_RELEASES_ID -> {
                         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
                         val cutoffYear = currentYear - 1 // Movies from last year and this year
                         val all = contentRepository.getVodStreams()
-                        _movies.value = all
+                        val filtered = contentFilterManager.filterContent("vod", all) { it.categoryId }
+                        _movies.value = filtered
                             .filter { movie ->
                                 val year = parseYear(movie.name)
                                 year != null && year >= cutoffYear
@@ -112,7 +116,8 @@ class VodViewModel @Inject constructor(
                             .sortedByDescending { parseYear(it.name) ?: 0 }
                     }
                     else -> {
-                        _movies.value = contentRepository.getVodStreams(categoryId)
+                        val streams = contentRepository.getVodStreams(categoryId)
+                        _movies.value = contentFilterManager.filterContent("vod", streams) { it.categoryId }
                     }
                 }
             } catch (e: Exception) {

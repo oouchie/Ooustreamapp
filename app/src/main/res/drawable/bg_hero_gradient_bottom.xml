@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
+    <!-- Steep gradient: hits full opacity at 60% down, solid dark for bottom 40% -->
     <gradient
         android:type="linear"
         android:angle="270"
         android:startColor="#00050508"
-        android:centerColor="#80050508"
-        android:endColor="#FF050508"/>
+        android:centerColor="#FF050508"
+        android:endColor="#FF050508"
+        android:centerY="0.6" />
 </shape>

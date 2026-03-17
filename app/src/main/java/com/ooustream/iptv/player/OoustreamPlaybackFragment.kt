@@ -47,6 +47,7 @@ import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.RemoteHintOverlay
+import com.ooustream.iptv.common.StreamDiagnosticLogger
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.epg.SmartEpgFiller
 import com.ooustream.iptv.recommendation.WatchSessionLogger
@@ -61,6 +62,12 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class OoustreamPlaybackFragment : VideoSupportFragment() {
 
+    // Lock Leanback to BG_NONE — prevent green brand color overlay
+    private var bgLocked = false
+    override fun setBackgroundType(type: Int) {
+        super.setBackgroundType(BG_NONE)
+    }
+
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var adaptiveImageLoader: AdaptiveImageLoader
     @Inject lateinit var qualityPolicy: QualityPolicy
@@ -69,6 +76,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     @Inject lateinit var smartEpgFiller: SmartEpgFiller
     @Inject lateinit var watchSessionLogger: WatchSessionLogger
     @Inject lateinit var subtitlePreferences: SubtitlePreferences
+    @Inject lateinit var streamDiagnosticLogger: StreamDiagnosticLogger
 
     private val viewModel: PlayerViewModel by viewModels()
     private var player: ExoPlayer? = null
@@ -107,9 +115,38 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var userTrackOverrideActive = false
     private var subtitlesTemporarilyEnabled = false
     private var channelSwitchJob: Job? = null
+    private var diagnosticListener: ExoPlayerDiagnosticListener? = null
+    private var healthMonitor: PlaybackHealthMonitor? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // Kill Leanback green: set BG_NONE immediately
+        backgroundType = BG_NONE
+        view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+
+        // Set again after glue host initializes (it resets backgroundType to BG_DARK)
+        view.post {
+            backgroundType = BG_NONE
+            view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            killLeanbackBackgrounds(view)
+        }
+        // Belt-and-suspenders: also after delays
+        view.postDelayed({
+            backgroundType = BG_NONE
+            killLeanbackBackgrounds(view)
+        }, 200)
+        view.postDelayed({
+            backgroundType = BG_NONE
+            killLeanbackBackgrounds(view)
+            // DEBUG: write full view tree dump to file
+            try {
+                val root = activity?.window?.decorView ?: view
+                val sb = StringBuilder("=== VIEW DUMP (500ms) ===\n")
+                dumpBackgroundsToString(root, 0, sb)
+                java.io.File(requireContext().filesDir, "view_dump.txt").writeText(sb.toString())
+            } catch (_: Exception) {}
+        }, 500)
 
         // Keep screen on during playback (dynamically toggled by player listener)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -182,6 +219,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 AudioLogger.logDecoderInitialized(decoderName, initializationDurationMs)
             }
         })
+
+        // Stream diagnostic listener — logs all ExoPlayer events to rolling file
+        val initialChannelName = viewModel.channels.value.getOrNull(
+            viewModel.currentChannelIndex.value)?.name ?: "unknown"
+        diagnosticListener = ExoPlayerDiagnosticListener(streamDiagnosticLogger, initialChannelName)
+        player!!.addListener(diagnosticListener!!)
+        player!!.addAnalyticsListener(diagnosticListener!!)
+
+        // Playback health monitor — periodic buffer/memory/black screen checks
+        healthMonitor = PlaybackHealthMonitor(streamDiagnosticLogger, lifecycleScope).apply {
+            channelName = initialChannelName
+            start(player!!)
+        }
 
         // [Fix 2.1] MediaSession: tells system media is active (screensaver defense + Now Playing)
         // Release any lingering session from a previous fragment instance
@@ -1266,6 +1316,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             ?.setPreferredTextLanguage(subtitlePreferences.preferredLanguage)
             ?.build() ?: return
 
+        // Update diagnostic context for new channel
+        diagnosticListener?.channelName = channel.name
+        healthMonitor?.channelName = channel.name
+        streamDiagnosticLogger.logAppEvent("CHANNEL_SWITCH", "to=${channel.name}")
+
         // Log session for previous channel before switching
         watchSessionLogger.endCurrentSession()
         watchSessionLogger.onChannelStarted(channel, null)
@@ -1552,6 +1607,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Cancel async jobs
         retryJob?.cancel()
         channelSwitchJob?.cancel()
+        // Stop diagnostic health monitor
+        healthMonitor?.stop()
+        healthMonitor = null
         // Clean up custom controls bar
         controlsManager?.destroy()
         controlsManager = null
@@ -1598,6 +1656,90 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         trackSelector = null
         glue = null
         super.onDestroyView()
+    }
+
+    /** DEBUG: Dump all views to a StringBuilder (file output for Fire TV) */
+    private fun dumpBackgroundsToString(view: View, depth: Int, sb: StringBuilder) {
+        val indent = "  ".repeat(depth)
+        val bg = view.background
+        val bgDesc = when {
+            bg is android.graphics.drawable.ColorDrawable -> {
+                val c = bg.color
+                "#${Integer.toHexString(c)} (r=${android.graphics.Color.red(c)} g=${android.graphics.Color.green(c)} b=${android.graphics.Color.blue(c)})"
+            }
+            bg != null -> bg.javaClass.simpleName
+            else -> "null"
+        }
+        val idName = try {
+            if (view.id != View.NO_ID) resources.getResourceEntryName(view.id) else "no-id"
+        } catch (_: Exception) { "id:${view.id}" }
+        sb.appendLine("$indent${view.javaClass.simpleName} [$idName] ${view.width}x${view.height} bg=$bgDesc vis=${view.visibility}")
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                dumpBackgroundsToString(view.getChildAt(i), depth + 1, sb)
+            }
+        }
+    }
+
+    /** DEBUG: Dump all views with non-transparent backgrounds to logcat */
+    private fun dumpBackgrounds(view: View, depth: Int) {
+        val indent = "  ".repeat(depth)
+        val bg = view.background
+        val bgDesc = when {
+            bg is android.graphics.drawable.ColorDrawable -> {
+                val c = bg.color
+                if (c != android.graphics.Color.TRANSPARENT && c != 0) {
+                    "#${Integer.toHexString(c)} (r=${android.graphics.Color.red(c)} g=${android.graphics.Color.green(c)} b=${android.graphics.Color.blue(c)})"
+                } else null
+            }
+            bg != null -> bg.javaClass.simpleName
+            else -> null
+        }
+        if (bgDesc != null) {
+            val idName = try {
+                if (view.id != View.NO_ID) resources.getResourceEntryName(view.id) else "no-id"
+            } catch (_: Exception) { "id:${view.id}" }
+            android.util.Log.e("VIEW_DUMP", "$indent${view.javaClass.simpleName} [$idName] ${view.width}x${view.height} bg=$bgDesc")
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                dumpBackgrounds(view.getChildAt(i), depth + 1)
+            }
+        }
+    }
+
+    /**
+     * Walk the Leanback view tree and kill the green background.
+     * The culprit is `playback_fragment_background` — a full-screen GradientDrawable
+     * that Leanback's VideoSupportFragment applies with the brandColor.
+     */
+    private fun killLeanbackBackgrounds(root: View) {
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val child = root.getChildAt(i)
+
+                // Target: Leanback's playback_fragment_background (NonOverlappingFrameLayout)
+                val idName = try {
+                    if (child.id != View.NO_ID) resources.getResourceEntryName(child.id) else ""
+                } catch (_: Exception) { "" }
+
+                if (idName == "playback_fragment_background" ||
+                    child.javaClass.simpleName.contains("NonOverlapping", ignoreCase = true)) {
+                    child.background = null
+                    child.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                }
+
+                // Also kill any view with "Background" in its class name
+                if (child.javaClass.simpleName.contains("Background", ignoreCase = true)) {
+                    child.background = null
+                    child.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                }
+
+                if (child is ViewGroup) {
+                    killLeanbackBackgrounds(child)
+                }
+            }
+        }
     }
 
     companion object {

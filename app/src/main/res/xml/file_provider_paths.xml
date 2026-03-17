@@ -3,4 +3,6 @@
     <external-files-path name="backups" path="Documents/" />
     <!-- Restricted to updates/ subdirectory for OTA APK downloads -->
     <cache-path name="apk_cache" path="updates/" />
+    <!-- Debug log export (combined diagnostic log for customer support) -->
+    <cache-path name="debug_logs" path="/" />
 </paths>

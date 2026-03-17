@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.2.0 (versionCode 31)
+- **Current Version**: 3.3.0 (versionCode 32)
 
 ## Build
 ```bash
@@ -18,7 +18,7 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Architecture
 - **DI**: Hilt (`@AndroidEntryPoint`, `@HiltViewModel`, `@Singleton`)
-- **Database**: Room v10 with FTS4 (not FTS5 — minSdk 21 compat), 14 entities, 12 DAOs
+- **Database**: Room v11 with FTS4 (not FTS5 — minSdk 21 compat), 16 entities, 13 DAOs
 - **Background**: WorkManager (periodic score refresh every 6h, new episode sync every 6h)
 - **Navigation**: Manual FragmentManager (no NavGraph)
 - **State**: StateFlow / MutableStateFlow
@@ -237,12 +237,6 @@ These features were scoped but deferred for a future release:
 - Conflict resolution for multi-device usage
 - Estimated effort: Large (5+ days)
 
-### #33 Smart Parental Controls
-- PIN-protected content filtering by category/rating
-- Per-profile parental settings
-- Activity logging for parents
-- Estimated effort: Large (5+ days)
-
 ### #34 Secure Guest Mode
 - Limited-access guest profile (no favorites, no history persistence)
 - Auto-expire after configurable timeout
@@ -262,6 +256,27 @@ These features were scoped but deferred for a future release:
 - **Phone color adjustments** — `text_secondary` boosted from `#9CA3AF` to `#C0C8D3`, `text_muted` boosted for daylight readability. TV keeps dim originals via `values-television/colors.xml`.
 - **VerticalGridView crash fix** — Replaced `setItems(list, DiffCallback)` with `setItems(list, null)` (atomic `notifyDataSetChanged()`) to prevent position -1 crash from granular diff notifications. Selected position saved/restored with bounds clamping. (`vod/VodFragment.kt`, `series/SeriesFragment.kt`)
 
+### Phase 12 — Parental Controls: Category-Level Blocking (v3.3.0)
+- **BlockedCategoryEntity + DAO** — Room entity with composite PK (section + categoryId), Flow-based queries, batch insert/delete. (`data/local/entity/BlockedCategoryEntity.kt`, `data/local/dao/BlockedCategoryDao.kt`)
+- **DB Migration v10→v11** — Non-destructive migration adds `blocked_categories` table. (`di/DatabaseModule.kt`)
+- **ContentFilterManager** — @Singleton filtering engine with in-memory `ConcurrentHashSet` kept in sync via Room Flow. O(1) per-item `isBlocked()` checks. `filterCategories()` and `filterContent()` methods used by all ViewModels. Respects `isEnabled` and `isTemporarilyUnlocked()`. (`parental/ContentFilterManager.kt`)
+- **AdultCategoryDetector** — Regex-based detection of adult categories (adult/xxx/18+/late night/erotic/x-rated/nsfw/mature). Used for "Block All Adult" action and auto-block on first PIN setup. (`parental/AdultCategoryDetector.kt`)
+- **ParentalControlManager upgrade** — Added 30-minute temporary unlock (in-memory, expires on app restart). Lockout upgraded from 3 attempts/30s to 5 attempts/60s. (`parental/ParentalControlManager.kt`)
+- **Content filtering integration** — All ViewModels filter categories and content via ContentFilterManager: LiveTvViewModel (categories + channels), VodViewModel (categories + movies including Recently Added/New Releases), SeriesViewModel (categories + series), SearchViewModel (search results + trending), HomeViewModel (featured, trending movies/series, channel strip, live sports).
+- **ParentalSettingsFragment** — Full settings UI with 3 tab buttons (Live TV/Movies/Series) showing blocked count badges, RecyclerView category list with toggle switches (green=allowed, red=blocked), blocked categories sorted to top with strikethrough + BLOCKED badge. Quick actions: Block All Adult, Allow All, Change PIN. D-pad navigable. (`parental/ParentalSettingsFragment.kt`, `parental/ParentalSettingsViewModel.kt`, `parental/CategoryToggleAdapter.kt`)
+- **PIN → Settings navigation** — ParentalPinFragment now navigates to ParentalSettingsFragment on unlock (instead of popping back). First-time PIN setup auto-blocks adult categories across all sections.
+- **Settings status indicator** — Parental Controls entry in SettingsFragment shows "ON" or "OFF" status, updates on resume.
+
+### Phase 13 — Error Logging & Customer Diagnostics (v3.3.0)
+- **StreamDiagnosticLogger** — @Singleton rolling file logger. Writes structured entries (`HH:mm:ss.SSS [CATEGORY/LEVEL] message`) to `filesDir/diagnostics/`. 30-min rotation, 5MB max, 3 files retained (90 min history). Device info header. URL credential masking. Export to single .txt for email. (`common/StreamDiagnosticLogger.kt`)
+- **ExoPlayerDiagnosticListener** — Player.Listener + AnalyticsListener logging state changes, errors (5-line stack trace), first frame rendered, dropped frames (>3), decoder init (video/audio HW/SW), video size, bandwidth (30s throttle), track changes. Channel name updated on switch. (`player/ExoPlayerDiagnosticListener.kt`)
+- **PlaybackHealthMonitor** — Coroutine-based periodic monitor: buffer health every 15s, memory every 60s. Black screen detection: polls renderedOutputBufferCount every 3s, logs after 3s of no new frames with decoder info, surface validity, audio state, buffer state. Auto-logs recovery when frames resume. (`player/PlaybackHealthMonitor.kt`)
+- **SendDebugLogManager** — Packages diagnostic logs + crash logs into single .txt, sends via email Intent (TO: info@ooustick.com) with FileProvider URI attachment. Device summary in email body. Fallback toast with file path for devices without email app. (`common/SendDebugLogManager.kt`)
+- **NetworkMonitor diagnostic integration** — Network connect/disconnect/capability changes logged to StreamDiagnosticLogger. WiFi signal strength (dBm) via WifiManager. (`common/NetworkMonitor.kt`)
+- **Player integration** — ExoPlayerDiagnosticListener + PlaybackHealthMonitor registered on player creation, channel name updated on tuneToChannel, health monitor stopped on onDestroyView. (`player/OoustreamPlaybackFragment.kt`)
+- **Settings: Send Debug Log** — New action in SettingsFragment with confirmation dialog, optional issue description input, opens email chooser with pre-filled report. (`settings/SettingsFragment.kt`)
+- **App startup logging** — StreamDiagnosticLogger wired into NetworkMonitor at app start, APP_START event logged with version. (`OoustreamApp.kt`)
+
 ### Resource Qualifier Structure
 - `values/` — Phone defaults (360dp+)
 - `values-sw320dp/` — Extra-small phones (320-359dp)
@@ -274,7 +289,7 @@ These features were scoped but deferred for a future release:
 2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming, MultiView hero card, hero swipe gesture (mobile)
 3. `OoustreamPlaybackFragment.kt` — ExoPlayer + AudioPipelineFactory init, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, AC3 audio fallback, user track override protection, low-memory buffers, friendly error messages, mobile touch gestures (GestureDetector)
 4. `OoustreamPlaybackGlue.kt` — ALL key handling (DPAD, media buttons, channel zap, seek, back), gold-tinted action icons, Back-dismisses-controls fix
-5. `OoustreamDatabase.kt` — v8, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern entities
+5. `OoustreamDatabase.kt` — v11, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern + BlockedCategory entities
 6. `PlayerViewModel.kt` — analytics recording, stream URL building, Watch Next suggestions (RecommendationEngine), NonCancellable saveProgress
 7. `ChannelPresenter.kt` — channel list items with debounced focus effects for scroll perf
 8. `LiveTvFragment.kt` — category/channel lists, debounced EPG loading, preview player, SmartEpgFiller for channel EPG text, MultiView icon
@@ -309,7 +324,7 @@ These features were scoped but deferred for a future release:
 37. `home/WatchItAgainPresenter.kt` — Watch It Again row presenter with checkmark badge
 38. `recommendation/NewEpisodeSyncWorker.kt` — periodic new episode detection worker
 
-## Source File Inventory (193 Kotlin files, 56 XML layouts)
+## Source File Inventory (204 Kotlin files, 58 XML layouts)
 
 ### By Package
 | Package | Files | Key Components |
@@ -317,9 +332,9 @@ These features were scoped but deferred for a future release:
 | `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
 | `auth/` | 2 | AuthViewModel, LoginFragment |
 | `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
-| `common/` | 36 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper |
-| `data/local/dao/` | 12 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao |
-| `data/local/entity/` | 14 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity |
+| `common/` | 38 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper |
+| `data/local/dao/` | 13 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao, BlockedCategoryDao |
+| `data/local/entity/` | 15 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity, BlockedCategoryEntity |
 | `data/local/` | 1 | OoustreamDatabase (Room v10) |
 | `data/` | 1 | UserPlanManager |
 | `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
@@ -332,8 +347,8 @@ These features were scoped but deferred for a future release:
 | `livetv/` | 2 | LiveTvFragment, LiveTvViewModel |
 | `multiview/` | 14 | MultiViewFragment, MultiViewViewModel, MultiViewPlayerManager, MultiViewSlotView, MultiViewStallDetector, PlaybackHealth, SlotActionPopup, MultiViewAutoFillUseCase, MultiViewTopBarController, MultiViewBottomBarController, MultiViewLockedPopup, ChannelPickerDialogFragment, QrUpgradeDialogFragment, QrCodeGenerator |
 | `onboarding/` | 1 | OnboardingOverlay |
-| `parental/` | 3 | ParentalControlManager, ParentalPinFragment, ParentalViewModel |
-| `player/` | 19 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager |
+| `parental/` | 7 | ParentalControlManager, ParentalPinFragment, ParentalViewModel, ContentFilterManager, AdultCategoryDetector, ParentalSettingsFragment, ParentalSettingsViewModel, CategoryToggleAdapter |
+| `player/` | 21 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor |
 | `recommendation/` | 6 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker |
 | `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
 | `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
@@ -344,7 +359,7 @@ These features were scoped but deferred for a future release:
 | `vod/` | 4 | VodFragment, VodViewModel, VodDetailFragment, VodDetailViewModel |
 | Root | 2 | MainActivity, OoustreamApp |
 
-## Layout Files (56 XML)
+## Layout Files (58 XML)
 - **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail
 - **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_new_episode, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_again, item_watch_next_card, item_zap_channel
 - **Overlays**: overlay_audio_only, overlay_binge_countdown, overlay_channel_banner, overlay_channel_zap, overlay_content_info, overlay_onboarding_step, overlay_player_controls, overlay_quick_sidebar, overlay_remote_hints, overlay_series_complete, overlay_stream_stats, overlay_track_picker, overlay_watch_next
@@ -376,6 +391,7 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - v8: Phase 5 AI features (ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity — destructive, no users yet). Unchanged through v2.5.2.
 - v9: poster_cache table (proper Migration, preserves user data)
 - v10: series_tracking table (proper Migration, preserves user data)
+- v11: blocked_categories table for parental controls (proper Migration, preserves user data)
 
 ### MANDATORY: Database Migration Rules
 - **NEVER use destructive migration for new DB versions.** Users have real data (favorites, watch progress, series tracking) that must survive updates.
@@ -403,3 +419,4 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v3.0.0** — Streaming Cinema Experience: hero trailer auto-play, D-pad hero navigation, parallax scroll, time-of-day aurora theming, Quick Tune channel strip, "Because You Watched" genre/cast rows, Live Sports banner, smart trending algorithm, enhanced aurora visibility, favorites logo fix
 - **v3.1.0** — Closed Captions & Subtitle System
 - **v3.2.0** — Mobile Touch Overhaul: player touch gestures (tap/double-tap/swipe), responsive card sizing for phones, ripple touch feedback, stats button, hero swipe, track picker responsive width + scrim dismiss, MultiView touch support with landscape lock, minimum text sizes, phone color contrast boost, VerticalGridView position -1 crash fix
+- **v3.3.0** — Parental Controls: Category-Level Blocking + Error Logging & Diagnostics. Block any category in Live TV/Movies/Series — blocked content invisible everywhere. PIN-gated settings with 3-section tabs, toggle switches, "Block All Adult" auto-detection. Auto-blocks on first PIN setup. 30-min temp unlock, 5-attempt/60s lockout. ContentFilterManager with O(1) filtering. Room DB v11. Stream Diagnostic Logger (rolling file "black box" for playback), ExoPlayer event listener, PlaybackHealthMonitor (buffer/memory/black screen detection), "Send Debug Log" button in Settings, network diagnostic logging.

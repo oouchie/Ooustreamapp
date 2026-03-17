@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "194032823655",
+    "project_id": "ooustream",
+    "storage_bucket": "ooustream.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:194032823655:android:051e7242a970b49a7993c2",
+        "android_client_info": {
+          "package_name": "com.ooustream.iptv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDliinGKz5aBmUDuxrHUbmsfCzofywvwCc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

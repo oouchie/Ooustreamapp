@@ -20,8 +20,12 @@ import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.account.AccountDashboardFragment
 import com.ooustream.iptv.backup.BackupFragment
+import com.ooustream.iptv.common.SendDebugLogManager
+import com.ooustream.iptv.parental.ContentFilterManager
+import com.ooustream.iptv.parental.ParentalControlManager
 import com.ooustream.iptv.parental.ParentalPinFragment
 import com.ooustream.iptv.speedtest.SpeedTestFragment
+import javax.inject.Inject
 import com.ooustream.iptv.update.UpdateFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -43,7 +47,12 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_AUDIO_DECODER = 11L
         private const val ACTION_CLEAR_HISTORY = 12L
         private const val ACTION_SUBTITLE_SETTINGS = 13L
+        private const val ACTION_SEND_DEBUG_LOG = 14L
     }
+
+    @Inject lateinit var parentalControlManager: ParentalControlManager
+    @Inject lateinit var contentFilterManager: ContentFilterManager
+    @Inject lateinit var sendDebugLogManager: SendDebugLogManager
 
     private val viewModel: SettingsViewModel by viewModels()
 
@@ -73,11 +82,16 @@ class SettingsFragment : GuidedStepSupportFragment() {
         )
 
         // Parental Controls
+        val parentalDesc = if (parentalControlManager.isEnabled.value) {
+            "ON — Manage PIN and content restrictions"
+        } else {
+            "OFF — Set up PIN and content restrictions"
+        }
         actions.add(
             GuidedAction.Builder(requireContext())
                 .id(ACTION_PARENTAL)
                 .title("Parental Controls")
-                .description("Manage PIN and content restrictions")
+                .description(parentalDesc)
                 .build()
         )
 
@@ -132,6 +146,15 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .id(ACTION_CLEAR_CACHE)
                 .title("Clear Cache")
                 .description("Clear all cached data")
+                .build()
+        )
+
+        // Send Debug Log
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_SEND_DEBUG_LOG)
+                .title("Send Debug Log")
+                .description("Send diagnostic report to Ooustream support")
                 .build()
         )
 
@@ -201,6 +224,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_SPEED_TEST -> navigateToFragment(SpeedTestFragment())
             ACTION_UPDATE -> navigateToFragment(UpdateFragment())
             ACTION_REFRESH_PLAYLIST -> refreshPlaylist()
+            ACTION_SEND_DEBUG_LOG -> showSendDebugLogConfirmation()
             ACTION_CRASH_LOG -> showCrashLog()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
             ACTION_CLEAR_HISTORY -> showClearHistoryConfirmation()
@@ -215,6 +239,25 @@ class SettingsFragment : GuidedStepSupportFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         observeEvents()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh parental controls description when returning from settings
+        updateParentalDescription()
+    }
+
+    private fun updateParentalDescription() {
+        val pos = findActionPositionById(ACTION_PARENTAL)
+        if (pos >= 0) {
+            val desc = if (parentalControlManager.isEnabled.value) {
+                "ON — Manage PIN and content restrictions"
+            } else {
+                "OFF — Set up PIN and content restrictions"
+            }
+            findActionById(ACTION_PARENTAL)?.description = desc
+            notifyActionChanged(pos)
+        }
     }
 
     private fun observeEvents() {
@@ -304,6 +347,40 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 CrashLogger.clearCrashLog(requireContext())
                 Toast.makeText(requireContext(), "Crash logs cleared", Toast.LENGTH_SHORT).show()
             }
+            .show()
+    }
+
+    // endregion
+
+    // region Debug Log
+
+    private fun showSendDebugLogConfirmation() {
+        val editText = android.widget.EditText(requireContext()).apply {
+            hint = "Briefly describe your issue (optional)"
+            maxLines = 3
+            setTextColor(0xFFCCCCCC.toInt())
+            setHintTextColor(0xFF888888.toInt())
+            setPadding(32, 16, 32, 16)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Send Debug Log?")
+            .setMessage(
+                "This will send a diagnostic report to Ooustream support.\n\n" +
+                "The report includes:\n" +
+                "  \u2022 Device info (model, Android version)\n" +
+                "  \u2022 App version\n" +
+                "  \u2022 Stream playback events (last 30 min)\n" +
+                "  \u2022 Network connection info\n\n" +
+                "No personal data or passwords are included."
+            )
+            .setView(editText)
+            .setPositiveButton("Send Report") { _, _ ->
+                val description = editText.text?.toString() ?: ""
+                sendDebugLogManager.sendDebugLog(requireActivity(), description)
+                Toast.makeText(requireContext(), "Preparing debug log...", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 

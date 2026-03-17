@@ -13,12 +13,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.R
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ParentalPinFragment : GuidedStepSupportFragment() {
 
     private val viewModel: ParentalViewModel by viewModels()
+    private val settingsViewModel: ParentalSettingsViewModel by viewModels()
 
     /**
      * Track which mode we are displaying so the guidance description
@@ -175,6 +179,12 @@ class ParentalPinFragment : GuidedStepSupportFragment() {
             Mode.SETUP -> {
                 val pin = getPinText(ACTION_PIN)
                 viewModel.setPin(pin)
+                // Auto-block adult categories on first PIN setup
+                viewLifecycleOwner.lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        settingsViewModel.autoBlockAdultOnSetup()
+                    }
+                }
             }
             Mode.ENTER_PIN -> {
                 val pin = getPinText(ACTION_PIN)
@@ -237,9 +247,9 @@ class ParentalPinFragment : GuidedStepSupportFragment() {
                         is ParentalState.Unlocked -> {
                             updateToggleVisibility(visible = true)
                             updateToggleLabel()
-                            // Pop back to the calling screen on successful unlock
-                            if (mode == Mode.ENTER_PIN) {
-                                parentFragmentManager.popBackStack()
+                            // Navigate to Parental Settings on successful unlock
+                            if (mode == Mode.ENTER_PIN || mode == Mode.SETUP) {
+                                navigateToSettings()
                             }
                         }
                         is ParentalState.Error -> {
@@ -309,6 +319,22 @@ class ParentalPinFragment : GuidedStepSupportFragment() {
 
     private fun getToggleLabel(): String {
         return getString(R.string.parental_disable)
+    }
+
+    /**
+     * Navigate to the full Parental Settings screen after PIN verification.
+     * Pop the PIN fragment first so Back from settings returns to Settings menu.
+     */
+    private fun navigateToSettings() {
+        if (!isAdded) return
+        val fm = requireActivity().supportFragmentManager
+        // Pop this PIN fragment off the back stack
+        fm.popBackStack()
+        // Then add the settings fragment
+        fm.beginTransaction()
+            .replace(R.id.main_container, ParentalSettingsFragment())
+            .addToBackStack(null)
+            .commit()
     }
 
     /**

@@ -14,6 +14,7 @@ import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import com.ooustream.iptv.parental.ContentFilterManager
 import kotlin.math.ln
 import com.ooustream.iptv.epg.ChannelContentType
 import com.ooustream.iptv.epg.ChannelNameParser
@@ -41,7 +42,10 @@ data class FeaturedItem(
     val type: String,
     val streamId: String,
     val genre: String = "",
-    val containerExtension: String = ""
+    val containerExtension: String = "",
+    val rating: String = "",
+    val year: String = "",
+    val plot: String? = null
 )
 
 data class LiveSportsEvent(
@@ -63,7 +67,8 @@ class HomeViewModel @Inject constructor(
     private val epgCacheRepository: EpgCacheRepository,
     private val seriesTrackingDao: SeriesTrackingDao,
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
-    private val favoriteDao: FavoriteDao
+    private val favoriteDao: FavoriteDao,
+    private val contentFilterManager: ContentFilterManager
 ) : BaseViewModel() {
 
     init {
@@ -155,7 +160,8 @@ class HomeViewModel @Inject constructor(
                     }
                 } else {
                     // No favorites yet — show first 20 live channels
-                    val streams = contentRepository.getLiveStreams()
+                    val rawStreams = contentRepository.getLiveStreams()
+                    val streams = contentFilterManager.filterContent("live", rawStreams) { it.categoryId }
                     _channelStripItems.value = streams.take(20).map { stream ->
                         ChannelStripItem(
                             channelId = stream.streamId,
@@ -248,7 +254,8 @@ class HomeViewModel @Inject constructor(
 
     suspend fun loadFeaturedContent() {
         try {
-            val vodStreams = contentRepository.getVodStreams()
+            val rawVodStreams = contentRepository.getVodStreams()
+            val vodStreams = contentFilterManager.filterContent("vod", rawVodStreams) { it.categoryId }
             val sorted = vodStreams.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
             val heroVods = sorted.take(6)
 
@@ -272,7 +279,8 @@ class HomeViewModel @Inject constructor(
                 // Trending Series: rating × recency, boosted by user preferences
                 launch {
                     try {
-                        val seriesList = contentRepository.getSeries()
+                        val rawSeries = contentRepository.getSeries()
+                        val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
                     } catch (_: Exception) { }
                 }
@@ -284,13 +292,22 @@ class HomeViewModel @Inject constructor(
                             val backdrop = info.info?.backdropPath?.firstOrNull()
                                 ?: info.info?.movieImage
                             val genre = info.info?.genre ?: vod.categoryId ?: ""
+                            val ratingStr = info.info?.rating?.let {
+                                val num = it.toDoubleOrNull()
+                                if (num != null && num > 0) "%.1f".format(num) else ""
+                            } ?: ""
+                            val yearStr = info.info?.releaseDate?.take(4) ?: ""
+                            val plotStr = info.info?.plot?.takeIf { it.length > 10 }
                             FeaturedItem(
                                 title = vod.name,
                                 backdropUrl = backdrop ?: vod.streamIcon,
                                 type = "vod",
                                 streamId = vod.streamId.toString(),
                                 genre = genre,
-                                containerExtension = info.movieData?.containerExtension ?: vod.containerExtension ?: "mp4"
+                                containerExtension = info.movieData?.containerExtension ?: vod.containerExtension ?: "mp4",
+                                rating = ratingStr,
+                                year = yearStr,
+                                plot = plotStr
                             )
                         } catch (_: Exception) {
                             FeaturedItem(
@@ -395,7 +412,8 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun loadLiveSportsEvent() {
         try {
-            val streams = contentRepository.getLiveStreams()
+            val rawStreams = contentRepository.getLiveStreams()
+            val streams = contentFilterManager.filterContent("live", rawStreams) { it.categoryId }
             val categories = contentRepository.getLiveCategories()
             val categoryMap = categories.associate { it.categoryId to it.categoryName }
 

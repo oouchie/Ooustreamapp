@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,16 +27,22 @@ class NetworkMonitor @Inject constructor(
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
+    /** Diagnostic logger — set after Hilt injection to avoid circular dependency */
+    var diagnosticLogger: StreamDiagnosticLogger? = null
+
     private val _state = MutableStateFlow(getCurrentState())
     val state: StateFlow<NetworkState> = _state.asStateFlow()
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             updateState()
+            val type = getNetworkType(network)
+            diagnosticLogger?.logNetworkChange(type, connected = true, wifiSignal = getWifiSignalDbm())
         }
 
         override fun onLost(network: Network) {
             _state.value = NetworkState(isConnected = false)
+            diagnosticLogger?.logNetworkChange("DISCONNECTED", connected = false, wifiSignal = null)
         }
 
         override fun onCapabilitiesChanged(
@@ -49,6 +56,9 @@ class NetworkMonitor @Inject constructor(
                 isWifi = isWifi,
                 estimatedBandwidthKbps = bandwidth
             )
+            val downMbps = capabilities.linkDownstreamBandwidthKbps / 1000
+            val upMbps = capabilities.linkUpstreamBandwidthKbps / 1000
+            diagnosticLogger?.logNetworkCapabilities(downMbps, upMbps, isWifi)
         }
     }
 
@@ -69,6 +79,27 @@ class NetworkMonitor @Inject constructor(
 
     private fun updateState() {
         _state.value = getCurrentState()
+    }
+
+    @Suppress("DEPRECATION")
+    fun getWifiSignalDbm(): Int? {
+        return try {
+            val wifiManager = context.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val rssi = wifiManager.connectionInfo.rssi
+            if (rssi != -127) rssi else null
+        } catch (_: Exception) { null }
+    }
+
+    fun getNetworkType(network: Network? = null): String {
+        val net = network ?: connectivityManager.activeNetwork ?: return "NONE"
+        val caps = connectivityManager.getNetworkCapabilities(net) ?: return "UNKNOWN"
+        return when {
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
+            else -> "OTHER"
+        }
     }
 
     @Suppress("DEPRECATION")

@@ -1,0 +1,172 @@
+package com.ooustream.iptv.player
+
+import android.os.SystemClock
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.ooustream.iptv.common.StreamDiagnosticLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * Periodic health monitor for main player. Logs buffer health every 15s,
+ * memory every 60s, and detects black screen (no new frames for 3s+).
+ */
+class PlaybackHealthMonitor(
+    private val logger: StreamDiagnosticLogger,
+    private val scope: CoroutineScope
+) {
+    private var monitorJob: Job? = null
+    private var player: ExoPlayer? = null
+    var channelName: String = "unknown"
+
+    // Black screen detection
+    private var lastRenderedFrameCount: Int = 0
+    private var blackSince: Long = 0L
+    private var blackScreenLogged: Boolean = false
+
+    // FPS calculation
+    private var prevFrameCount: Int = 0
+    private var prevFrameTime: Long = 0L
+
+    companion object {
+        private const val HEALTH_INTERVAL_MS = 15_000L  // 15 seconds
+        private const val BLACK_CHECK_INTERVAL_MS = 3_000L // 3 seconds
+        private const val BLACK_SCREEN_THRESHOLD_MS = 3_000L // 3 seconds no frames
+        private const val MEMORY_INTERVAL_TICKS = 4 // every 4th health tick = 60s
+    }
+
+    fun start(exoPlayer: ExoPlayer) {
+        stop()
+        player = exoPlayer
+        lastRenderedFrameCount = 0
+        blackSince = 0L
+        blackScreenLogged = false
+
+        monitorJob = scope.launch {
+            var tick = 0
+            while (isActive) {
+                val p = player ?: break
+
+                if (p.playbackState == Player.STATE_READY && p.playWhenReady) {
+                    // Buffer health
+                    val bufferMs = p.bufferedPosition - p.currentPosition
+                    val counters = p.videoDecoderCounters
+
+                    // Bandwidth from ExoPlayer's internal estimate
+                    val bandwidthBps = try {
+                        // Access the bandwidth meter through the player's analytics collector
+                        p.totalBufferedDuration // trigger internal state
+                        // Use video bitrate as proxy if available
+                        p.videoFormat?.bitrate?.toLong() ?: 0L
+                    } catch (_: Exception) { 0L }
+
+                    // FPS: frames rendered since last check / elapsed time
+                    val currentFrames = counters?.renderedOutputBufferCount ?: 0
+                    val now = SystemClock.elapsedRealtime()
+                    val fps = if (prevFrameTime > 0 && now > prevFrameTime) {
+                        val frameDelta = currentFrames - prevFrameCount
+                        val timeDelta = (now - prevFrameTime) / 1000f
+                        if (timeDelta > 0) frameDelta / timeDelta else 0f
+                    } else 0f
+                    prevFrameCount = currentFrames
+                    prevFrameTime = now
+
+                    logger.logBufferHealth(
+                        bufferMs = bufferMs,
+                        bandwidthBps = bandwidthBps,
+                        droppedFrames = counters?.droppedBufferCount ?: 0,
+                        renderedFps = fps
+                    )
+
+                    // Memory every 60s
+                    if (tick % MEMORY_INTERVAL_TICKS == 0) {
+                        val runtime = Runtime.getRuntime()
+                        val usedMb = ((runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024).toInt()
+                        val totalMb = (runtime.totalMemory() / 1024 / 1024).toInt()
+                        val freeMb = (runtime.freeMemory() / 1024 / 1024).toInt()
+                        logger.logMemory(usedMb, totalMb, freeMb)
+                    }
+
+                    // Black screen detection
+                    checkBlackScreen(p)
+
+                    tick++
+                }
+
+                delay(HEALTH_INTERVAL_MS)
+            }
+        }
+
+        // Separate coroutine for faster black screen detection (every 3s)
+        scope.launch {
+            while (isActive) {
+                val p = player ?: break
+                if (p.playbackState == Player.STATE_READY && p.playWhenReady) {
+                    checkBlackScreen(p)
+                }
+                delay(BLACK_CHECK_INTERVAL_MS)
+            }
+        }
+    }
+
+    fun stop() {
+        monitorJob?.cancel()
+        monitorJob = null
+        player = null
+    }
+
+    private fun checkBlackScreen(p: ExoPlayer) {
+        val counters = p.videoDecoderCounters ?: return
+        val currentFrames = counters.renderedOutputBufferCount
+
+        if (currentFrames == lastRenderedFrameCount && currentFrames > 0) {
+            // No new frames rendered
+            if (blackSince == 0L) {
+                blackSince = SystemClock.elapsedRealtime()
+            }
+
+            val blackDuration = SystemClock.elapsedRealtime() - blackSince
+
+            if (blackDuration > BLACK_SCREEN_THRESHOLD_MS && !blackScreenLogged) {
+                blackScreenLogged = true
+
+                val hasVideoTrack = p.currentTracks.groups
+                    .any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+                val audioPlaying = (p.volume > 0f)
+                val bufferMs = p.bufferedPosition - p.currentPosition
+
+                logger.logBlackScreen(
+                    channelName = channelName,
+                    decoderInfo = getDecoderName(p),
+                    surfaceValid = p.videoSize.width > 0,
+                    hasVideoTrack = hasVideoTrack,
+                    audioPlaying = audioPlaying,
+                    bufferMs = bufferMs
+                )
+            }
+        } else {
+            // Frames are rendering — reset
+            if (blackSince > 0L) {
+                val duration = SystemClock.elapsedRealtime() - blackSince
+                if (blackScreenLogged) {
+                    logger.logBlackScreenRecovered(duration, channelName)
+                }
+            }
+            blackSince = 0L
+            blackScreenLogged = false
+            lastRenderedFrameCount = currentFrames
+        }
+    }
+
+    private fun getDecoderName(p: ExoPlayer): String {
+        return try {
+            // DecoderCounters doesn't have decoderName — use track info instead
+            val videoFormat = p.videoFormat
+            videoFormat?.codecs ?: videoFormat?.sampleMimeType ?: "unknown"
+        } catch (_: Exception) { "unknown" }
+    }
+}

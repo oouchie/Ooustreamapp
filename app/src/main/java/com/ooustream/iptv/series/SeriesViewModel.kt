@@ -8,6 +8,7 @@ import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
+import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +20,8 @@ import javax.inject.Inject
 class SeriesViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val contentCacheRepository: ContentCacheRepository,
-    private val favoriteRepository: FavoriteRepository
+    private val favoriteRepository: FavoriteRepository,
+    private val contentFilterManager: ContentFilterManager
 ) : BaseViewModel() {
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
@@ -46,7 +48,7 @@ class SeriesViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 contentCacheRepository.getCategories("series").collect { categories ->
-                    _categories.value = categories
+                    _categories.value = contentFilterManager.filterCategories("series", categories)
                     if (_selectedCategoryId.value == FAVORITES_ID) {
                         val favCount = favoriteRepository.getFavoritesListByType("series").size
                         if (favCount == 0) {
@@ -95,10 +97,12 @@ class SeriesViewModel @Inject constructor(
                     }
                     RECENTLY_ADDED_ID -> {
                         val all = contentRepository.getSeries()
-                        _seriesList.value = all.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
+                        val filtered = contentFilterManager.filterContent("series", all) { it.categoryId }
+                        _seriesList.value = filtered.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
                     }
                     else -> {
-                        _seriesList.value = contentRepository.getSeries(categoryId)
+                        val series = contentRepository.getSeries(categoryId)
+                        _seriesList.value = contentFilterManager.filterContent("series", series) { it.categoryId }
                     }
                 }
             } catch (e: Exception) {

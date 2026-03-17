@@ -178,6 +178,6 @@ class ParentalViewModel @Inject constructor(
 
     companion object {
         /** Max failed PIN attempts before lockout. Matches ParentalControlManager. */
-        private const val MAX_FAILED_ATTEMPTS = 3
+        private const val MAX_FAILED_ATTEMPTS = 5
     }
 }

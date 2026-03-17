@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:background="@drawable/bg_category_toggle_item">
+
+    <!-- Toggle switch -->
+    <Switch
+        android:id="@+id/toggle_switch"
+        android:layout_width="44dp"
+        android:layout_height="24dp"
+        android:focusable="false"
+        android:clickable="false" />
+
+    <!-- Category name -->
+    <TextView
+        android:id="@+id/category_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="16dp"
+        android:textSize="14sp"
+        android:textColor="#FFFFFF" />
+
+    <!-- BLOCKED badge (only visible when blocked) -->
+    <TextView
+        android:id="@+id/blocked_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BLOCKED"
+        android:textSize="9sp"
+        android:textColor="#EF4444"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:background="@drawable/bg_blocked_badge"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
+</LinearLayout>

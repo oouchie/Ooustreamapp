@@ -68,6 +68,8 @@ class AuthViewModel @Inject constructor(
                     userPlanManager.updateFromMaxConnections(
                         it.userInfo.maxConnections?.toIntOrNull() ?: 1
                     )
+                    // Set Crashlytics context for crash reports
+                    com.ooustream.iptv.common.CrashlyticsHelper.setUserContext(username, serverUrl)
                     _authState.value = AuthState.Success(it)
                 },
                 onFailure = { _authState.value = AuthState.Error(it.message ?: "Login failed") }

@@ -13,13 +13,13 @@
     <dimen name="card_section_height">160dp</dimen>
 
     <!-- Typography -->
-    <dimen name="text_headline">28sp</dimen>
+    <dimen name="text_headline">36sp</dimen>
     <dimen name="text_title">18sp</dimen>
     <dimen name="text_badge">9sp</dimen>
     <dimen name="text_micro">8sp</dimen>
 
     <!-- Hero -->
-    <dimen name="hero_height">320dp</dimen>
+    <dimen name="hero_height">420dp</dimen>
 
     <!-- Row heights -->
     <dimen name="row_continue_watching_height">200dp</dimen>

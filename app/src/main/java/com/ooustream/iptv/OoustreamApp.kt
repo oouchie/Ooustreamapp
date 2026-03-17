@@ -10,10 +10,13 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.common.DpadSoundManager
+import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.ProgressiveImageLoader
 import com.ooustream.iptv.common.QualityPolicy
+import com.ooustream.iptv.common.StreamDiagnosticLogger
 import com.ooustream.iptv.recommendation.NewEpisodeSyncWorker
 import com.ooustream.iptv.recommendation.ScoreRefreshWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -26,6 +29,8 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject lateinit var dpadSoundManager: DpadSoundManager
     @Inject lateinit var qualityPolicy: QualityPolicy
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var streamDiagnosticLogger: StreamDiagnosticLogger
+    @Inject lateinit var networkMonitor: NetworkMonitor
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -35,9 +40,19 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         CrashLogger.install(this)
+
+        // Firebase Crashlytics: enable in release, disable in debug
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+
         dpadSoundManager.initialize()
         DpadSoundManager.setInstance(dpadSoundManager)
         ProgressiveImageLoader.setQualityPolicy(qualityPolicy)
+
+        // Wire diagnostic logger into NetworkMonitor for network event logging
+        networkMonitor.diagnosticLogger = streamDiagnosticLogger
+        streamDiagnosticLogger.logAppEvent("APP_START",
+            "version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+
         scheduleScoreRefresh()
         scheduleNewEpisodeSync()
     }

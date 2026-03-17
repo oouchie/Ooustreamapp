@@ -9,6 +9,7 @@ import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.SearchIndexRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
 import com.ooustream.iptv.data.repository.SearchResults
+import com.ooustream.iptv.parental.ContentFilterManager
 import com.ooustream.iptv.data.local.entity.FavoriteEntity
 import com.ooustream.iptv.common.PosterItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +29,8 @@ class SearchViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val searchHistoryDao: SearchHistoryDao,
     private val searchIndexRepository: SearchIndexRepository,
-    private val favoriteRepository: FavoriteRepository
+    private val favoriteRepository: FavoriteRepository,
+    private val contentFilterManager: ContentFilterManager
 ) : BaseViewModel() {
 
     private val _searchResults = MutableStateFlow<SearchResults?>(null)
@@ -67,7 +69,8 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val vod = contentRepository.getVodStreams()
-                val sorted = vod.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                val filtered = contentFilterManager.filterContent("vod", vod) { it.categoryId }
+                val sorted = filtered.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
                 _trendingContent.value = sorted.take(15)
             } catch (_: Exception) { }
         }
@@ -88,7 +91,7 @@ class SearchViewModel @Inject constructor(
             try {
                 // Try API search first (returns full objects with images)
                 val results = contentRepository.search(query)
-                _searchResults.value = results
+                _searchResults.value = filterSearchResults(results)
                 searchHistoryDao.insert(SearchHistoryEntity(query = query.trim()))
             } catch (_: Exception) {
                 // Offline fallback: use FTS local search (no images, but functional)
@@ -170,6 +173,14 @@ class SearchViewModel @Inject constructor(
         }
 
         return SearchResults(live = live, vod = vod, series = series)
+    }
+
+    private fun filterSearchResults(results: SearchResults): SearchResults {
+        return SearchResults(
+            live = contentFilterManager.filterContent("live", results.live) { it.categoryId },
+            vod = contentFilterManager.filterContent("vod", results.vod) { it.categoryId },
+            series = contentFilterManager.filterContent("series", results.series) { it.categoryId }
+        )
     }
 
     fun buildLiveStreamUrl(streamId: Int): String {

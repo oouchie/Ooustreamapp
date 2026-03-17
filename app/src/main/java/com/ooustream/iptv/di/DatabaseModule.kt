@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ooustream.iptv.data.local.OoustreamDatabase
+import com.ooustream.iptv.data.local.dao.BlockedCategoryDao
 import com.ooustream.iptv.data.local.dao.ChannelScoreDao
 import com.ooustream.iptv.data.local.dao.ChannelWatchLogDao
 import com.ooustream.iptv.data.local.dao.ContentCacheDao
@@ -43,6 +44,21 @@ object DatabaseModule {
         }
     }
 
+    // v10→v11: Add blocked_categories table for parental controls
+    private val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `blocked_categories` (
+                    `section` TEXT NOT NULL,
+                    `categoryId` TEXT NOT NULL,
+                    `categoryName` TEXT NOT NULL DEFAULT '',
+                    `blockedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`section`, `categoryId`)
+                )
+            """.trimIndent())
+        }
+    }
+
     // v9→v10: Add series_tracking table
     private val MIGRATION_9_10 = object : Migration(9, 10) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -73,7 +89,7 @@ object DatabaseModule {
             OoustreamDatabase::class.java,
             "ooustream_db"
         )
-            .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
+            .addMigrations(MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .fallbackToDestructiveMigration() // safety net for ancient versions (pre-v8)
             .build()
     }
@@ -116,4 +132,7 @@ object DatabaseModule {
 
     @Provides
     fun provideSeriesTrackingDao(db: OoustreamDatabase): SeriesTrackingDao = db.seriesTrackingDao()
+
+    @Provides
+    fun provideBlockedCategoryDao(db: OoustreamDatabase): BlockedCategoryDao = db.blockedCategoryDao()
 }
