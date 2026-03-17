@@ -299,7 +299,15 @@ class SeriesDetailFragment : Fragment() {
             streamUrl = url,
             contentType = ContentType.SERIES,
             streamId = episode.id ?: "",
-            streamName = "$seriesName - ${episode.title ?: "E${episode.episodeNum}"}",
+            streamName = run {
+                val epTitle = episode.title ?: "E${episode.episodeNum}"
+                // API sometimes returns title with series name prefix — avoid duplication
+                if (epTitle.startsWith(seriesName, ignoreCase = true)) {
+                    epTitle.removePrefix(seriesName).trimStart(' ', '-', '–', '—').ifBlank { epTitle }
+                } else {
+                    "$seriesName - $epTitle"
+                }
+            },
             streamIcon = iconUrl,
             seriesId = seriesId,
             seasonNum = episode.season ?: 0,

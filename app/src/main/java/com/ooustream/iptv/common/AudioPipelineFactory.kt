@@ -6,6 +6,8 @@ import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 
 /**
  * Single source of truth for the ExoPlayer audio rendering pipeline.
@@ -29,6 +31,29 @@ object AudioPipelineFactory {
      * - Decoder fallback enabled (tries next decoder if first fails)
      * - AudioTrack playback params enabled (supports speed adjustment)
      */
+    /**
+     * Creates a [DefaultRenderersFactory] identical to [createRenderersFactory] but with
+     * a software-only [MediaCodecSelector] for video. Hardware audio decoders are kept.
+     * Used as a fallback when the hardware video decoder inits but fails to render frames.
+     */
+    fun createSoftwareVideoRenderersFactory(context: Context): DefaultRenderersFactory {
+        return createRenderersFactory(context).apply {
+            setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                if (mimeType.startsWith("video/")) {
+                    // Software-only for video: c2.android.*, OMX.google.*, or any SW decoder
+                    allDecoders.filter { info ->
+                        info.name.startsWith("c2.android") ||
+                        info.name.startsWith("OMX.google") ||
+                        info.name.contains(".sw.", ignoreCase = true)
+                    }.ifEmpty { allDecoders } // fall through if no software decoders found
+                } else {
+                    allDecoders // All decoders for audio (hardware + FFmpeg)
+                }
+            })
+        }
+    }
+
     fun createRenderersFactory(context: Context): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(

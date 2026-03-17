@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.ooustream.iptv.common.StreamDiagnosticLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -20,8 +21,10 @@ class PlaybackHealthMonitor(
     private val scope: CoroutineScope
 ) {
     private var monitorJob: Job? = null
+    private var blackScreenJob: Job? = null
     private var player: ExoPlayer? = null
     var channelName: String = "unknown"
+    var bandwidthMeter: DefaultBandwidthMeter? = null
 
     // Black screen detection
     private var lastRenderedFrameCount: Int = 0
@@ -45,6 +48,7 @@ class PlaybackHealthMonitor(
         lastRenderedFrameCount = 0
         blackSince = 0L
         blackScreenLogged = false
+        logger.logAppEvent("HEALTH_MONITOR", "action=START, channel=$channelName")
 
         monitorJob = scope.launch {
             var tick = 0
@@ -56,12 +60,9 @@ class PlaybackHealthMonitor(
                     val bufferMs = p.bufferedPosition - p.currentPosition
                     val counters = p.videoDecoderCounters
 
-                    // Bandwidth from ExoPlayer's internal estimate
+                    // Network bandwidth from DefaultBandwidthMeter
                     val bandwidthBps = try {
-                        // Access the bandwidth meter through the player's analytics collector
-                        p.totalBufferedDuration // trigger internal state
-                        // Use video bitrate as proxy if available
-                        p.videoFormat?.bitrate?.toLong() ?: 0L
+                        bandwidthMeter?.bitrateEstimate ?: 0L
                     } catch (_: Exception) { 0L }
 
                     // FPS: frames rendered since last check / elapsed time
@@ -102,7 +103,7 @@ class PlaybackHealthMonitor(
         }
 
         // Separate coroutine for faster black screen detection (every 3s)
-        scope.launch {
+        blackScreenJob = scope.launch {
             while (isActive) {
                 val p = player ?: break
                 if (p.playbackState == Player.STATE_READY && p.playWhenReady) {
@@ -114,8 +115,13 @@ class PlaybackHealthMonitor(
     }
 
     fun stop() {
+        if (monitorJob != null) {
+            logger.logAppEvent("HEALTH_MONITOR", "action=STOP, channel=$channelName")
+        }
         monitorJob?.cancel()
         monitorJob = null
+        blackScreenJob?.cancel()
+        blackScreenJob = null
         player = null
     }
 

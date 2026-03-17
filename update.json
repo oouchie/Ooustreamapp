@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.1",
-  "version_code": 33,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.1/app-release.apk",
-  "changelog": "v3.3.1 — Diagnostic Logging Fix\n\n• Parental Controls: Block any category in Live TV, Movies, or Series — blocked content invisible everywhere\n• PIN-gated settings with category toggles, Block All Adult auto-detection\n• Auto-blocks adult categories on first PIN setup, 30-min temporary unlock\n• Stream Diagnostic Logger: rolling file black box for playback events\n• Send Debug Log: upload diagnostics to Firebase, QR code for TV support\n• Firebase Crashlytics: automatic crash reporting\n• ExoPlayer event logging: state changes, errors, decoder info, buffer health\n• Black screen detector: logs no-frame events with full diagnostic context\n• Cinematic Hero Banner: 65% screen height, 4-layer gradient system, Ken Burns zoom\n• Metadata chips (rating, year, genre), 2-line plot description on hero\n• Progress bar countdown, slide transitions, enhanced parallax scroll\n• Leanback green brand color fix: forced dark theme on all internal surfaces\n• Larger hero title (36sp on TV), right-aligned page indicators",
+  "version_name": "3.3.2",
+  "version_code": 34,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.2/app-release.apk",
+  "changelog": "v3.3.2 — Software Decoder Fallback + Diagnostic Fixes\n\n• Software video decoder fallback: auto-switches to software AVC decoder when hardware decoder fails to render frames\n• Frame watchdog retry limit: stops infinite reset loop after 4 attempts, shows error dialog\n• Track picker language fix: sets preferred audio language so selection persists across rebuffers\n• Health monitor bandwidth fix: shows real network throughput instead of 0kbps\n• Diagnostic logging: all audio tracks with language + selection state, health monitor lifecycle events\n• Series name deduplication: fixes doubled series name in logs and UI when API title includes it",
   "mandatory": false
 }

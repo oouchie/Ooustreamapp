@@ -139,12 +139,23 @@ class ExoPlayerDiagnosticListener(
         val videoFormat = tracks.groups
             .firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
             ?.getTrackFormat(0)
-        val audioFormat = tracks.groups
-            .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.length > 0 }
-            ?.getTrackFormat(0)
+
+        // Log ALL audio tracks with selection state and language
+        val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val audioSummary = if (audioGroups.isEmpty()) {
+            "none"
+        } else {
+            audioGroups.flatMap { group ->
+                (0 until group.length).map { i ->
+                    val fmt = group.getTrackFormat(i)
+                    val sel = if (group.isTrackSelected(i)) "*" else ""
+                    "$sel${fmt.sampleMimeType ?: "?"} ${fmt.language ?: "und"} ${fmt.channelCount}ch"
+                }
+            }.joinToString(" | ")
+        }
 
         logger.logAppEvent("TRACKS_CHANGED",
             "video=${videoFormat?.sampleMimeType} ${videoFormat?.width}x${videoFormat?.height}, " +
-            "audio=${audioFormat?.sampleMimeType} ${audioFormat?.channelCount}ch")
+            "audio=[$audioSummary]")
     }
 }

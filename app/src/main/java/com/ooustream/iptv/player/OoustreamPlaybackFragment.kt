@@ -36,6 +36,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import androidx.media3.ui.SubtitleView
@@ -117,6 +118,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var channelSwitchJob: Job? = null
     private var diagnosticListener: ExoPlayerDiagnosticListener? = null
     private var healthMonitor: PlaybackHealthMonitor? = null
+    private var usingSoftwareVideoDecoder = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -190,8 +192,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
         val renderersFactory = AudioPipelineFactory.createRenderersFactory(requireContext())
 
+        // Bandwidth meter — shared with health monitor for real network throughput
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
+
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(renderersFactory)
+            .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
@@ -250,6 +256,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Playback health monitor — periodic buffer/memory/black screen checks
         healthMonitor = PlaybackHealthMonitor(streamDiagnosticLogger, lifecycleScope).apply {
             channelName = initialContentName
+            this.bandwidthMeter = bandwidthMeter
             start(player!!)
         }
 
@@ -1109,6 +1116,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         lastRenderedFrameCount = -1
         frameWatchdogJob = viewLifecycleOwner.lifecycleScope.launch {
             var noNewFramesSinceMs = 0L
+            var watchdogResetCount = 0
             while (isActive) {
                 delay(FRAME_WATCHDOG_INTERVAL_MS)
                 val p = player ?: continue
@@ -1128,23 +1136,116 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                     val frozenMs = android.os.SystemClock.elapsedRealtime() - noNewFramesSinceMs
                     if (frozenMs >= FRAME_WATCHDOG_FROZEN_MS) {
-                        AudioLogger.log("Frame watchdog: frozen ${frozenMs}ms, forcing hard reset")
-                        noNewFramesSinceMs = 0L
-                        lastRenderedFrameCount = -1
-                        // Hard reset: same as what stall detector does
-                        p.stop()
-                        p.prepare()
-                        p.play()
+                        watchdogResetCount++
+                        if (watchdogResetCount > MAX_WATCHDOG_RESETS) {
+                            AudioLogger.log("Frame watchdog: giving up after $MAX_WATCHDOG_RESETS resets — stream likely broken")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
+                                "resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            showFriendlyError("This stream's video isn't playing correctly. The source may be temporarily unavailable.")
+                            return@launch
+                        }
+                        // After 2 hardware failures, try software video decoder
+                        if (watchdogResetCount == SOFTWARE_FALLBACK_THRESHOLD && !usingSoftwareVideoDecoder) {
+                            AudioLogger.log("Frame watchdog: hardware decoder failing, trying software video decoder")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_SW_FALLBACK",
+                                "resets=$watchdogResetCount, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            noNewFramesSinceMs = 0L
+                            lastRenderedFrameCount = -1
+                            rebuildPlayerWithSoftwareDecoder()
+                        } else {
+                            AudioLogger.log("Frame watchdog: frozen ${frozenMs}ms, reset #$watchdogResetCount/$MAX_WATCHDOG_RESETS")
+                            noNewFramesSinceMs = 0L
+                            lastRenderedFrameCount = -1
+                            // Hard reset: same as what stall detector does
+                            p.stop()
+                            p.prepare()
+                            p.play()
+                        }
                     }
                 } else {
                     noNewFramesSinceMs = 0L
                     lastRenderedFrameCount = currentFrames
+                    // Reset counter when frames are actually rendering
+                    watchdogResetCount = 0
                 }
             }
         }
     }
 
-    /** Matches English audio tracks by language code or label. */
+    /**
+     * Rebuilds the entire playback stack with a software-only video decoder.
+     * Navigates to a new instance of OoustreamPlaybackFragment with a flag to use SW decoding.
+     * Used when the hardware decoder inits but fails to render frames.
+     */
+    private fun rebuildPlayerWithSoftwareDecoder() {
+        val p = player ?: return
+        val currentPosition = p.currentPosition
+        usingSoftwareVideoDecoder = true
+
+        // Stop current player to free decoder resources
+        p.stop()
+
+        // Rebuild in-place: release old player, create new one with SW decoders
+        diagnosticListener?.let { p.removeListener(it); p.removeAnalyticsListener(it) }
+        healthMonitor?.stop()
+        mediaSession?.release()
+        mediaSession = null
+        p.release()
+
+        val softwareRenderersFactory = AudioPipelineFactory.createSoftwareVideoRenderersFactory(requireContext())
+        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
+
+        player = ExoPlayer.Builder(requireContext())
+            .setRenderersFactory(softwareRenderersFactory)
+            .setBandwidthMeter(bandwidthMeter)
+            .setTrackSelector(trackSelector!!)
+            .setLoadControl(BufferConfigs.forContentType(viewModel.contentType))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
+            .build()
+
+        player!!.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(),
+            true
+        )
+
+        // Re-attach diagnostic listeners
+        diagnosticListener?.let { listener ->
+            player!!.addListener(listener)
+            player!!.addAnalyticsListener(listener)
+        }
+        healthMonitor?.apply {
+            this.bandwidthMeter = bandwidthMeter
+            start(player!!)
+        }
+
+        // New MediaSession for the rebuilt player
+        mediaSession = MediaSession.Builder(requireContext(), player!!)
+            .setId("ooustream_playback_sw_${System.nanoTime()}")
+            .build()
+
+        // Reconnect to Leanback via new adapter + glue
+        val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
+        glue = OoustreamPlaybackGlue(requireContext(), newAdapter).apply {
+            host = VideoSupportFragmentGlueHost(this@OoustreamPlaybackFragment)
+            isControlsOverlayAutoHideEnabled = false
+            contentType = viewModel.contentType
+            title = viewModel.streamName
+        }
+
+        // Restore playback from saved position
+        player!!.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
+        player!!.prepare()
+        if (currentPosition > 0) player!!.seekTo(currentPosition)
+        player!!.play()
+
+        Toast.makeText(requireContext(), "Trying software decoder...", Toast.LENGTH_SHORT).show()
+        streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD", "decoder=software, position=${currentPosition}ms")
+    }
+
     /** Matches English audio tracks by language code or label. */
     private fun isEnglishTrack(format: Format): Boolean {
         val lang = format.language?.lowercase()
@@ -1221,6 +1322,32 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             "Stream timed out. The server may be slow or overloaded."
         else ->
             "Playback error. Please try again or choose a different stream."
+    }
+
+    /** Show a user-friendly error dialog with Retry and Exit options. */
+    private fun showFriendlyError(message: String) {
+        val ctx = context ?: return
+        player?.stop()
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.error_stream)
+            .setMessage(message)
+            .setPositiveButton(R.string.retry) { _, _ ->
+                retryCount = 0
+                audioFallbackAttempted = false
+                userTrackOverrideActive = false
+                trackSelector?.setParameters(
+                    trackSelector!!.buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                )
+                player?.prepare()
+                player?.play()
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                activity?.onBackPressedDispatcher?.onBackPressed()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     /** Skip to the next episode in a series. */
@@ -1771,6 +1898,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val STALL_TIMEOUT_VOD_MS = 30_000L
         private const val FRAME_WATCHDOG_INTERVAL_MS = 3_000L
         private const val FRAME_WATCHDOG_FROZEN_MS = 5_000L
+        private const val MAX_WATCHDOG_RESETS = 4
+        private const val SOFTWARE_FALLBACK_THRESHOLD = 2
 
         fun newInstance(
             streamUrl: String,

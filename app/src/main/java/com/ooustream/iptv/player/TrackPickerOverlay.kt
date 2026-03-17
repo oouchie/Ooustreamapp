@@ -202,7 +202,9 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
         val groupIndex: Int,
         val trackIndex: Int,
         val isSelected: Boolean,
-        val type: Int
+        val type: Int,
+        val language: String? = null,
+        val mimeType: String? = null
     )
 
     private fun getTracksOfType(player: Player, trackType: Int): List<TrackInfo> {
@@ -215,7 +217,8 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
                 val format = group.getTrackFormat(trackIndex)
                 val name = buildTrackName(format, trackType, result.size + 1)
                 val isSelected = group.isTrackSelected(trackIndex)
-                result.add(TrackInfo(name, groupIndex, trackIndex, isSelected, trackType))
+                result.add(TrackInfo(name, groupIndex, trackIndex, isSelected, trackType,
+                    language = format.language, mimeType = format.sampleMimeType))
             }
         }
         return result
@@ -301,11 +304,20 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
             if (track.trackIndex >= group.length) return
 
             val override = TrackSelectionOverride(group.mediaTrackGroup, track.trackIndex)
-            player.trackSelectionParameters = player.trackSelectionParameters
+            val builder = player.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(track.type, false)
                 .setOverrideForType(override)
-                .build()
+
+            // Also set preferred language so the choice persists across track group changes
+            if (track.type == C.TRACK_TYPE_AUDIO && !track.language.isNullOrBlank()) {
+                builder.setPreferredAudioLanguage(track.language)
+            }
+            if (track.type == C.TRACK_TYPE_TEXT && !track.language.isNullOrBlank()) {
+                builder.setPreferredTextLanguage(track.language)
+            }
+
+            player.trackSelectionParameters = builder.build()
         }
     }
 
