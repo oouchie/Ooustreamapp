@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.3",
-  "version_code": 35,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.3/app-release.apk",
-  "changelog": "v3.3.3 — AC3/EAC3 Audio Fix for Fire TV Stick\n\n• FFmpeg audio fallback: auto-rebuilds player with FFmpeg-preferred mode when hardware falsely claims AC3/EAC3 support (fixes mt8695 Fire TV Sticks)\n• Fixed onTracksChanged re-enabling audio after Stage 2 disabled it — root cause of infinite crash loop on AC3/EAC3-only streams\n• Broadened audio error detection to catch MediaCodecAudioRenderer errors by message text\n• Three-stage audio recovery: alternate track → FFmpeg rebuild → disable audio (was two-stage)\n• Player listener preserved across FFmpeg rebuild — error handling, track changes, state all survive",
+  "version_name": "3.3.4",
+  "version_code": 36,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.4/app-release.apk",
+  "changelog": "v3.3.4 — Faster Software Video Decoder Fallback\n\n• Software decoder fallback triggers on first black screen instead of waiting for 2 failures\n• Frame watchdog polls every 2s (was 3s) with 3s freeze threshold (was 5s)\n• Fixes HEVC black screen on mt8695 Fire TV Sticks — software decoder kicks in within ~5s",
   "mandatory": false
 }

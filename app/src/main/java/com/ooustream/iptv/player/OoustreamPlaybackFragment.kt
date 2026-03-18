@@ -2023,10 +2023,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000, 8_000, 12_000, 15_000)
         private const val STALL_TIMEOUT_LIVE_MS = 15_000L
         private const val STALL_TIMEOUT_VOD_MS = 30_000L
-        private const val FRAME_WATCHDOG_INTERVAL_MS = 3_000L
-        private const val FRAME_WATCHDOG_FROZEN_MS = 5_000L
+        private const val FRAME_WATCHDOG_INTERVAL_MS = 2_000L
+        private const val FRAME_WATCHDOG_FROZEN_MS = 3_000L
         private const val MAX_WATCHDOG_RESETS = 4
-        private const val SOFTWARE_FALLBACK_THRESHOLD = 2
+        private const val SOFTWARE_FALLBACK_THRESHOLD = 1
 
         fun newInstance(
             streamUrl: String,
