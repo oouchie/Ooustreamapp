@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.3.0 (versionCode 32)
+- **Current Version**: 3.3.4 (versionCode 36)
 
 ## Build
 ```bash
@@ -24,7 +24,7 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 - **State**: StateFlow / MutableStateFlow
 - **Images**: Coil with progressive loading + dominant color placeholders (Palette)
 - **Player**: Media3 ExoPlayer with Leanback PlaybackTransportControlGlue + Jellyfin FFmpeg audio decoder extension for DTS/AC3/EAC3 software decoding
-- **Audio Pipeline**: `AudioPipelineFactory` (single source of truth) → ExoPlayer → FFmpeg decode (AC3/DTS/EAC3) or hardware decode (AAC/MP3) → ChannelMixingAudioProcessor (1-8ch→stereo downmix) → DefaultAudioSink → AudioTrack
+- **Audio Pipeline**: `AudioPipelineFactory` (single source of truth) → ExoPlayer → FFmpeg decode (AC3/DTS/EAC3) or hardware decode (AAC/MP3) → ChannelMixingAudioProcessor (1-8ch→stereo downmix) → DefaultAudioSink → AudioTrack. Three factory methods: `createRenderersFactory()` (hardware first, default), `createFfmpegPreferredRenderersFactory()` (FFmpeg first, for devices with broken hardware AC3/EAC3), `createSoftwareVideoRenderersFactory()` (software video decoder fallback)
 - **External Players**: Intent-based launch to VLC app, MX Player, Kodi, or system default with position handoff (via `ExternalPlayerLauncher.kt`)
 - **Security**: androidx.security.crypto EncryptedSharedPreferences for credentials
 
@@ -277,6 +277,11 @@ These features were scoped but deferred for a future release:
 - **Settings: Send Debug Log** — New action in SettingsFragment with confirmation dialog, optional issue description input, opens email chooser with pre-filled report. (`settings/SettingsFragment.kt`)
 - **App startup logging** — StreamDiagnosticLogger wired into NetworkMonitor at app start, APP_START event logged with version. (`OoustreamApp.kt`)
 
+### Hotfixes (v3.3.x)
+- **Software video decoder fallback** (v3.3.2) — Frame watchdog auto-switches to software AVC decoder (`c2.android.*`/`OMX.google.*`) when hardware decoder fails to render frames. `rebuildPlayerWithSoftwareDecoder()` preserves position, listeners, glue. `AudioPipelineFactory.createSoftwareVideoRenderersFactory()` uses custom `MediaCodecSelector` that filters to software-only for video, keeps all decoders for audio.
+- **AC3/EAC3 FFmpeg audio fallback** (v3.3.3) — Fixes infinite crash loop on mt8695-based Fire TV Sticks (AFTSSS) where hardware MediaCodec falsely claims AC3/EAC3 `format_supported=YES` but crashes at runtime with `MediaCodecAudioRenderer error` (code 5001). Root cause: `onTracksChanged` re-enabled audio immediately after Stage 2 fallback disabled it (line `setTrackTypeDisabled(AUDIO, false)` in the English auto-select block). Three-stage audio recovery: (1) alternate track (different codec, prefer English), (1.5) `rebuildPlayerWithFfmpegPreferred()` — rebuilds ExoPlayer with `EXTENSION_RENDERER_MODE_PREFER` so FFmpeg handles AC3/EAC3 instead of hardware, (2) disable audio entirely. `audioDisabledByFallback` flag prevents `onTracksChanged` from undoing Stage 2. `isAudioDecoderError()` broadened to check `error.message` for "MediaCodecAudioRenderer". Core player listener (`corePlayerListener`) extracted to field for reuse across player rebuilds via `attachPlayerListener()`. (`player/OoustreamPlaybackFragment.kt`, `common/AudioPipelineFactory.kt`)
+- **Faster software video decoder fallback** (v3.3.4) — Frame watchdog tuned for faster black screen recovery on devices without HEVC hardware support (mt8695). Interval 3s→2s, frozen threshold 5s→3s, software fallback on first failure instead of waiting for 2 (`SOFTWARE_FALLBACK_THRESHOLD` 2→1). Total recovery: ~5s instead of ~18s.
+
 ### Resource Qualifier Structure
 - `values/` — Phone defaults (360dp+)
 - `values-sw320dp/` — Extra-small phones (320-359dp)
@@ -287,7 +292,7 @@ These features were scoped but deferred for a future release:
 ## Key Files (Most Modified)
 1. `MainActivity.kt` — sidebar, transitions, deep links, MultiView navigation, onFullKeyEvent dispatch
 2. `HomeFragment.kt` — onboarding, sidebar, For You row, For You Live Now row, pre-warming, MultiView hero card, hero swipe gesture (mobile)
-3. `OoustreamPlaybackFragment.kt` — ExoPlayer + AudioPipelineFactory init, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, AC3 audio fallback, user track override protection, low-memory buffers, friendly error messages, mobile touch gestures (GestureDetector)
+3. `OoustreamPlaybackFragment.kt` — ExoPlayer + AudioPipelineFactory init, audio-only, quality policy, analytics, Watch Next, channel banner, series complete, seek feedback overlays, cinematic scrim, WatchSessionLogger, SmartEpgFiller, stall detector, frame watchdog, three-stage AC3/EAC3 audio fallback (alternate track → FFmpeg rebuild → disable audio), software video decoder fallback (`rebuildPlayerWithSoftwareDecoder`), FFmpeg audio rebuild (`rebuildPlayerWithFfmpegPreferred`), `audioDisabledByFallback` flag, `corePlayerListener` field + `attachPlayerListener()`, user track override protection, low-memory buffers, friendly error messages, mobile touch gestures (GestureDetector)
 4. `OoustreamPlaybackGlue.kt` — ALL key handling (DPAD, media buttons, channel zap, seek, back), gold-tinted action icons, Back-dismisses-controls fix
 5. `OoustreamDatabase.kt` — v11, WatchAnalytics + SearchIndex + ChannelWatchLog + ChannelScore + EpgPattern + BlockedCategory entities
 6. `PlayerViewModel.kt` — analytics recording, stream URL building, Watch Next suggestions (RecommendationEngine), NonCancellable saveProgress
@@ -304,7 +309,7 @@ These features were scoped but deferred for a future release:
 17. `recommendation/ChannelRecommendationEngine.kt` — on-device channel scoring (frequency × recency × duration)
 18. `recommendation/WatchSessionLogger.kt` — silent Live TV session logging (>30s threshold)
 19. `common/AudioLogger.kt` — audio diagnostic logging (OOUSTREAM_AUDIO tag), FFmpeg verification (lazy-cached), release-build error logging
-20. `common/AudioPipelineFactory.kt` — shared DefaultRenderersFactory with all downmix matrices (1-8ch), decoder fallback, FFmpeg extension mode
+20. `common/AudioPipelineFactory.kt` — shared DefaultRenderersFactory with all downmix matrices (1-8ch), decoder fallback, FFmpeg extension mode. Three variants: `createRenderersFactory()` (MODE_ON, hardware first), `createFfmpegPreferredRenderersFactory()` (MODE_PREFER, FFmpeg first — for broken hardware AC3/EAC3), `createSoftwareVideoRenderersFactory()` (software-only video)
 21. `player/AudioStatusOverlay.kt` — top-right audio status indicator (no audio, unsupported codec)
 22. `common/CrashLogger.kt` — global crash logger, saves traces to file for customer troubleshooting
 23. `search/SearchFragment.kt` — Aurora Cinema search UI with filter tabs, trending, voice search
@@ -420,3 +425,7 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v3.1.0** — Closed Captions & Subtitle System
 - **v3.2.0** — Mobile Touch Overhaul: player touch gestures (tap/double-tap/swipe), responsive card sizing for phones, ripple touch feedback, stats button, hero swipe, track picker responsive width + scrim dismiss, MultiView touch support with landscape lock, minimum text sizes, phone color contrast boost, VerticalGridView position -1 crash fix
 - **v3.3.0** — Parental Controls: Category-Level Blocking + Error Logging & Diagnostics. Block any category in Live TV/Movies/Series — blocked content invisible everywhere. PIN-gated settings with 3-section tabs, toggle switches, "Block All Adult" auto-detection. Auto-blocks on first PIN setup. 30-min temp unlock, 5-attempt/60s lockout. ContentFilterManager with O(1) filtering. Room DB v11. Stream Diagnostic Logger (rolling file "black box" for playback), ExoPlayer event listener, PlaybackHealthMonitor (buffer/memory/black screen detection), "Send Debug Log" button in Settings, network diagnostic logging.
+- **v3.3.1** — Diagnostic logging fix, preview audio, Watch It Again query fix
+- **v3.3.2** — Software video decoder fallback (auto-switch to SW AVC when HW fails), frame watchdog retry limit, track picker language persistence, health monitor bandwidth fix
+- **v3.3.3** — AC3/EAC3 audio fix for mt8695 Fire TV Sticks: FFmpeg-preferred player rebuild when hardware falsely claims surround support, `audioDisabledByFallback` flag to prevent `onTracksChanged` from undoing Stage 2, broadened `isAudioDecoderError()` detection, three-stage audio recovery ladder
+- **v3.3.4** — Faster software video decoder fallback: frame watchdog interval 3s→2s, frozen threshold 5s→3s, software fallback on first failure (was 2). HEVC black screen recovery ~5s instead of ~18s
