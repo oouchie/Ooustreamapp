@@ -54,6 +54,51 @@ object AudioPipelineFactory {
         }
     }
 
+    /**
+     * Creates a [DefaultRenderersFactory] with EXTENSION_RENDERER_MODE_PREFER for audio.
+     * FFmpeg extension decoders are tried FIRST, before hardware MediaCodec decoders.
+     *
+     * Used as a fallback when hardware audio decoders falsely report support for AC3/EAC3
+     * but crash at runtime (e.g. mt8695-based Fire TV Sticks). FFmpeg correctly decodes
+     * these codecs via software and the ChannelMixingAudioProcessor downmixes to stereo.
+     */
+    fun createFfmpegPreferredRenderersFactory(context: Context): DefaultRenderersFactory {
+        return object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                // Same downmix pipeline as createRenderersFactory
+                val downmixer = ChannelMixingAudioProcessor()
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(3, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 1f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(4, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0f, 1f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(5, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(6, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(8, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
+                    0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain(downmixer))
+                    .build()
+            }
+        }.apply {
+            // PREFER = FFmpeg extension decoders tried FIRST for all audio codecs.
+            // Hardware decoders used only if FFmpeg doesn't support the format.
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            setEnableDecoderFallback(true)
+            setEnableAudioTrackPlaybackParams(true)
+        }
+    }
+
     fun createRenderersFactory(context: Context): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(

@@ -113,12 +113,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var frameWatchdogJob: Job? = null
     private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
+    private var audioDisabledByFallback = false // Stage 2 disabled audio — don't re-enable in onTracksChanged
     private var userTrackOverrideActive = false
     private var subtitlesTemporarilyEnabled = false
     private var channelSwitchJob: Job? = null
     private var diagnosticListener: ExoPlayerDiagnosticListener? = null
     private var healthMonitor: PlaybackHealthMonitor? = null
     private var usingSoftwareVideoDecoder = false
+    private var corePlayerListener: Player.Listener? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -829,10 +831,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
 
         // [Fix 1.2 + 3.2] Comprehensive player listener: error retry, buffering, dynamic keepScreenOn
-        player?.addListener(object : Player.Listener {
+        corePlayerListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
-                // Audio decoder error: two-stage fallback
+                // Audio decoder error: three-stage fallback
                 if (isAudioDecoderError(error)) {
                     if (!audioFallbackAttempted) {
                         audioFallbackAttempted = true
@@ -849,8 +851,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             player?.play()
                             return
                         }
-                        // Stage 2: no alternate track — disable audio entirely, keep video playing
-                        AudioLogger.log("Audio fallback: no alternate track, disabling audio")
+                        // Stage 1.5: force FFmpeg for AC3/EAC3 by rebuilding player with EXTENSION_RENDERER_MODE_PREFER
+                        // Some devices falsely claim hardware AC3/EAC3 support but crash at runtime.
+                        // FFmpeg handles these codecs correctly via software decode + stereo downmix.
+                        if (AudioLogger.isFfmpegAvailable) {
+                            AudioLogger.log("Audio fallback: hardware codec failed, rebuilding player with FFmpeg-preferred mode")
+                            streamDiagnosticLogger.logAppEvent("AUDIO_FALLBACK",
+                                "stage=1.5_ffmpeg_prefer, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            rebuildPlayerWithFfmpegPreferred()
+                            return
+                        }
+                        // Stage 2: no FFmpeg available — disable audio entirely, keep video playing
+                        AudioLogger.log("Audio fallback: no alternate track, no FFmpeg, disabling audio")
+                        audioDisabledByFallback = true
                         player?.trackSelectionParameters = player?.trackSelectionParameters
                             ?.buildUpon()
                             ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
@@ -860,6 +873,23 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         player?.play()
                         return
                     }
+                    // audioFallbackAttempted is true — Stage 1.5 FFmpeg also failed
+                    // Stage 2: disable audio entirely, keep video playing
+                    if (!audioDisabledByFallback) {
+                        audioDisabledByFallback = true
+                        AudioLogger.log("Audio fallback: FFmpeg also failed, disabling audio entirely")
+                        streamDiagnosticLogger.logAppEvent("AUDIO_FALLBACK",
+                            "stage=2_disable_audio, channel=${healthMonitor?.channelName ?: "unknown"}")
+                        player?.trackSelectionParameters = player?.trackSelectionParameters
+                            ?.buildUpon()
+                            ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            ?.build() ?: return
+                        audioStatusOverlay?.showCodecUnsupported()
+                        player?.prepare()
+                        player?.play()
+                        return
+                    }
+                    // Both FFmpeg and audio-disable already attempted — fall through to generic retry
                 }
                 // Audio-specific errors: show indicator (video may still play)
                 when (error.errorCode) {
@@ -934,6 +964,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 AudioLogger.logTrackSelection(tracks)
                 // Don't override user's manual track selection from TrackPickerOverlay
                 if (userTrackOverrideActive) return
+                // Don't re-enable audio if Stage 2 fallback intentionally disabled it
+                if (audioDisabledByFallback) return
                 try {
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
 
@@ -994,7 +1026,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
             }
-        })
+        }
+        attachPlayerListener()
 
         // [Fix 1.3] Network-aware playback recovery
         viewLifecycleOwner.lifecycleScope.launch {
@@ -1018,18 +1051,32 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     // --- Playback Hardening Helpers ---
 
+    /** Attach the core Player.Listener (error handling, track changes, state). Idempotent. */
+    private fun attachPlayerListener() {
+        val listener = corePlayerListener ?: return
+        val p = player ?: return
+        p.removeListener(listener) // prevent double-registration
+        p.addListener(listener)
+    }
+
     /** Detect audio decoder errors (e.g. AC3/EAC3 unsupported) vs video decoder errors. */
     private fun isAudioDecoderError(error: PlaybackException): Boolean {
         val code = error.errorCode
         if (code == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
             code == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED) return true
+        // Check error message directly — ExoPlayer wraps renderer errors with class name
+        // e.g. "MediaCodecAudioRenderer error" from mt8695 devices with false AC3/EAC3 support
+        val errorMsg = error.message?.lowercase() ?: ""
+        if (errorMsg.contains("audiorenderer") || errorMsg.contains("audio_renderer") ||
+            errorMsg.contains("mediacodecaudiorenderer")) return true
         if (code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
             code == PlaybackException.ERROR_CODE_DECODING_FAILED) {
             // Check cause chain for audio renderer references
             var cause: Throwable? = error.cause
             while (cause != null) {
                 val msg = cause.toString().lowercase()
-                if (msg.contains("audio") || msg.contains("ac3") || msg.contains("eac3")) return true
+                if (msg.contains("audio") || msg.contains("ac3") || msg.contains("eac3") ||
+                    msg.contains("mediacodecaudiorenderer")) return true
                 cause = cause.cause
             }
         }
@@ -1246,6 +1293,83 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD", "decoder=software, position=${currentPosition}ms")
     }
 
+    /**
+     * Rebuild the ExoPlayer with EXTENSION_RENDERER_MODE_PREFER so FFmpeg handles audio decoding
+     * instead of the hardware MediaCodec. Used when hardware falsely claims AC3/EAC3 support
+     * but crashes at runtime (e.g. mt8695 Fire TV Sticks).
+     */
+    private fun rebuildPlayerWithFfmpegPreferred() {
+        val p = player ?: return
+        val currentPosition = p.currentPosition
+        val currentUrl = viewModel.streamUrl
+
+        // Stop and release current player
+        p.stop()
+        diagnosticListener?.let { p.removeListener(it); p.removeAnalyticsListener(it) }
+        healthMonitor?.stop()
+        mediaSession?.release()
+        mediaSession = null
+        p.release()
+
+        // Rebuild with FFmpeg-preferred audio pipeline
+        val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(requireContext())
+        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
+
+        player = ExoPlayer.Builder(requireContext())
+            .setRenderersFactory(ffmpegRenderersFactory)
+            .setBandwidthMeter(bandwidthMeter)
+            .setTrackSelector(trackSelector!!)
+            .setLoadControl(BufferConfigs.forContentType(viewModel.contentType))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
+            .build()
+
+        player!!.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(),
+            true
+        )
+
+        // Re-attach diagnostic listeners
+        diagnosticListener?.let { listener ->
+            player!!.addListener(listener)
+            player!!.addAnalyticsListener(listener)
+        }
+        healthMonitor?.apply {
+            this.bandwidthMeter = bandwidthMeter
+            start(player!!)
+        }
+
+        // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
+        attachPlayerListener()
+
+        // New MediaSession
+        mediaSession = MediaSession.Builder(requireContext(), player!!)
+            .setId("ooustream_playback_ffmpeg_${System.nanoTime()}")
+            .build()
+
+        // Reconnect to Leanback via new adapter + glue
+        val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
+        glue = OoustreamPlaybackGlue(requireContext(), newAdapter).apply {
+            host = VideoSupportFragmentGlueHost(this@OoustreamPlaybackFragment)
+            isControlsOverlayAutoHideEnabled = false
+            contentType = viewModel.contentType
+            title = viewModel.streamName
+        }
+
+        // Restore playback from saved position
+        player!!.setMediaItem(MediaItem.fromUri(currentUrl))
+        player!!.prepare()
+        if (currentPosition > 0) player!!.seekTo(currentPosition)
+        player!!.play()
+
+        Toast.makeText(requireContext(), "Switching to software audio decoder...", Toast.LENGTH_SHORT).show()
+        streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD",
+            "decoder=ffmpeg_preferred, position=${currentPosition}ms, channel=${healthMonitor?.channelName ?: "unknown"}")
+    }
+
     /** Matches English audio tracks by language code or label. */
     private fun isEnglishTrack(format: Format): Boolean {
         val lang = format.language?.lowercase()
@@ -1283,6 +1407,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setPositiveButton(R.string.retry) { _, _ ->
                 retryCount = 0
                 audioFallbackAttempted = false
+                audioDisabledByFallback = false
                 userTrackOverrideActive = false
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
@@ -1334,6 +1459,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setPositiveButton(R.string.retry) { _, _ ->
                 retryCount = 0
                 audioFallbackAttempted = false
+                audioDisabledByFallback = false
                 userTrackOverrideActive = false
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
@@ -1452,6 +1578,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Reset audio state for new channel
         retryCount = 0
         audioFallbackAttempted = false
+        audioDisabledByFallback = false
         userTrackOverrideActive = false
 
         // Re-enable audio in case it was disabled by Stage 2 fallback

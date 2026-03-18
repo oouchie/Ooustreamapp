@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.2",
-  "version_code": 34,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.2/app-release.apk",
-  "changelog": "v3.3.2 — Software Decoder Fallback + Diagnostic Fixes\n\n• Software video decoder fallback: auto-switches to software AVC decoder when hardware decoder fails to render frames\n• Frame watchdog retry limit: stops infinite reset loop after 4 attempts, shows error dialog\n• Track picker language fix: sets preferred audio language so selection persists across rebuffers\n• Health monitor bandwidth fix: shows real network throughput instead of 0kbps\n• Diagnostic logging: all audio tracks with language + selection state, health monitor lifecycle events\n• Series name deduplication: fixes doubled series name in logs and UI when API title includes it",
+  "version_name": "3.3.3",
+  "version_code": 35,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.3/app-release.apk",
+  "changelog": "v3.3.3 — AC3/EAC3 Audio Fix for Fire TV Stick\n\n• FFmpeg audio fallback: auto-rebuilds player with FFmpeg-preferred mode when hardware falsely claims AC3/EAC3 support (fixes mt8695 Fire TV Sticks)\n• Fixed onTracksChanged re-enabling audio after Stage 2 disabled it — root cause of infinite crash loop on AC3/EAC3-only streams\n• Broadened audio error detection to catch MediaCodecAudioRenderer errors by message text\n• Three-stage audio recovery: alternate track → FFmpeg rebuild → disable audio (was two-stage)\n• Player listener preserved across FFmpeg rebuild — error handling, track changes, state all survive",
   "mandatory": false
 }
