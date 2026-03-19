@@ -1,6 +1,7 @@
 package com.ooustream.iptv.common
 
 import android.content.Context
+import android.os.Build
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -96,6 +97,49 @@ object AudioPipelineFactory {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(true)
+        }
+    }
+
+    /**
+     * Detects MediaTek chipsets by checking hardware/SOC identifiers.
+     * MTK devices have known issues with OMX.MTK video decoders (black screen after first frame).
+     */
+    fun isMtkDevice(): Boolean {
+        return Build.HARDWARE.contains("mt", ignoreCase = true) ||
+            (Build.SOC_MODEL?.contains("mt", ignoreCase = true) == true) ||
+            Build.HARDWARE.contains("mediatek", ignoreCase = true)
+    }
+
+    /**
+     * Creates a [DefaultRenderersFactory] optimized for MediaTek devices:
+     * - Custom [MediaCodecSelector] that deprioritizes OMX.MTK video decoders
+     *   (prefers c2.mtk > c2.android > OMX.google > OMX.MTK)
+     * - Same audio pipeline as [createRenderersFactory]
+     *
+     * On non-MTK devices, falls back to [createRenderersFactory].
+     */
+    fun createMtkAwareRenderersFactory(context: Context): DefaultRenderersFactory {
+        if (!isMtkDevice()) return createRenderersFactory(context)
+
+        return createRenderersFactory(context).apply {
+            // Custom codec selector: deprioritize OMX.MTK video decoders
+            setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                if (mimeType.startsWith("video/")) {
+                    // Prefer C2/SW decoders over OMX.MTK for video (OMX.MTK has black screen bug)
+                    allDecoders.sortedWith(compareBy { info ->
+                        when {
+                            info.name.startsWith("c2.mtk", ignoreCase = true) -> 0      // C2 MTK: newer, fewer bugs
+                            info.name.startsWith("c2.android", ignoreCase = true) -> 1   // C2 generic SW
+                            info.name.contains("google", ignoreCase = true) -> 2          // OMX.google SW
+                            info.name.startsWith("OMX.MTK", ignoreCase = true) -> 3      // OMX MTK: problematic
+                            else -> 4
+                        }
+                    }).toMutableList()
+                } else {
+                    allDecoders // Keep all decoders for audio (hardware + FFmpeg)
+                }
+            })
         }
     }
 

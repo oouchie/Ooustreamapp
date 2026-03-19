@@ -155,6 +155,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Keep screen on during playback (dynamically toggled by player listener)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // Free image cache memory for video decoders — posters can be 20-80MB on heap
+        try {
+            adaptiveImageLoader.imageLoader.memoryCache?.clear()
+            AudioLogger.log("Image cache cleared before player init")
+        } catch (_: Exception) { }
+
         val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val loadControl = if (am.memoryClass <= 128) {
             BufferConfigs.forLowMemory(viewModel.contentType)
@@ -191,8 +197,23 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             )
         }
 
+        // Cap resolution on low-heap devices — 1080p SW decode is unviable at 128MB heap
+        if (am.memoryClass <= 128) {
+            trackSelector!!.setParameters(
+                trackSelector!!.buildUponParameters()
+                    .setMaxVideoSize(1280, 720)
+            )
+            AudioLogger.log("Low-heap device (${am.memoryClass}MB): capped video to 720p")
+            streamDiagnosticLogger.logAppEvent("RESOLUTION_CAP", "maxRes=720p, heap=${am.memoryClass}MB")
+        }
+
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
-        val renderersFactory = AudioPipelineFactory.createRenderersFactory(requireContext())
+        // MTK devices: deprioritize OMX.MTK video decoders + async mode (black screen bug)
+        val renderersFactory = AudioPipelineFactory.createMtkAwareRenderersFactory(requireContext())
+        if (AudioPipelineFactory.isMtkDevice()) {
+            AudioLogger.log("MTK device detected (${android.os.Build.HARDWARE}): using MTK-aware codec selector + async mode")
+            streamDiagnosticLogger.logAppEvent("MTK_DEVICE", "hw=${android.os.Build.HARDWARE}, soc=${android.os.Build.SOC_MODEL ?: "unknown"}")
+        }
 
         // Bandwidth meter — shared with health monitor for real network throughput
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
@@ -1059,6 +1080,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         p.addListener(listener)
     }
 
+    /** Safely releases a player instance, catching exceptions from stuck decoders (e.g. MTK). */
+    private fun safeReleasePlayer(p: ExoPlayer) {
+        try { p.stop() } catch (_: Exception) { }
+        try { p.clearVideoSurface() } catch (_: Exception) { }
+        try { p.release() } catch (e: Exception) {
+            AudioLogger.log("Player release error (caught): ${e.message}")
+        }
+    }
+
     /** Detect audio decoder errors (e.g. AC3/EAC3 unsupported) vs video decoder errors. */
     private fun isAudioDecoderError(error: PlaybackException): Boolean {
         val code = error.errorCode
@@ -1156,7 +1186,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     /**
      * Frame watchdog: detects silent freezes where ExoPlayer is STATE_READY
      * but no new frames are rendering (decoder buffer debt).
-     * Checks every 3s; if no new frames for 5s, forces a hard reset.
+     *
+     * Escalating recovery ladder — each step tries something DIFFERENT:
+     *   1. Seek flush (50ms, no rebuild)
+     *   2. SW decoder at 720p on low-mem devices, or current res on others
+     *   3. 720p + SW decoder
+     *   4. 480p + SW decoder
+     *   5. Give up with user-facing error
+     *
+     * KEY FIX: The watchdog counter only resets after SUSTAINED playback
+     * (3 consecutive polls with new frames = 6 seconds). A single rendered
+     * frame no longer resets the ladder — MTK decoders render 1 frame
+     * then die, which was causing infinite step 1→2 loops.
      */
     private fun startFrameWatchdog() {
         frameWatchdogJob?.cancel()
@@ -1164,6 +1205,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         frameWatchdogJob = viewLifecycleOwner.lifecycleScope.launch {
             var noNewFramesSinceMs = 0L
             var watchdogResetCount = 0
+            var consecutiveGoodPolls = 0  // Must reach 3 (6s) before resetting ladder
+            val isLowMemory = run {
+                val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                am.memoryClass <= 192
+            }
+
             while (isActive) {
                 delay(FRAME_WATCHDOG_INTERVAL_MS)
                 val p = player ?: continue
@@ -1178,42 +1225,85 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     continue
                 }
                 if (currentFrames == lastRenderedFrameCount) {
+                    consecutiveGoodPolls = 0  // Reset sustained-playback counter
                     if (noNewFramesSinceMs == 0L) {
                         noNewFramesSinceMs = android.os.SystemClock.elapsedRealtime()
                     }
                     val frozenMs = android.os.SystemClock.elapsedRealtime() - noNewFramesSinceMs
                     if (frozenMs >= FRAME_WATCHDOG_FROZEN_MS) {
                         watchdogResetCount++
+                        noNewFramesSinceMs = 0L
+                        lastRenderedFrameCount = -1
+                        val channelName = healthMonitor?.channelName ?: "unknown"
+
                         if (watchdogResetCount > MAX_WATCHDOG_RESETS) {
                             AudioLogger.log("Frame watchdog: giving up after $MAX_WATCHDOG_RESETS resets — stream likely broken")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
-                                "resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, channel=${healthMonitor?.channelName ?: "unknown"}")
+                                "resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, channel=$channelName")
                             showFriendlyError("This stream's video isn't playing correctly. The source may be temporarily unavailable.")
                             return@launch
                         }
-                        // After 2 hardware failures, try software video decoder
-                        if (watchdogResetCount == SOFTWARE_FALLBACK_THRESHOLD && !usingSoftwareVideoDecoder) {
-                            AudioLogger.log("Frame watchdog: hardware decoder failing, trying software video decoder")
-                            streamDiagnosticLogger.logAppEvent("WATCHDOG_SW_FALLBACK",
-                                "resets=$watchdogResetCount, channel=${healthMonitor?.channelName ?: "unknown"}")
-                            noNewFramesSinceMs = 0L
-                            lastRenderedFrameCount = -1
-                            rebuildPlayerWithSoftwareDecoder()
-                        } else {
-                            AudioLogger.log("Frame watchdog: frozen ${frozenMs}ms, reset #$watchdogResetCount/$MAX_WATCHDOG_RESETS")
-                            noNewFramesSinceMs = 0L
-                            lastRenderedFrameCount = -1
-                            // Hard reset: same as what stall detector does
-                            p.stop()
-                            p.prepare()
-                            p.play()
+
+                        // Escalating recovery: each step tries something DIFFERENT
+                        when (watchdogResetCount) {
+                            1 -> {
+                                // Step 1: Seek flush — forces decoder to reset output pipeline
+                                AudioLogger.log("Frame watchdog: step 1 — seek flush")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_SEEK_FLUSH", "reset=1, channel=$channelName")
+                                p.seekTo(p.currentPosition)
+                            }
+                            2 -> {
+                                // Step 2: Software decoder
+                                // On low-memory devices: cap to 720p IMMEDIATELY (1080p SW = instant OOM)
+                                if (isLowMemory) {
+                                    AudioLogger.log("Frame watchdog: step 2 — 720p + software decoder (low-memory device)")
+                                    streamDiagnosticLogger.logAppEvent("WATCHDOG_SW_720P", "reset=2, lowMem=true, channel=$channelName")
+                                    trackSelector?.setParameters(
+                                        trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
+                                    )
+                                } else {
+                                    AudioLogger.log("Frame watchdog: step 2 — software decoder")
+                                    streamDiagnosticLogger.logAppEvent("WATCHDOG_SW_FALLBACK", "reset=2, channel=$channelName")
+                                }
+                                rebuildPlayerWithSoftwareDecoder()
+                            }
+                            3 -> {
+                                // Step 3: Cap to 720p + SW decoder (reduces memory + CPU by ~50%)
+                                AudioLogger.log("Frame watchdog: step 3 — 720p cap + software decoder")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_720P_CAP", "reset=3, channel=$channelName")
+                                trackSelector?.setParameters(
+                                    trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
+                                )
+                                if (!usingSoftwareVideoDecoder) rebuildPlayerWithSoftwareDecoder()
+                                else { player?.stop(); player?.prepare(); player?.play() }
+                            }
+                            4 -> {
+                                // Step 4: Cap to 480p + SW decoder (last resort — playable on any device)
+                                AudioLogger.log("Frame watchdog: step 4 — 480p cap + software decoder")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_480P_CAP", "reset=4, channel=$channelName")
+                                trackSelector?.setParameters(
+                                    trackSelector!!.buildUponParameters().setMaxVideoSize(854, 480)
+                                )
+                                if (!usingSoftwareVideoDecoder) rebuildPlayerWithSoftwareDecoder()
+                                else { player?.stop(); player?.prepare(); player?.play() }
+                            }
                         }
                     }
                 } else {
                     noNewFramesSinceMs = 0L
                     lastRenderedFrameCount = currentFrames
-                    // Reset counter when frames are actually rendering
-                    watchdogResetCount = 0
+                    // Only reset recovery ladder after SUSTAINED playback (3 polls = 6s of frames)
+                    // Prevents single-frame renders from resetting the ladder (MTK bug: 1 frame then black)
+                    if (watchdogResetCount > 0) {
+                        consecutiveGoodPolls++
+                        if (consecutiveGoodPolls >= SUSTAINED_PLAYBACK_POLLS) {
+                            AudioLogger.log("Frame watchdog: sustained playback confirmed after step $watchdogResetCount — resetting ladder")
+                            watchdogResetCount = 0
+                            consecutiveGoodPolls = 0
+                        }
+                    } else {
+                        consecutiveGoodPolls = 0
+                    }
                 }
             }
         }
@@ -1237,17 +1327,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         healthMonitor?.stop()
         mediaSession?.release()
         mediaSession = null
-        p.release()
+        safeReleasePlayer(p)
 
         val softwareRenderersFactory = AudioPipelineFactory.createSoftwareVideoRenderersFactory(requireContext())
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
+        // Use low-memory buffers on constrained devices (SW decode needs all available RAM for frames)
+        val swLoadControl = run {
+            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
+            else BufferConfigs.forContentType(viewModel.contentType)
+        }
+
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(softwareRenderersFactory)
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
-            .setLoadControl(BufferConfigs.forContentType(viewModel.contentType))
+            .setLoadControl(swLoadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
             .build()
 
@@ -1274,6 +1371,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setId("ooustream_playback_sw_${System.nanoTime()}")
             .build()
 
+        // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
+        attachPlayerListener()
+
         // Reconnect to Leanback via new adapter + glue
         val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
         glue = OoustreamPlaybackGlue(requireContext(), newAdapter).apply {
@@ -1289,7 +1389,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (currentPosition > 0) player!!.seekTo(currentPosition)
         player!!.play()
 
-        Toast.makeText(requireContext(), "Trying software decoder...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "Optimizing video decoder...", Toast.LENGTH_SHORT).show()
         streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD", "decoder=software, position=${currentPosition}ms")
     }
 
@@ -1309,18 +1409,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         healthMonitor?.stop()
         mediaSession?.release()
         mediaSession = null
-        p.release()
+        safeReleasePlayer(p)
 
         // Rebuild with FFmpeg-preferred audio pipeline
         val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(requireContext())
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
+        val ffmpegLoadControl = run {
+            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
+            else BufferConfigs.forContentType(viewModel.contentType)
+        }
+
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(ffmpegRenderersFactory)
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
-            .setLoadControl(BufferConfigs.forContentType(viewModel.contentType))
+            .setLoadControl(ffmpegLoadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
             .build()
 
@@ -1924,8 +2030,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Release MediaSession before player
         mediaSession?.release()
         mediaSession = null
-        // Release player last
-        player?.release()
+        // Release player last — stop + clear surface before release to prevent code 1003 crash
+        player?.let { p ->
+            try { p.stop(); p.clearVideoSurface() } catch (_: Exception) { }
+            try { p.release() } catch (_: Exception) { }
+        }
         player = null
         trackSelector = null
         glue = null
@@ -2027,6 +2136,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val FRAME_WATCHDOG_FROZEN_MS = 3_000L
         private const val MAX_WATCHDOG_RESETS = 4
         private const val SOFTWARE_FALLBACK_THRESHOLD = 1
+        // Require 3 consecutive polls with new frames (6s) before resetting recovery ladder
+        // Prevents MTK single-frame-then-black from resetting watchdogResetCount
+        private const val SUSTAINED_PLAYBACK_POLLS = 3
 
         fun newInstance(
             streamUrl: String,

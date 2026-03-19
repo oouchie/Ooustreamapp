@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.4",
-  "version_code": 36,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.4/app-release.apk",
-  "changelog": "v3.3.4 — Faster Software Video Decoder Fallback\n\n• Software decoder fallback triggers on first black screen instead of waiting for 2 failures\n• Frame watchdog polls every 2s (was 3s) with 3s freeze threshold (was 5s)\n• Fixes HEVC black screen on mt8695 Fire TV Sticks — software decoder kicks in within ~5s",
+  "version_name": "3.3.5",
+  "version_code": 37,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.5/app-release.apk",
+  "changelog": "v3.3.5 — VOD Playback Fix for MediaTek Devices\n\n• Fixed black screen on MTK devices — smart codec selector deprioritizes buggy OMX.MTK decoders\n• Fixed watchdog recovery getting stuck in loop (single-frame renders no longer reset the ladder)\n• Low-memory devices skip 1080p software decode and go straight to 720p\n• Image cache cleared before playback to free memory for video decoders\n• Safe player release prevents crash on stuck decoders\n• Fixed missing error handlers after software decoder rebuild",
   "mandatory": false
 }
