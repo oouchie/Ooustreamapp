@@ -123,11 +123,14 @@ object AudioPipelineFactory {
         if (!isMtkDevice()) return createRenderersFactory(context)
 
         return createRenderersFactory(context).apply {
-            // Custom codec selector: deprioritize OMX.MTK video decoders
+            // Custom codec selector: deprioritize OMX.MTK for HEVC only
+            // The black screen bug (render 1 frame then stop) is HEVC-specific on mt8695.
+            // H.264/AVC works fine on OMX.MTK hardware and is too demanding for software decode
+            // on these low-power SoCs — deprioritizing it caused choppy live TV.
             setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
                 val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-                if (mimeType.startsWith("video/")) {
-                    // Prefer C2/SW decoders over OMX.MTK for video (OMX.MTK has black screen bug)
+                if (mimeType == "video/hevc") {
+                    // HEVC only: prefer C2/SW decoders over OMX.MTK (black screen bug)
                     allDecoders.sortedWith(compareBy { info ->
                         when {
                             info.name.startsWith("c2.mtk", ignoreCase = true) -> 0      // C2 MTK: newer, fewer bugs
@@ -138,7 +141,7 @@ object AudioPipelineFactory {
                         }
                     }).toMutableList()
                 } else {
-                    allDecoders // Keep all decoders for audio (hardware + FFmpeg)
+                    allDecoders // H.264, audio, etc: keep default decoder priority
                 }
             })
         }

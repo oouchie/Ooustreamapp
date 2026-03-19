@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.7",
-  "version_code": 39,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.7/app-release.apk",
-  "changelog": "v3.3.7 — Emergency Fix: Remove Build.SOC_MODEL\n\n• Completely removed Build.SOC_MODEL references (R8 strips try-catch in release builds)\n• All v3.3.5 MTK decoder fixes included",
+  "version_name": "3.3.8",
+  "version_code": 40,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.8/app-release.apk",
+  "changelog": "v3.3.8 — Live TV Choppy Fix\n\n• Fixed choppy live TV on MTK devices caused by v3.3.5 codec selector\n• MTK decoder deprioritization now only applies to HEVC (black screen fix)\n• H.264/AVC streams use hardware OMX.MTK decoder again (smooth 60fps)",
   "mandatory": true
 }
