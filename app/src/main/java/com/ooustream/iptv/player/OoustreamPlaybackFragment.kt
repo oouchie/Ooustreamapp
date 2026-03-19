@@ -212,7 +212,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val renderersFactory = AudioPipelineFactory.createMtkAwareRenderersFactory(requireContext())
         if (AudioPipelineFactory.isMtkDevice()) {
             AudioLogger.log("MTK device detected (${android.os.Build.HARDWARE}): using MTK-aware codec selector + async mode")
-            streamDiagnosticLogger.logAppEvent("MTK_DEVICE", "hw=${android.os.Build.HARDWARE}, soc=${android.os.Build.SOC_MODEL ?: "unknown"}")
+            val socModel = try { android.os.Build.SOC_MODEL } catch (_: Exception) { "unknown" }
+            streamDiagnosticLogger.logAppEvent("MTK_DEVICE", "hw=${android.os.Build.HARDWARE}, soc=$socModel")
         }
 
         // Bandwidth meter — shared with health monitor for real network throughput

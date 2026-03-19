@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.5",
-  "version_code": 37,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.5/app-release.apk",
-  "changelog": "v3.3.5 — VOD Playback Fix for MediaTek Devices\n\n• Fixed black screen on MTK devices — smart codec selector deprioritizes buggy OMX.MTK decoders\n• Fixed watchdog recovery getting stuck in loop (single-frame renders no longer reset the ladder)\n• Low-memory devices skip 1080p software decode and go straight to 720p\n• Image cache cleared before playback to free memory for video decoders\n• Safe player release prevents crash on stuck decoders\n• Fixed missing error handlers after software decoder rebuild",
-  "mandatory": false
+  "version_name": "3.3.6",
+  "version_code": 38,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.6/app-release.apk",
+  "changelog": "v3.3.6 — Hotfix: Crash on Android 7 Devices\n\n• Fixed crash on API 25 (Android 7.1) devices caused by Build.SOC_MODEL field access (API 31+)\n• All v3.3.5 MTK decoder fixes included",
+  "mandatory": true
 }
