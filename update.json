@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.6",
-  "version_code": 38,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.6/app-release.apk",
-  "changelog": "v3.3.6 — Hotfix: Crash on Android 7 Devices\n\n• Fixed crash on API 25 (Android 7.1) devices caused by Build.SOC_MODEL field access (API 31+)\n• All v3.3.5 MTK decoder fixes included",
+  "version_name": "3.3.7",
+  "version_code": 39,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.7/app-release.apk",
+  "changelog": "v3.3.7 — Emergency Fix: Remove Build.SOC_MODEL\n\n• Completely removed Build.SOC_MODEL references (R8 strips try-catch in release builds)\n• All v3.3.5 MTK decoder fixes included",
   "mandatory": true
 }

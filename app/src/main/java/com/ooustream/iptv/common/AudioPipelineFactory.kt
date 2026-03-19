@@ -105,12 +105,10 @@ object AudioPipelineFactory {
      * MTK devices have known issues with OMX.MTK video decoders (black screen after first frame).
      */
     fun isMtkDevice(): Boolean {
-        if (Build.HARDWARE.contains("mt", ignoreCase = true)) return true
-        if (Build.HARDWARE.contains("mediatek", ignoreCase = true)) return true
-        // Build.SOC_MODEL is API 31+ — catch NoSuchFieldError on older devices
-        try { if (Build.SOC_MODEL?.contains("mt", ignoreCase = true) == true) return true }
-        catch (_: Throwable) { }
-        return false
+        // Build.HARDWARE is sufficient — SOC_MODEL is API 31+ and crashes on older devices
+        // even inside try-catch (R8 strips exception handlers or inlines the field access)
+        return Build.HARDWARE.contains("mt", ignoreCase = true) ||
+            Build.HARDWARE.contains("mediatek", ignoreCase = true)
     }
 
     /**

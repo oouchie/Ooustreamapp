@@ -254,10 +254,6 @@ class StreamDiagnosticLogger @Inject constructor(
     }
 
     private fun writeHeader() {
-        val socModel = if (Build.VERSION.SDK_INT >= 31) {
-            try { Build.SOC_MODEL } catch (_: Exception) { "unknown" }
-        } else "unknown"
-
         val header = buildString {
             appendLine("═══════════════════════════════════════════════════")
             appendLine("OOUSTREAM DIAGNOSTIC LOG")
@@ -267,7 +263,6 @@ class StreamDiagnosticLogger @Inject constructor(
             appendLine("Device: ${Build.BRAND} ${Build.MODEL}")
             appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("Hardware: ${Build.HARDWARE}")
-            appendLine("SOC: $socModel")
             appendLine("RAM: ${getDeviceRamMb()}MB")
             appendLine("Is TV: ${isTV()}")
             appendLine("═══════════════════════════════════════════════════")
@@ -298,10 +293,6 @@ class StreamDiagnosticLogger @Inject constructor(
     }
 
     private fun buildDeviceSummary(): String {
-        val socModel = if (Build.VERSION.SDK_INT >= 31) {
-            try { Build.SOC_MODEL } catch (_: Exception) { "unknown" }
-        } else "unknown"
-
         return buildString {
             appendLine("╔═══════════════════════════════════════════════╗")
             appendLine("║     OOUSTREAM DEBUG LOG — CUSTOMER REPORT     ║")
@@ -311,7 +302,6 @@ class StreamDiagnosticLogger @Inject constructor(
             appendLine("║ Device: ${Build.BRAND} ${Build.MODEL}")
             appendLine("║ Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("║ Hardware: ${Build.HARDWARE}")
-            appendLine("║ SOC: $socModel")
             appendLine("║ RAM: ${getDeviceRamMb()}MB total")
             appendLine("║ RAM Free: ${getAvailableRamMb()}MB available")
             appendLine("║ Storage Free: ${getAvailableStorageMb()}MB")
