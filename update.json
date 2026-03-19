@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.8",
-  "version_code": 40,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.8/app-release.apk",
-  "changelog": "v3.3.8 — Live TV Choppy Fix\n\n• Fixed choppy live TV on MTK devices caused by v3.3.5 codec selector\n• MTK decoder deprioritization now only applies to HEVC (black screen fix)\n• H.264/AVC streams use hardware OMX.MTK decoder again (smooth 60fps)",
+  "version_name": "3.3.9",
+  "version_code": 41,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.9/app-release.apk",
+  "changelog": "v3.3.9 — Hide 4K Content on Non-4K Devices\n\n• 4K/UHD categories automatically hidden on low-RAM Fire TV Sticks\n• Prevents users from browsing into unplayable 4K content\n• All v3.3.8 live TV fixes included",
   "mandatory": true
 }

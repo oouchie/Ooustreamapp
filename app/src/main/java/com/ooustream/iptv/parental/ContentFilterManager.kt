@@ -1,5 +1,7 @@
 package com.ooustream.iptv.parental
 
+import com.ooustream.iptv.common.UhdContentDetector
+import com.ooustream.iptv.data.UserPlanManager
 import com.ooustream.iptv.data.local.dao.BlockedCategoryDao
 import com.ooustream.iptv.data.local.entity.BlockedCategoryEntity
 import com.ooustream.iptv.data.model.Category
@@ -18,8 +20,12 @@ import javax.inject.Singleton
 @Singleton
 class ContentFilterManager @Inject constructor(
     private val blockedCategoryDao: BlockedCategoryDao,
-    private val parentalControlManager: ParentalControlManager
+    private val parentalControlManager: ParentalControlManager,
+    private val userPlanManager: UserPlanManager
 ) {
+    // Hide 4K categories on devices that can't handle them (900MB Fire TV Sticks)
+    private val shouldHide4k: Boolean = !userPlanManager.isDeviceCapable()
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // In-memory cache: keys are "section_categoryId" (e.g. "live_123")
@@ -50,8 +56,14 @@ class ContentFilterManager @Inject constructor(
     }
 
     fun filterCategories(section: String, categories: List<Category>): List<Category> {
-        if (!shouldFilter()) return categories
-        return categories.filter { !blockedKeys.contains("${section}_${it.categoryId}") }
+        var result = categories
+        if (shouldFilter()) {
+            result = result.filter { !blockedKeys.contains("${section}_${it.categoryId}") }
+        }
+        if (shouldHide4k) {
+            result = result.filter { !UhdContentDetector.is4kContent(it.categoryName) }
+        }
+        return result
     }
 
     fun <T> filterContent(section: String, items: List<T>, getCategoryId: (T) -> String?): List<T> {
