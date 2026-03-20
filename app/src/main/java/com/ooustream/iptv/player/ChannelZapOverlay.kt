@@ -135,9 +135,23 @@ class ChannelZapOverlay @JvmOverloads constructor(
             val initials = itemView.findViewById<TextView>(R.id.zap_initials)
             ChannelDisplayHelper.loadLogo(logo, initials, channel.streamIcon, channel.name)
 
-            // Highlight the currently selected channel
+            // Aurora Cinema glass card — built programmatically to avoid Leanback
+            // corrupting XML GradientDrawable colors on some devices
+            val dp = context.resources.displayMetrics.density
             if (isCurrent) {
-                itemView.setBackgroundResource(R.drawable.bg_card_focused)
+                // Focused: dark glass with gold border glow
+                itemView.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xF0141420.toInt())                         // slightly brighter fill
+                    cornerRadius = 12f * dp
+                    setStroke((2f * dp).toInt(), 0xFFFFC107.toInt())    // 2dp gold border
+                }
+            } else {
+                // Default: dark frosted glass with subtle border
+                itemView.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xE6101018.toInt())                         // dark glass fill
+                    cornerRadius = 12f * dp
+                    setStroke((1f * dp).toInt(), 0x1AFFFFFF)            // subtle white border
+                }
             }
 
             // Tapping / DPAD_CENTER on an item confirms that channel

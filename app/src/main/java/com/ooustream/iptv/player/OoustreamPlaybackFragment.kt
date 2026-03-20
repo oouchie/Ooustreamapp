@@ -133,24 +133,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         view.post {
             backgroundType = BG_NONE
             view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            killLeanbackBackgrounds(view)
+            killAllGreen()
         }
-        // Belt-and-suspenders: also after delays
-        view.postDelayed({
-            backgroundType = BG_NONE
-            killLeanbackBackgrounds(view)
-        }, 200)
-        view.postDelayed({
-            backgroundType = BG_NONE
-            killLeanbackBackgrounds(view)
-            // DEBUG: write full view tree dump to file
-            try {
-                val root = activity?.window?.decorView ?: view
-                val sb = StringBuilder("=== VIEW DUMP (500ms) ===\n")
-                dumpBackgroundsToString(root, 0, sb)
-                java.io.File(requireContext().filesDir, "view_dump.txt").writeText(sb.toString())
-            } catch (_: Exception) {}
-        }, 500)
+        // Belt-and-suspenders: kill green at multiple delays (Leanback re-applies at various points)
+        view.postDelayed({ backgroundType = BG_NONE; killAllGreen() }, 200)
+        view.postDelayed({ backgroundType = BG_NONE; killAllGreen() }, 500)
+        view.postDelayed({ backgroundType = BG_NONE; killAllGreen() }, 1000)
 
         // Keep screen on during playback (dynamically toggled by player listener)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -423,6 +411,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 showChannelBanner()
             }
         }
+
+        // Kill green again after all overlays are added to the view hierarchy
+        view.post { killAllGreen() }
 
         // Add binge countdown overlay for series content
         if (viewModel.contentType == ContentType.SERIES) {
@@ -1783,6 +1774,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
 
             channelBanner?.show(channel, idx, epg, inferredEpg)
+            // Kill green after banner shows (Leanback may re-apply brandColor on view changes)
+            view?.postDelayed({ killAllGreen() }, 100)
         }
     }
 
@@ -2091,38 +2084,155 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
     }
 
+    /** Check if a color value is green-ish (green channel dominant). */
+    private fun isGreenish(color: Int): Boolean {
+        val g = android.graphics.Color.green(color)
+        val r = android.graphics.Color.red(color)
+        val b = android.graphics.Color.blue(color)
+        val a = android.graphics.Color.alpha(color)
+        return g > 80 && g > r + 30 && g > b + 30 && a > 50
+    }
+
+    /** Our custom overlay classes — never kill their backgrounds. */
+    private val SAFE_VIEW_CLASSES = setOf(
+        "ChannelBannerOverlay", "ChannelZapOverlay", "ChannelListHolder",
+        "StreamStatsOverlay", "AudioOnlyOverlay", "AudioStatusOverlay",
+        "WatchNextOverlay", "SeriesCompleteOverlay", "SeekFeedbackOverlay",
+        "TrackPickerOverlay", "BingeCountdownOverlay", "PlayerControlsBar",
+        "ContentInfoOverlay", "SleepTimerManager"
+    )
+
+    /** Check if a view is inside one of our custom overlays. */
+    private fun isInsideCustomOverlay(view: View): Boolean {
+        var current: android.view.ViewParent? = view.parent
+        while (current is View) {
+            if (SAFE_VIEW_CLASSES.contains((current as View).javaClass.simpleName)) return true
+            current = (current as View).parent
+        }
+        return SAFE_VIEW_CLASSES.contains(view.javaClass.simpleName)
+    }
+
     /**
-     * Walk the Leanback view tree and kill the green background.
-     * The culprit is `playback_fragment_background` — a full-screen GradientDrawable
-     * that Leanback's VideoSupportFragment applies with the brandColor.
+     * Walk the view tree and kill green backgrounds on LEANBACK INTERNAL views only.
+     * Skips our custom overlay views to avoid removing dark backgrounds we set intentionally.
      */
-    private fun killLeanbackBackgrounds(root: View) {
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) {
-                val child = root.getChildAt(i)
+    private fun killGreenBackgrounds(root: View) {
+        // Skip our custom overlay views entirely
+        if (isInsideCustomOverlay(root)) return
 
-                // Target: Leanback's playback_fragment_background (NonOverlappingFrameLayout)
-                val idName = try {
-                    if (child.id != View.NO_ID) resources.getResourceEntryName(child.id) else ""
-                } catch (_: Exception) { "" }
-
-                if (idName == "playback_fragment_background" ||
-                    child.javaClass.simpleName.contains("NonOverlapping", ignoreCase = true)) {
-                    child.background = null
-                    child.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                }
-
-                // Also kill any view with "Background" in its class name
-                if (child.javaClass.simpleName.contains("Background", ignoreCase = true)) {
-                    child.background = null
-                    child.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                }
-
-                if (child is ViewGroup) {
-                    killLeanbackBackgrounds(child)
+        val bg = root.background
+        if (bg != null) {
+            if (bg is android.graphics.drawable.ColorDrawable) {
+                if (isGreenish(bg.color)) {
+                    android.util.Log.w("GREEN_HUNT", "KILLED ColorDrawable #${Integer.toHexString(bg.color)} on ${root.javaClass.simpleName} ${root.width}x${root.height}")
+                    root.background = null
+                    root.setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 }
             }
+            // For non-ColorDrawable on Leanback views: force transparent on known Leanback containers
+            val className = root.javaClass.simpleName
+            if (className.contains("NonOverlapping") || className.contains("PlaybackTransport") ||
+                className.contains("RowContainer")) {
+                root.background = null
+                root.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
         }
+        root.backgroundTintList?.let { tint ->
+            if (isGreenish(tint.defaultColor)) {
+                root.backgroundTintList = null
+            }
+        }
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                killGreenBackgrounds(root.getChildAt(i))
+            }
+        }
+    }
+
+    /**
+     * Sample any drawable by rendering it to a 1x1 bitmap.
+     * Works for ALL drawable types — ColorDrawable, GradientDrawable, LayerDrawable, etc.
+     * No reflection needed (Android 9 blocks hidden field access).
+     */
+    private fun sampleDrawableColor(drawable: android.graphics.drawable.Drawable): Int {
+        // ColorDrawable is trivial
+        if (drawable is android.graphics.drawable.ColorDrawable) return drawable.color
+        return try {
+            val size = 4 // sample 4x4 for better accuracy
+            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            val oldBounds = drawable.bounds
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+            drawable.bounds = oldBounds
+            val pixel = bitmap.getPixel(size / 2, size / 2) // center pixel
+            bitmap.recycle()
+            pixel
+        } catch (_: Exception) { 0 }
+    }
+
+    /** Returns true if the drawable contains green and should be killed. */
+    private fun killGreenDrawable(view: View, drawable: android.graphics.drawable.Drawable): Boolean {
+        // Handle composite drawables by checking inner layers
+        when (drawable) {
+            is android.graphics.drawable.LayerDrawable -> {
+                for (i in 0 until drawable.numberOfLayers) {
+                    if (killGreenDrawable(view, drawable.getDrawable(i))) return true
+                }
+                return false
+            }
+            is android.graphics.drawable.StateListDrawable -> {
+                drawable.current?.let { if (killGreenDrawable(view, it)) return true }
+                return false
+            }
+            is android.graphics.drawable.InsetDrawable -> {
+                drawable.drawable?.let { if (killGreenDrawable(view, it)) return true }
+                return false
+            }
+        }
+        // For all other types: sample the actual rendered color
+        val color = sampleDrawableColor(drawable)
+        if (isGreenish(color)) {
+            val idName = try {
+                if (view.id != View.NO_ID) resources.getResourceEntryName(view.id) else "no-id"
+            } catch (_: Exception) { "no-id" }
+            android.util.Log.w("GREEN_HUNT",
+                "KILLED ${drawable.javaClass.simpleName} #${Integer.toHexString(color)} " +
+                "on ${view.javaClass.simpleName} id=$idName ${view.width}x${view.height} " +
+                "vis=${view.visibility}")
+            return true
+        }
+        return false
+    }
+
+    /** Log ALL backgrounds in the view tree for debugging (call once). */
+    private fun logAllBackgrounds(root: View, depth: Int = 0) {
+        val indent = "  ".repeat(depth)
+        val bg = root.background
+        if (bg != null) {
+            val color = sampleDrawableColor(bg)
+            val idName = try {
+                if (root.id != View.NO_ID) resources.getResourceEntryName(root.id) else "no-id"
+            } catch (_: Exception) { "no-id" }
+            android.util.Log.w("GREEN_HUNT",
+                "${indent}BG: ${root.javaClass.simpleName} id=$idName " +
+                "${root.width}x${root.height} " +
+                "type=${bg.javaClass.simpleName} " +
+                "color=#${Integer.toHexString(color)} " +
+                "ARGB(${android.graphics.Color.alpha(color)},${android.graphics.Color.red(color)},${android.graphics.Color.green(color)},${android.graphics.Color.blue(color)}) " +
+                "vis=${root.visibility}")
+        }
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                logAllBackgrounds(root.getChildAt(i), depth + 1)
+            }
+        }
+    }
+
+    /** Run green killer on the entire window decor view to catch all Leanback internals. */
+    private fun killAllGreen() {
+        val root = activity?.window?.decorView ?: view ?: return
+        killGreenBackgrounds(root)
     }
 
     companion object {

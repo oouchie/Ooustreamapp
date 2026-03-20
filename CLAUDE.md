@@ -8,13 +8,22 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.3.4 (versionCode 36)
+- **Current Version**: 3.3.8 (versionCode 40)
 
 ## Build
 ```bash
 ./gradlew.bat assembleDebug
 ```
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
+
+## Release Process
+When building a version for update/release, follow these steps in order:
+1. **Bump version** in `app/build.gradle.kts` (`versionCode` + `versionName`)
+2. **Update `update.json`** with new `version_name`, `version_code`, `download_url` (tag matches version), and `changelog`
+3. **Build release APK**: `./gradlew.bat assembleRelease`
+4. **Commit** the changed files (`app/build.gradle.kts`, source changes, `update.json`)
+5. **Push** to remote
+6. **Create GitHub release** with the APK: `gh release create v<version> app/build/outputs/apk/release/app-release.apk --title "<title>" --notes "<notes>"`
 
 ## Architecture
 - **DI**: Hilt (`@AndroidEntryPoint`, `@HiltViewModel`, `@Singleton`)

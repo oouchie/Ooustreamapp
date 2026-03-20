@@ -55,6 +55,18 @@ class ChannelBannerOverlay @JvmOverloads constructor(
         progressContainer = findViewById(R.id.banner_progress_container)
         progressFill = findViewById(R.id.banner_progress_fill)
         visibility = GONE
+
+        // Build frosted glass background programmatically — XML GradientDrawable renders
+        // green on some devices when inflated inside Leanback's view hierarchy.
+        // Aurora Cinema: dark glass with subtle white border and rounded corners.
+        card.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xE6101018.toInt())          // dark glass fill
+            cornerRadius = 14f * context.resources.displayMetrics.density  // 14dp
+            setStroke(
+                (1f * context.resources.displayMetrics.density).toInt(),   // 1dp border
+                0x1AFFFFFF                         // subtle white border
+            )
+        }
     }
 
     /**

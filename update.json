@@ -1,7 +1,7 @@
 {
-  "version_name": "3.3.9",
-  "version_code": 41,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.3.9/app-release.apk",
-  "changelog": "v3.3.9 — Hide 4K Content on Non-4K Devices\n\n• 4K/UHD categories automatically hidden on low-RAM Fire TV Sticks\n• Prevents users from browsing into unplayable 4K content\n• All v3.3.8 live TV fixes included",
+  "version_name": "3.4.0",
+  "version_code": 42,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.0/app-release.apk",
+  "changelog": "v3.4.0 — Kill the Green + Quality of Life\n\n• Fixed green backgrounds on channel banner and zap overlay (Leanback drawable bug)\n• Aurora Cinema styled overlays: frosted glass with gold accents\n• 4K/UHD categories hidden on non-4K devices\n• Live TV choppy fix for MTK devices (HEVC-only codec selector)\n• All previous hotfixes included",
   "mandatory": true
 }
