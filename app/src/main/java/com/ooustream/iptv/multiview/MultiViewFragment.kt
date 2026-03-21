@@ -50,6 +50,8 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
     private var slotViews: Array<MultiViewSlotView?> = arrayOfNulls(4)
     private var controlsTimer: CountDownTimer? = null
     private var emergencyQualityActive = false
+    private var emergencyQualityActivatedAt = 0L
+    private val EMERGENCY_HOLD_MS = 15_000L // Keep emergency quality for at least 15s
 
     // EPG data for ticker (slotIndex → epgTitle)
     private val epgData = mutableMapOf<Int, String>()
@@ -297,10 +299,15 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
 
         if (anyChopping && !emergencyQualityActive) {
             emergencyQualityActive = true
+            emergencyQualityActivatedAt = android.os.SystemClock.elapsedRealtime()
             playerManager?.setEmergencyQuality(true)
         } else if (!anyChopping && emergencyQualityActive) {
-            emergencyQualityActive = false
-            playerManager?.setEmergencyQuality(false)
+            // Hold emergency quality for at least 15s to prevent rapid ON/OFF toggling
+            val elapsed = android.os.SystemClock.elapsedRealtime() - emergencyQualityActivatedAt
+            if (elapsed >= EMERGENCY_HOLD_MS) {
+                emergencyQualityActive = false
+                playerManager?.setEmergencyQuality(false)
+            }
         }
     }
 

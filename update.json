@@ -1,7 +1,7 @@
 {
-  "version_name": "3.4.0",
-  "version_code": 42,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.0/app-release.apk",
-  "changelog": "v3.4.0 — Kill the Green + Quality of Life\n\n• Fixed green backgrounds on channel banner and zap overlay (Leanback drawable bug)\n• Aurora Cinema styled overlays: frosted glass with gold accents\n• 4K/UHD categories hidden on non-4K devices\n• Live TV choppy fix for MTK devices (HEVC-only codec selector)\n• All previous hotfixes included",
-  "mandatory": true
+  "version_name": "3.4.1",
+  "version_code": 43,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.1/app-release.apk",
+  "changelog": "v3.4.1 — Hero Trailer + Seek Overlay Fix\n\n• Fixed hero trailer playing off-screen when scrolling down on home screen\n• Fixed seek feedback overlay (\"-10s\") getting stuck on screen after rewind\n• MultiView resolution caps tuned (720p focused, 360p background)\n• MultiView stall detector thresholds relaxed\n• Emergency quality hold timer prevents rapid toggling\n• More Leanback green drawable fixes (BingeCountdown, SeriesComplete)\n• Mobile touch: gesture detector on SurfaceView, scrim tap dismisses controls\n• MultiView navigation unlocked from Home + Live TV",
+  "mandatory": false
 }

@@ -41,6 +41,17 @@ class BingeCountdownOverlay @JvmOverloads constructor(
         cancelBtn = findViewById(R.id.binge_cancel)
         visibility = GONE
 
+        // Fix Leanback green: replace XML bg_card_rounded with programmatic drawable
+        val dp = context.resources.displayMetrics.density
+        val darkGlass = { android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xE6101018.toInt())
+            cornerRadius = 14f * dp
+            setStroke((1f * dp).toInt(), 0x1AFFFFFF)
+        }}
+        // Main card and cancel button both use bg_card_rounded
+        (countdownText.parent as? View)?.background = darkGlass()
+        cancelBtn.background = darkGlass().apply { cornerRadius = 10f * dp }
+
         playNow.setOnClickListener {
             timer?.cancel()
             visibility = GONE

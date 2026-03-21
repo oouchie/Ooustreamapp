@@ -550,11 +550,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val scrollView = view.findViewById<NestedScrollView>(R.id.home_scroll)
         val frostedHeader = view.findViewById<LinearLayout>(R.id.frosted_header)
         val heroContainer = view.findViewById<View>(R.id.hero_container)
+        val isTV = DeviceUtils.isTV(requireContext())
 
         // Hide frosted header on mobile (bottom nav handles navigation)
-        if (!DeviceUtils.isTV(requireContext())) {
+        if (!isTV) {
             frostedHeader.visibility = View.GONE
-            return
         }
 
         scrollView.setOnScrollChangeListener(
@@ -563,8 +563,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 if (heroHeight > 0) {
                     val progress = (scrollY / heroHeight).coerceIn(0f, 1f)
 
-                    // Frosted header: fade in as hero scrolls away
-                    frostedHeader.alpha = progress
+                    if (isTV) {
+                        // Frosted header: fade in as hero scrolls away
+                        frostedHeader.alpha = progress
+                    }
 
                     // Backdrop: parallax at 0.4x + fade + subtle scale down
                     heroBackdrop.translationY = -scrollY * 0.4f
@@ -585,6 +587,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     // Release hero preview when scrolled past half the hero
                     if (scrollY > heroHeight * 0.5f) {
                         if (heroPreviewActive) releaseHeroPreview()
+                        heroDwellJob?.cancel() // Cancel pending dwell timer too
                     }
                 }
             }
@@ -654,11 +657,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     if (item is SectionItem) {
                         navigateToSection(item)
                     } else if (item is MultiViewHeroItem) {
-                        android.app.AlertDialog.Builder(requireContext())
-                            .setTitle("MultiView")
-                            .setMessage("Coming Soon!")
-                            .setPositiveButton("OK", null)
-                            .show()
+                        (activity as? com.ooustream.iptv.MainActivity)?.navigateToMultiView()
                     }
                 }
 
@@ -1411,6 +1410,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroDwellJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(4_000)
             if (!isActive) return@launch
+            // Don't start trailer if hero is scrolled out of view
+            if (!isHeroVisible()) return@launch
             val items = featuredItems
             val item = items.getOrNull(heroIndex)
             if (item == null) {
@@ -1519,6 +1520,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 releaseHeroPreview()
             }
         }
+    }
+
+    private fun isHeroVisible(): Boolean {
+        val scrollView = view?.findViewById<NestedScrollView>(R.id.home_scroll) ?: return true
+        val heroContainer = view?.findViewById<View>(R.id.hero_container) ?: return true
+        val heroHeight = heroContainer.height.toFloat()
+        return heroHeight <= 0 || scrollView.scrollY < heroHeight * 0.5f
     }
 
     private fun releaseHeroPreview() {

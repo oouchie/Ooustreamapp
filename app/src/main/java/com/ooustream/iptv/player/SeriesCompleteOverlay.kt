@@ -29,6 +29,22 @@ class SeriesCompleteOverlay @JvmOverloads constructor(
         exitBtn = findViewById(R.id.series_exit_btn)
         visibility = GONE
 
+        // Fix Leanback green: replace XML bg_card_rounded with programmatic drawable
+        val dp = context.resources.displayMetrics.density
+        val cardBg = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xE6101018.toInt())
+            cornerRadius = 14f * dp
+            setStroke((1f * dp).toInt(), 0x1AFFFFFF)
+        }
+        // Center card (parent LinearLayout of seriesName)
+        (seriesName.parent as? android.view.View)?.background = cardBg
+        // Exit button also uses bg_card_rounded
+        exitBtn.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xE6101018.toInt())
+            cornerRadius = 10f * dp
+            setStroke((1f * dp).toInt(), 0x1AFFFFFF)
+        }
+
         replayBtn.setOnClickListener {
             visibility = GONE
             onReplay?.invoke()

@@ -43,6 +43,8 @@ class SeekFeedbackOverlay @JvmOverloads constructor(
             "\u25C0\u25C0 -${absSec}s"
         }
         label.text = text
+        // Cancel any in-flight fade animation before making visible again
+        animate().cancel()
         visibility = VISIBLE
         alpha = 1f
         handler?.removeCallbacksAndMessages(null)

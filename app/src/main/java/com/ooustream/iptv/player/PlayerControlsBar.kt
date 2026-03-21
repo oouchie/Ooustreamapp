@@ -63,6 +63,7 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onAspectRatio: (() -> Unit)? = null
     var onSeekBack: (() -> Unit)? = null
     var onSeekForward: (() -> Unit)? = null
+    var onScrimTap: (() -> Unit)? = null
     var onExternalPlayer: (() -> Unit)? = null
     var onTracksClicked: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
@@ -90,6 +91,9 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         actionButtonsRow = findViewById(R.id.action_buttons_row)
 
         btnPlayPause.setOnClickListener { onPlayPause?.invoke() }
+
+        // Mobile: tap on the scrim/background area dismisses controls
+        setOnClickListener { onScrimTap?.invoke() }
 
         // Start hidden — PlayerControlsManager controls visibility
         visibility = GONE
