@@ -236,6 +236,15 @@ class HomeViewModel @Inject constructor(
     fun buildSeriesStreamUrl(streamId: Int, ext: String): String =
         contentRepository.buildSeriesStreamUrl(streamId, ext)
 
+    /** Clear new episode badge for a series (user clicked it). */
+    fun clearNewEpisodes(seriesId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            seriesTrackingDao.getTracking(seriesId)?.let { tracking ->
+                seriesTrackingDao.upsert(tracking.copy(hasNewEpisodes = false, newEpisodeCount = 0))
+            }
+        }
+    }
+
     /**
      * Pre-warm data caches for a section so navigation feels instant.
      * Called by [ScreenPreWarmer] after a 500 ms focus dwell on a section card.

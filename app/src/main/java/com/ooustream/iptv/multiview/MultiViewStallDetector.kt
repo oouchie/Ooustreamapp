@@ -32,10 +32,10 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
 
     companion object {
         // Detection thresholds — background (non-audio) slots
-        private const val DROPS_PER_SEC_STUTTER = 8
-        private const val DROPS_PER_SEC_CHOPPING = 15
+        private const val DROPS_PER_SEC_STUTTER = 15
+        private const val DROPS_PER_SEC_CHOPPING = 25
         private const val BUFFER_EMPTY_MS = 500L
-        private const val BUFFER_CRITICAL_MS = 2_000L
+        private const val BUFFER_CRITICAL_MS = 1_000L
         private const val FROZEN_THRESHOLD_MS = 1_000L
 
         // Detection thresholds — active (audio) slot: much more lenient

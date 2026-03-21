@@ -640,6 +640,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // Wire glue to our controls manager
             glue?.customControlsManager = controlsManager
 
+            // Mobile: tapping the scrim area of controls bar hides it
+            bar.onScrimTap = { controlsManager?.hide() }
+
             // Wire action button callbacks
             bar.onPlayPause = {
                 player?.let { p ->
@@ -1665,6 +1668,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         })
 
         rootView.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+
+        // Walk the view tree to find any SurfaceView/TextureView and attach gesture detector
+        // Leanback's root may intercept touches before they reach the root listener on phones
+        fun attachToSurfaces(v: View) {
+            if (v is android.view.SurfaceView || v is android.view.TextureView) {
+                v.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+            }
+            if (v is ViewGroup) {
+                for (i in 0 until v.childCount) attachToSurfaces(v.getChildAt(i))
+            }
+        }
+        attachToSurfaces(rootView)
     }
 
     /** Switch playback to [channel] and update viewModel + glue state. */

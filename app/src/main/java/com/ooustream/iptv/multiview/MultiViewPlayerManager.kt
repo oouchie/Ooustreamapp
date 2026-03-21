@@ -79,8 +79,13 @@ class MultiViewPlayerManager(
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)     // No subtitles in multiview
                     .setTrackTypeDisabled(C.TRACK_TYPE_METADATA, true) // No metadata overhead
                     .apply {
-                        if (!isFocused || isLowMemory) {
-                            setMaxVideoSize(854, 480)
+                        // MultiView: cap ALL slots to stay within hardware decoder budget
+                        // mt8696 does 300-450fps@720p but only 200-300fps@1080p
+                        // 4 streams × 60fps = 240fps needed — 720p has 25-87% headroom
+                        if (isFocused && !isLowMemory) {
+                            setMaxVideoSize(1280, 720)   // focused: 720p max
+                        } else {
+                            setMaxVideoSize(640, 360)    // non-focused: 360p (small quadrant)
                         }
                         if (!isAudio) {
                             // Disable audio + text + metadata — preserve all disabled states
@@ -98,7 +103,7 @@ class MultiViewPlayerManager(
                 .build()
         } else {
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(5_000, 15_000, 1_000, 1_500)
+                .setBufferDurationsMs(3_000, 10_000, 800, 1_200)
                 .build()
         }
 
@@ -211,23 +216,23 @@ class MultiViewPlayerManager(
         val oldFocused = focusedSlot
         focusedSlot = slotIndex
 
-        // Cap old focused slot to 480p (or 320p in emergency mode)
+        // Cap old focused slot to 360p (or 320p in emergency mode)
         trackSelectors[oldFocused]?.let { ts ->
             ts.setParameters(
                 ts.buildUponParameters()
                     .setMaxVideoSize(
-                        if (emergencyQuality) 480 else 854,
-                        if (emergencyQuality) 320 else 480
+                        if (emergencyQuality) 480 else 640,
+                        if (emergencyQuality) 320 else 360
                     )
             )
         }
 
-        // Uncap new focused slot (unless low-memory — always 480p)
+        // Cap new focused slot to 720p (not uncapped — decoder budget)
         if (!isLowMemory) {
             trackSelectors[slotIndex]?.let { ts ->
                 ts.setParameters(
                     ts.buildUponParameters()
-                        .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                        .setMaxVideoSize(1280, 720)
                 )
             }
         }
@@ -255,21 +260,21 @@ class MultiViewPlayerManager(
                     ts.setParameters(
                         ts.buildUponParameters()
                             .setMaxVideoSize(
-                                if (i == slot) Int.MAX_VALUE else 426,
-                                if (i == slot) Int.MAX_VALUE else 240
+                                if (i == slot) 1280 else 426,
+                                if (i == slot) 720 else 240
                             )
                     )
                 }
             }
         } else {
-            // Restore normal: focused = full res, others = 480p
+            // Restore normal: focused = 720p, others = 360p
             for (i in 0 until 4) {
                 trackSelectors[i]?.let { ts ->
                     ts.setParameters(
                         ts.buildUponParameters()
                             .setMaxVideoSize(
-                                if (i == focusedSlot && !isLowMemory) Int.MAX_VALUE else 854,
-                                if (i == focusedSlot && !isLowMemory) Int.MAX_VALUE else 480
+                                if (i == focusedSlot && !isLowMemory) 1280 else 640,
+                                if (i == focusedSlot && !isLowMemory) 720 else 360
                             )
                     )
                 }
@@ -387,16 +392,16 @@ class MultiViewPlayerManager(
                 ts.setParameters(
                     ts.buildUponParameters()
                         .setMaxVideoSize(
-                            if (enable) 480 else 854,
-                            if (enable) 320 else 480
+                            if (enable) 426 else 640,
+                            if (enable) 240 else 360
                         )
                         .setMaxVideoBitrate(
-                            if (enable) 1_500_000 else Int.MAX_VALUE
+                            if (enable) 1_000_000 else Int.MAX_VALUE
                         )
                 )
             }
         }
-        AudioLogger.log("MultiView: emergency quality ${if (enable) "ON (320p)" else "OFF (480p)"}")
+        AudioLogger.log("MultiView: emergency quality ${if (enable) "ON (240p)" else "OFF (360p)"}")
     }
 
     /**

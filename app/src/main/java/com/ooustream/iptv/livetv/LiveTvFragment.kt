@@ -199,11 +199,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                 }
             }
             multiviewIcon.setOnClickListener {
-                android.app.AlertDialog.Builder(requireContext())
-                    .setTitle("MultiView")
-                    .setMessage("Coming Soon!")
-                    .setPositiveButton("OK", null)
-                    .show()
+                (activity as? com.ooustream.iptv.MainActivity)?.navigateToMultiView()
             }
         } else {
             multiviewIcon.visibility = View.GONE
