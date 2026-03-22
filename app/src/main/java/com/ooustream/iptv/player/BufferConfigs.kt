@@ -10,10 +10,10 @@ object BufferConfigs {
             .setBufferDurationsMs(5_000, 15_000, 1_000, 1_500)
             .build()
         ContentType.VOD -> DefaultLoadControl.Builder()
-            .setBufferDurationsMs(25_000, 90_000, 2_000, 5_000)
+            .setBufferDurationsMs(15_000, 45_000, 2_000, 5_000)
             .build()
         ContentType.SERIES -> DefaultLoadControl.Builder()
-            .setBufferDurationsMs(20_000, 60_000, 1_500, 3_000)
+            .setBufferDurationsMs(15_000, 45_000, 1_500, 3_000)
             .build()
     }
 
@@ -32,11 +32,11 @@ object BufferConfigs {
             }
             QualityTier.MEDIUM -> forContentType(type)
             QualityTier.HIGH -> {
-                // Generous buffers — absorb any network hiccup
+                // Generous but capped — 60s max keeps memory under control on mid-range devices
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        if (type == ContentType.LIVE) 8_000 else 40_000,
-                        if (type == ContentType.LIVE) 25_000 else 120_000,
+                        if (type == ContentType.LIVE) 8_000 else 25_000,
+                        if (type == ContentType.LIVE) 25_000 else 60_000,
                         2_000,
                         if (type == ContentType.LIVE) 2_000 else 5_000
                     )

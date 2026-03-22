@@ -1,7 +1,7 @@
 {
-  "version_name": "3.4.1",
-  "version_code": 43,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.1/app-release.apk",
-  "changelog": "v3.4.1 — Hero Trailer + Seek Overlay Fix\n\n• Fixed hero trailer playing off-screen when scrolling down on home screen\n• Fixed seek feedback overlay (\"-10s\") getting stuck on screen after rewind\n• MultiView resolution caps tuned (720p focused, 360p background)\n• MultiView stall detector thresholds relaxed\n• Emergency quality hold timer prevents rapid toggling\n• More Leanback green drawable fixes (BingeCountdown, SeriesComplete)\n• Mobile touch: gesture detector on SurfaceView, scrim tap dismisses controls\n• MultiView navigation unlocked from Home + Live TV",
+  "version_name": "3.4.2",
+  "version_code": 44,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.2/app-release.apk",
+  "changelog": "v3.4.2 — Buffer & Decoder Recovery Fix\n\n• Reduced VOD/Series buffer cap from 90s to 45s — prevents OOM on mid-range devices\n• HIGH quality buffer capped at 60s (was 120s)\n• Smart watchdog: HW decoder proven good at 24fps won't fallback to software decoder\n• Hard reset recovery (stop/prepare/play) for post-rebuffer black screens instead of seek flush\n• Fixes black screen loops on mt8696 Fire TV Sticks caused by memory pressure",
   "mandatory": false
 }

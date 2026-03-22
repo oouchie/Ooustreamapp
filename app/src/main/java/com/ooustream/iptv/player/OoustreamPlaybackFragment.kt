@@ -1200,6 +1200,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             var noNewFramesSinceMs = 0L
             var watchdogResetCount = 0
             var consecutiveGoodPolls = 0  // Must reach 3 (6s) before resetting ladder
+            // Track whether HW decoder has ever sustained 24fps — if yes, black screens
+            // are rebuffer recovery issues, not decoder incompatibility. Don't escalate to SW.
+            var hwDecoderProvenGood = false
             val isLowMemory = run {
                 val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 am.memoryClass <= 192
@@ -1236,6 +1239,21 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 "resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, channel=$channelName")
                             showFriendlyError("This stream's video isn't playing correctly. The source may be temporarily unavailable.")
                             return@launch
+                        }
+
+                        // If HW decoder has proven it works (sustained 24fps), black screens
+                        // are rebuffer recovery issues. Use hard reset (stop/prepare/play)
+                        // instead of escalating to SW decoder which would be worse.
+                        if (hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
+                            AudioLogger.log("Frame watchdog: HW decoder proven good — hard reset (step $watchdogResetCount)")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_HARD_RESET",
+                                "reset=$watchdogResetCount, hwProven=true, channel=$channelName")
+                            val pos = p.currentPosition
+                            p.stop()
+                            p.seekTo(pos)
+                            p.prepare()
+                            p.play()
+                            continue
                         }
 
                         // Escalating recovery: each step tries something DIFFERENT
@@ -1285,6 +1303,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                 } else {
                     noNewFramesSinceMs = 0L
+                    // Check if HW decoder is rendering at full framerate (20+ fps = proven good)
+                    // This means black screens are rebuffer recovery, not decoder incompatibility
+                    if (!hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
+                        val framesDelta = currentFrames - lastRenderedFrameCount
+                        // FRAME_WATCHDOG_INTERVAL_MS = 2s, so 20fps = 40+ frames per poll
+                        // Use a lower threshold (30 frames) to account for timing jitter
+                        if (framesDelta >= 30) {
+                            hwDecoderProvenGood = true
+                            AudioLogger.log("Frame watchdog: HW decoder proven good ($framesDelta frames in ${FRAME_WATCHDOG_INTERVAL_MS}ms)")
+                        }
+                    }
                     lastRenderedFrameCount = currentFrames
                     // Only reset recovery ladder after SUSTAINED playback (3 polls = 6s of frames)
                     // Prevents single-frame renders from resetting the ladder (MTK bug: 1 frame then black)
