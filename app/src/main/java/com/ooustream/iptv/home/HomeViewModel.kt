@@ -236,6 +236,10 @@ class HomeViewModel @Inject constructor(
     fun buildSeriesStreamUrl(streamId: Int, ext: String): String =
         contentRepository.buildSeriesStreamUrl(streamId, ext)
 
+    /** Look up watch progress for a stream ID (for Resume dialog). */
+    suspend fun getWatchProgress(streamId: String) =
+        watchProgressRepository.getProgress(streamId)
+
     /** Clear new episode badge for a series (user clicked it). */
     fun clearNewEpisodes(seriesId: Int) {
         viewModelScope.launch(Dispatchers.IO) {

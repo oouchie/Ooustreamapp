@@ -9,7 +9,24 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WatchProgressDao {
-    @Query("SELECT * FROM watch_progress WHERE progressPercent > 0.05 AND completed = 0 AND dismissed = 0 ORDER BY lastWatched DESC LIMIT 100")
+    @Query("""
+        SELECT * FROM watch_progress
+        WHERE progressPercent > 0.05 AND completed = 0 AND dismissed = 0
+          AND streamId IN (
+            SELECT streamId FROM watch_progress
+            WHERE progressPercent > 0.05 AND completed = 0 AND dismissed = 0 AND seriesId IS NULL
+            UNION ALL
+            SELECT wp2.streamId FROM watch_progress wp2
+            INNER JOIN (
+              SELECT seriesId, MAX(lastWatched) AS maxWatched
+              FROM watch_progress
+              WHERE progressPercent > 0.05 AND completed = 0 AND dismissed = 0 AND seriesId IS NOT NULL
+              GROUP BY seriesId
+            ) latest ON wp2.seriesId = latest.seriesId AND wp2.lastWatched = latest.maxWatched
+            WHERE wp2.progressPercent > 0.05 AND wp2.completed = 0 AND wp2.dismissed = 0
+          )
+        ORDER BY lastWatched DESC LIMIT 100
+    """)
     fun getContinueWatching(): Flow<List<WatchProgressEntity>>
 
     @Query("SELECT * FROM watch_progress WHERE streamId = :streamId")

@@ -699,18 +699,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     if (item is PosterItem) {
                         val ext = item.extension ?: "mp4"
                         val url = viewModel.buildVodStreamUrl(item.id, ext)
-                        val fragment = OoustreamPlaybackFragment.newInstance(
-                            streamUrl = url,
-                            contentType = ContentType.VOD,
-                            streamId = item.id.toString(),
-                            streamName = item.title,
-                            streamIcon = item.imageUrl ?: ""
-                        )
-                        val tx = requireActivity().supportFragmentManager.beginTransaction()
-                        FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                        tx.replace(R.id.main_container, fragment)
-                            .addToBackStack(null)
-                            .commit()
+                        playVodWithResumeCheck(url, item.id.toString(), item.title, item.imageUrl ?: "")
                     }
                 }
                 attachRowDimming(trendingRow, trendingLabel, viewHolder, position)
@@ -980,18 +969,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         } else {
                             val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
                             val url = viewModel.buildVodStreamUrl(id, "mp4")
-                            val fragment = OoustreamPlaybackFragment.newInstance(
-                                streamUrl = url,
-                                contentType = ContentType.VOD,
-                                streamId = item.streamId,
-                                streamName = item.name,
-                                streamIcon = item.icon ?: ""
-                            )
-                            val tx = requireActivity().supportFragmentManager.beginTransaction()
-                            FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                            tx.replace(R.id.main_container, fragment)
-                                .addToBackStack(null)
-                                .commit()
+                            playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
                         }
                     }
                 }
@@ -1593,18 +1571,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 val item = featuredItems[heroIndex]
                 val streamId = item.streamId.toIntOrNull() ?: return@setOnClickListener
                 val url = viewModel.buildVodStreamUrl(streamId, item.containerExtension)
-                val fragment = OoustreamPlaybackFragment.newInstance(
-                    streamUrl = url,
-                    contentType = ContentType.VOD,
-                    streamId = item.streamId,
-                    streamName = item.title,
-                    streamIcon = item.backdropUrl ?: ""
-                )
-                val tx = requireActivity().supportFragmentManager.beginTransaction()
-                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                tx.replace(R.id.main_container, fragment)
-                    .addToBackStack(null)
-                    .commit()
+                playVodWithResumeCheck(url, item.streamId, item.title, item.backdropUrl ?: "")
             }
         }
 
@@ -1708,21 +1675,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     .commit()
             }
             "vod" -> {
-                // Navigate directly to playback
                 val ext = item.containerExtension ?: "mp4"
                 val url = viewModel.buildVodStreamUrl(item.streamId, ext)
-                val fragment = OoustreamPlaybackFragment.newInstance(
-                    streamUrl = url,
-                    contentType = ContentType.VOD,
-                    streamId = item.streamId.toString(),
-                    streamName = item.name,
-                    streamIcon = item.icon ?: ""
-                )
-                val tx = requireActivity().supportFragmentManager.beginTransaction()
-                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                tx.replace(R.id.main_container, fragment)
-                    .addToBackStack(null)
-                    .commit()
+                playVodWithResumeCheck(url, item.streamId.toString(), item.name, item.icon ?: "")
             }
             "live" -> {
                 // Navigate to playback for live content
@@ -1731,6 +1686,36 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     contentType = ContentType.LIVE,
                     streamId = item.streamId.toString(),
                     streamName = item.name
+                )
+                val tx = requireActivity().supportFragmentManager.beginTransaction()
+                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                tx.replace(R.id.main_container, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            }
+        }
+    }
+
+    /** Launch VOD playback with Resume/Play from Beginning dialog if progress exists. */
+    private fun playVodWithResumeCheck(
+        streamUrl: String,
+        streamId: String,
+        streamName: String,
+        streamIcon: String = ""
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val progress = viewModel.getWatchProgress(streamId)
+            com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
+                context = requireContext(),
+                progress = progress
+            ) { forceBeginning ->
+                val fragment = OoustreamPlaybackFragment.newInstance(
+                    streamUrl = streamUrl,
+                    contentType = ContentType.VOD,
+                    streamId = streamId,
+                    streamName = streamName,
+                    streamIcon = streamIcon,
+                    forceStartFromBeginning = forceBeginning
                 )
                 val tx = requireActivity().supportFragmentManager.beginTransaction()
                 FragmentTransitions.apply(tx, TransitionDirection.PLAYER)

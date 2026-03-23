@@ -1,7 +1,7 @@
 {
-  "version_name": "3.4.2",
-  "version_code": 44,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.4.2/app-release.apk",
-  "changelog": "v3.4.2 — Buffer & Decoder Recovery Fix\n\n• Reduced VOD/Series buffer cap from 90s to 45s — prevents OOM on mid-range devices\n• HIGH quality buffer capped at 60s (was 120s)\n• Smart watchdog: HW decoder proven good at 24fps won't fallback to software decoder\n• Hard reset recovery (stop/prepare/play) for post-rebuffer black screens instead of seek flush\n• Fixes black screen loops on mt8696 Fire TV Sticks caused by memory pressure",
+  "version_name": "3.5.0",
+  "version_code": 45,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.0/app-release.apk",
+  "changelog": "v3.5.0 — Chapters, Resume Dialog & UX Improvements\n\n• Auto-generated chapter markers for VOD/Series with Prev/Next Chapter skip buttons\n• Resume or Play from Beginning dialog when opening content with saved progress\n• Continue Watching now shows only the latest episode per series (no duplicates)\n• Episode dates shown on series detail cards\n• All previous fixes included (buffer, decoder recovery, hero trailer, seek overlay)",
   "mandatory": false
 }

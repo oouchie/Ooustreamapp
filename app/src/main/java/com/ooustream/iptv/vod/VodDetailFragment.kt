@@ -82,22 +82,28 @@ class VodDetailFragment : Fragment() {
             }
         }
 
-        // Play button navigates to playback
+        // Play button — show Resume/Play from Beginning if watch progress exists
         playButton.setOnClickListener {
             val ext = containerExtension ?: "mp4"
             val streamUrl = viewModel.buildStreamUrl(vodId, ext)
-            val fragment = OoustreamPlaybackFragment.newInstance(
-                streamUrl = streamUrl,
-                contentType = ContentType.VOD,
-                streamId = vodId.toString(),
-                streamName = vodName,
-                streamIcon = coverUrl ?: ""
-            )
-            requireActivity().supportFragmentManager.beginTransaction()
-                .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.PLAYER) }
-                .replace(R.id.main_container, fragment)
-                .addToBackStack(null)
-                .commit()
+            com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
+                context = requireContext(),
+                progress = viewModel.watchProgress.value
+            ) { forceBeginning ->
+                val fragment = OoustreamPlaybackFragment.newInstance(
+                    streamUrl = streamUrl,
+                    contentType = ContentType.VOD,
+                    streamId = vodId.toString(),
+                    streamName = vodName,
+                    streamIcon = coverUrl ?: "",
+                    forceStartFromBeginning = forceBeginning
+                )
+                requireActivity().supportFragmentManager.beginTransaction()
+                    .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.PLAYER) }
+                    .replace(R.id.main_container, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            }
         }
 
         // Gold highlight on focus for the play button

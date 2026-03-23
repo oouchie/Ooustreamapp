@@ -92,6 +92,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var channelBanner: ChannelBannerOverlay? = null
     private var seriesCompleteOverlay: SeriesCompleteOverlay? = null
     private var seekFeedback: SeekFeedbackOverlay? = null
+    private val chapterManager = ChapterManager()
     private var trackPickerOverlay: TrackPickerOverlay? = null
     private var subtitleView: SubtitleView? = null
     private var audioStatusOverlay: AudioStatusOverlay? = null
@@ -672,6 +673,28 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             bar.updateCcState(subtitlePreferences.subtitlesEnabled)
             bar.onExternalPlayer = { showExternalPlayerDialog() }
             bar.onStatsToggle = { statsOverlay?.toggle() }
+            bar.onPrevChapter = {
+                player?.let { p ->
+                    val pos = chapterManager.prevChapterMs(p.currentPosition)
+                    p.seekTo(pos)
+                    seekFeedback?.dismiss()
+                    bar.updatePosition(pos, p.duration)
+                    bar.updateChapterIndicator(chapterManager.formatChapter(pos))
+                    controlsManager?.resetAutoHideTimer()
+                }
+            }
+            bar.onNextChapter = {
+                player?.let { p ->
+                    val pos = chapterManager.nextChapterMs(p.currentPosition)
+                    if (pos != null) {
+                        p.seekTo(pos)
+                        seekFeedback?.dismiss()
+                        bar.updatePosition(pos, p.duration)
+                        bar.updateChapterIndicator(chapterManager.formatChapter(pos))
+                        controlsManager?.resetAutoHideTimer()
+                    }
+                }
+            }
             bar.onDpadSeek = { deltaMs ->
                 player?.let { p ->
                     val newPos = (p.currentPosition + deltaMs).coerceAtLeast(0)
@@ -789,21 +812,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             }
                         }
                     }
-                    else -> bar.updatePosition(p.currentPosition, p.duration)
+                    else -> {
+                        bar.updatePosition(p.currentPosition, p.duration)
+                        // Generate chapters once duration is known, update indicator
+                        if (p.duration > 0) {
+                            chapterManager.generate(p.duration)
+                            bar.updateChapterIndicator(chapterManager.formatChapter(p.currentPosition))
+                        }
+                    }
                 }
                 bar.updatePlayPauseIcon(p.isPlaying)
                 bar.setQualityBadge(p.videoFormat?.height)
             }
         }
 
-        // Resume position for VOD/Series
-        if (viewModel.contentType != ContentType.LIVE && !viewModel.hasResumed) {
+        // Resume position for VOD/Series (unless user chose "Play from Beginning")
+        val forceBeginning = arguments?.getBoolean("force_start_from_beginning", false) == true
+        if (viewModel.contentType != ContentType.LIVE && !viewModel.hasResumed && !forceBeginning) {
             viewModel.getResumePosition { position ->
                 if (position > 0) {
                     player?.seekTo(position)
                     viewModel.hasResumed = true
                 }
             }
+        } else if (forceBeginning) {
+            viewModel.hasResumed = true  // Prevent resume on player rebuild
         }
 
         // Auto-save progress every 5s (no upper bound — completed flag handles removal)
@@ -2302,7 +2335,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             streamIcon: String = "",
             seriesId: Int = 0,
             seasonNum: Int = 0,
-            episodeNum: Int = 0
+            episodeNum: Int = 0,
+            forceStartFromBeginning: Boolean = false
         ): OoustreamPlaybackFragment {
             return OoustreamPlaybackFragment().apply {
                 arguments = Bundle().apply {
@@ -2314,6 +2348,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     putInt("series_id", seriesId)
                     putInt("season_num", seasonNum)
                     putInt("episode_num", episodeNum)
+                    putBoolean("force_start_from_beginning", forceStartFromBeginning)
                 }
             }
         }

@@ -14,6 +14,9 @@ import coil.request.CachePolicy
 import com.ooustream.iptv.R
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Episode
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class EpisodeRecyclerAdapter(
     private val onEpisodeClicked: (Episode) -> Unit
@@ -43,6 +46,7 @@ class EpisodeRecyclerAdapter(
         private val watchedCheck: ImageView = itemView.findViewById(R.id.episode_watched_check)
         private val number: TextView = itemView.findViewById(R.id.episode_number)
         private val title: TextView = itemView.findViewById(R.id.episode_title)
+        private val date: TextView = itemView.findViewById(R.id.episode_date)
         private val duration: TextView = itemView.findViewById(R.id.episode_duration)
         private val plot: TextView = itemView.findViewById(R.id.episode_plot)
         private val progressBar: ProgressBar = itemView.findViewById(R.id.episode_progress_bar)
@@ -80,6 +84,15 @@ class EpisodeRecyclerAdapter(
                 }
             } else {
                 thumbnail.visibility = View.GONE
+            }
+
+            // Date — prefer releaseDate from EpisodeInfo, fallback to added (Unix timestamp)
+            val dateText = formatEpisodeDate(episode)
+            if (dateText != null) {
+                date.text = dateText
+                date.visibility = View.VISIBLE
+            } else {
+                date.visibility = View.GONE
             }
 
             // Duration
@@ -122,6 +135,28 @@ class EpisodeRecyclerAdapter(
                 title.alpha = 1f
                 number.alpha = 1f
             }
+        }
+    }
+
+    companion object {
+        private val displayFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
+
+        fun formatEpisodeDate(episode: Episode): String? {
+            // 1. Try EpisodeInfo.releaseDate (human-readable, e.g. "2024-03-15")
+            episode.info?.releaseDate?.takeIf { it.isNotBlank() }?.let { raw ->
+                return try {
+                    val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw)
+                    if (parsed != null) displayFormat.format(parsed) else raw
+                } catch (_: Exception) { raw }
+            }
+            // 2. Fallback to Episode.added (Unix timestamp string)
+            episode.added?.takeIf { it.isNotBlank() }?.let { raw ->
+                return try {
+                    val epoch = raw.toLong()
+                    displayFormat.format(Date(epoch * 1000))
+                } catch (_: Exception) { null }
+            }
+            return null
         }
     }
 

@@ -69,6 +69,8 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onCcToggle: (() -> Unit)? = null
     var onDpadSeek: ((Long) -> Unit)? = null
     var onStatsToggle: (() -> Unit)? = null
+    var onPrevChapter: (() -> Unit)? = null
+    var onNextChapter: (() -> Unit)? = null
     private var ccButton: LinearLayout? = null
     private var ccIcon: ImageView? = null
     private var ccLabel: TextView? = null
@@ -329,6 +331,18 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         }
     }
 
+    /** Update chapter indicator in subtitle. Call from position update loop. */
+    fun updateChapterIndicator(chapterText: String) {
+        if (currentContentType == ContentType.VOD) {
+            infoSubtitle.text = chapterText
+        } else if (currentContentType == ContentType.SERIES) {
+            // Append chapter to existing "S1 E5" subtitle
+            val existing = infoSubtitle.text.toString()
+            val base = existing.substringBefore(" · Ch").substringBefore(" — Ch")
+            infoSubtitle.text = if (chapterText.isNotEmpty()) "$base · $chapterText" else base
+        }
+    }
+
     fun requestFocusOnPlayPause() {
         btnPlayPause.requestFocus()
     }
@@ -368,9 +382,11 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
 
     private fun setupVodActionButtons() {
         actionButtonsRow.removeAllViews()
+        addActionButton(R.drawable.ic_skip_previous_24, "Prev Ch") { onPrevChapter?.invoke() }
         addActionButton(R.drawable.ic_replay_10_24, "-10s") { onSeekBack?.invoke() }
         addActionButton(R.drawable.ic_play_arrow_24, "Play") { onPlayPause?.invoke() }
         addActionButton(R.drawable.ic_forward_10_24, "+10s") { onSeekForward?.invoke() }
+        addActionButton(R.drawable.ic_skip_next_24, "Next Ch") { onNextChapter?.invoke() }
         addActionButton(R.drawable.ic_aspect_ratio_24, "Aspect") { onAspectRatio?.invoke() }
         addCcButton()
         addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }

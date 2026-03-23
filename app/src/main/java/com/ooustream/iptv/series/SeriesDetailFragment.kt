@@ -295,29 +295,37 @@ class SeriesDetailFragment : Fragment() {
         val url = viewModel.buildEpisodeUrl(episode)
         val iconUrl = episode.info?.movieImage
             ?: viewModel.seriesInfo.value?.info?.cover ?: ""
-        val fragment = OoustreamPlaybackFragment.newInstance(
-            streamUrl = url,
-            contentType = ContentType.SERIES,
-            streamId = episode.id ?: "",
-            streamName = run {
-                val epTitle = episode.title ?: "E${episode.episodeNum}"
-                // API sometimes returns title with series name prefix — avoid duplication
-                if (epTitle.startsWith(seriesName, ignoreCase = true)) {
-                    epTitle.removePrefix(seriesName).trimStart(' ', '-', '–', '—').ifBlank { epTitle }
-                } else {
-                    "$seriesName - $epTitle"
-                }
-            },
-            streamIcon = iconUrl,
-            seriesId = seriesId,
-            seasonNum = episode.season ?: 0,
-            episodeNum = episode.episodeNum
-        )
-        requireActivity().supportFragmentManager.beginTransaction().apply {
-            FragmentTransitions.apply(this, TransitionDirection.PLAYER)
-            replace(R.id.main_container, fragment)
-            addToBackStack(null)
-        }.commit()
+        val episodeId = episode.id ?: ""
+        val epName = run {
+            val epTitle = episode.title ?: "E${episode.episodeNum}"
+            if (epTitle.startsWith(seriesName, ignoreCase = true)) {
+                epTitle.removePrefix(seriesName).trimStart(' ', '-', '–', '—').ifBlank { epTitle }
+            } else {
+                "$seriesName - $epTitle"
+            }
+        }
+        val progress = viewModel.episodeWatchProgress.value[episodeId]
+        com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
+            context = requireContext(),
+            progress = progress
+        ) { forceBeginning ->
+            val fragment = OoustreamPlaybackFragment.newInstance(
+                streamUrl = url,
+                contentType = ContentType.SERIES,
+                streamId = episodeId,
+                streamName = epName,
+                streamIcon = iconUrl,
+                seriesId = seriesId,
+                seasonNum = episode.season ?: 0,
+                episodeNum = episode.episodeNum,
+                forceStartFromBeginning = forceBeginning
+            )
+            requireActivity().supportFragmentManager.beginTransaction().apply {
+                FragmentTransitions.apply(this, TransitionDirection.PLAYER)
+                replace(R.id.main_container, fragment)
+                addToBackStack(null)
+            }.commit()
+        }
     }
 
 }
