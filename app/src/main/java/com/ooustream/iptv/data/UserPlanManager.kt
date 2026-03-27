@@ -29,7 +29,13 @@ class UserPlanManager @Inject constructor(
         val result = authRepository.getAccountInfo()
         Log.w("OOUSTREAM_PLAN", "refreshPlan result=${result.isSuccess} failure=${result.exceptionOrNull()?.message}")
         result.getOrNull()?.let { response ->
-            val mc = response.userInfo.maxConnections
+            @Suppress("SENSELESS_COMPARISON") // Gson can set non-nullable to null
+            val userInfo = response.userInfo
+            if (userInfo == null) {
+                Log.w("OOUSTREAM_PLAN", "refreshPlan: userInfo null (malformed API response)")
+                return@let
+            }
+            val mc = userInfo.maxConnections
             val connections = mc?.toIntOrNull() ?: 1
             Log.w("OOUSTREAM_PLAN", "refreshPlan maxConnections raw='$mc' parsed=$connections isPro=${connections >= 4}")
             _maxConnections.value = connections

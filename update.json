@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.0",
-  "version_code": 45,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.0/app-release.apk",
-  "changelog": "v3.5.0 — Chapters, Resume Dialog & UX Improvements\n\n• Auto-generated chapter markers for VOD/Series with Prev/Next Chapter skip buttons\n• Resume or Play from Beginning dialog when opening content with saved progress\n• Continue Watching now shows only the latest episode per series (no duplicates)\n• Episode dates shown on series detail cards\n• All previous fixes included (buffer, decoder recovery, hero trailer, seek overlay)",
+  "version_name": "3.5.1",
+  "version_code": 46,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.1/app-release.apk",
+  "changelog": "v3.5.1 — Stability & Device Compatibility Fixes\n\n• Fixed crash on mt8695 Fire TV Sticks (Build.SOC_MODEL API 31+ access)\n• Fixed UserPlanManager crash when server returns malformed response\n• Fixed ExoPlayer release crash (listener callback race condition)\n• HEVC buffer storm recovery on amlogic devices (FFmpeg audio rebuild)\n• \"Optimizing video playback\" message during decoder recovery\n• Reduced diagnostic log noise (network capability throttling)",
   "mandatory": false
 }

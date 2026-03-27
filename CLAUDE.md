@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.3.8 (versionCode 40)
+- **Current Version**: 3.5.1 (versionCode 46)
 
 ## Build
 ```bash
@@ -438,3 +438,4 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v3.3.2** — Software video decoder fallback (auto-switch to SW AVC when HW fails), frame watchdog retry limit, track picker language persistence, health monitor bandwidth fix
 - **v3.3.3** — AC3/EAC3 audio fix for mt8695 Fire TV Sticks: FFmpeg-preferred player rebuild when hardware falsely claims surround support, `audioDisabledByFallback` flag to prevent `onTracksChanged` from undoing Stage 2, broadened `isAudioDecoderError()` detection, three-stage audio recovery ladder
 - **v3.3.4** — Faster software video decoder fallback: frame watchdog interval 3s→2s, frozen threshold 5s→3s, software fallback on first failure (was 2). HEVC black screen recovery ~5s instead of ~18s
+- **v3.5.1** — Stability & Device Compatibility: DefaultAudioSink.Builder SOC_MODEL crash fix (API <31 safe fallback), UserPlanManager null userInfo guard, ExoPlayer release listener cleanup (code 1003 fix), amlogic HEVC buffer storm detection + FFmpeg audio rebuild, watchdog "Optimizing video playback" overlay, network capability log throttling (60s interval)

@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -24,6 +25,41 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object AudioPipelineFactory {
+
+    /**
+     * Safely builds a [DefaultAudioSink] with the given downmixer.
+     * media3's DefaultAudioSink.Builder.build() can access Build.SOC_MODEL (API 31+)
+     * which throws NoSuchFieldError on API < 31 when R8 strips the API level guard.
+     * Falls back to deprecated constructor which avoids the SOC_MODEL check.
+     */
+    private fun buildAudioSinkSafely(
+        context: Context,
+        downmixer: ChannelMixingAudioProcessor,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean
+    ): AudioSink {
+        return try {
+            DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain(downmixer))
+                .build()
+        } catch (e: Throwable) {
+            // media3's DefaultAudioSink.build() accesses Build.SOC_MODEL (API 31+)
+            // which throws NoSuchFieldError on API < 31 when R8 strips the API guard.
+            // Retry without custom audio processor chain (may bypass the SOC_MODEL path).
+            AudioLogger.log("DefaultAudioSink.Builder.build() failed: ${e.javaClass.simpleName}, using fallback without downmixer")
+            try {
+                DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .build()
+            } catch (e2: Throwable) {
+                // If even the basic builder fails, rethrow — player can't work without audio
+                AudioLogger.log("DefaultAudioSink fallback also failed: ${e2.javaClass.simpleName}")
+                throw e2
+            }
+        }
+    }
 
     /**
      * Creates a [DefaultRenderersFactory] with:
@@ -85,11 +121,7 @@ object AudioPipelineFactory {
                 downmixer.putChannelMixingMatrix(ChannelMixingMatrix(8, 2, floatArrayOf(
                     1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
                     0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain(downmixer))
-                    .build()
+                return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
             }
         }.apply {
             // PREFER = FFmpeg extension decoders tried FIRST for all audio codecs.
@@ -109,6 +141,15 @@ object AudioPipelineFactory {
         // even inside try-catch (R8 strips exception handlers or inlines the field access)
         return Build.HARDWARE.contains("mt", ignoreCase = true) ||
             Build.HARDWARE.contains("mediatek", ignoreCase = true)
+    }
+
+    /**
+     * Detects Amlogic chipsets. Amlogic HEVC decoders (OMX.amlogic.hevc.decoder.awesome2)
+     * have intermittent black screen issues when combined with hardware EAC3 decoding.
+     */
+    fun isAmlogicDevice(): Boolean {
+        return Build.HARDWARE.contains("amlogic", ignoreCase = true) ||
+            Build.HARDWARE.contains("aml", ignoreCase = true)
     }
 
     /**
@@ -206,13 +247,7 @@ object AudioPipelineFactory {
                     ))
                 )
 
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessorChain(
-                        DefaultAudioSink.DefaultAudioProcessorChain(downmixer)
-                    )
-                    .build()
+                return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
             }
         }.apply {
             // ON = hardware decoders first, FFmpeg as fallback for codecs hardware can't handle

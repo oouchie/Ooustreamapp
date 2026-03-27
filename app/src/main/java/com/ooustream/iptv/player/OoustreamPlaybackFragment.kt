@@ -55,10 +55,12 @@ import com.ooustream.iptv.recommendation.WatchSessionLogger
 import dagger.hilt.android.AndroidEntryPoint
 import okhttp3.OkHttpClient
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class OoustreamPlaybackFragment : VideoSupportFragment() {
@@ -122,6 +124,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var healthMonitor: PlaybackHealthMonitor? = null
     private var usingSoftwareVideoDecoder = false
     private var corePlayerListener: Player.Listener? = null
+    // Buffer storm detection: rapid BUFFERING→READY cycling on amlogic HEVC+EAC3
+    private var bufferStormCount = 0
+    private var bufferStormWindowStart = 0L
+    private var ffmpegRebuildAttemptedForBufferStorm = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -968,6 +974,25 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     Player.STATE_BUFFERING -> {
                         showBufferingOverlay(true)
                         startStallDetector()
+                        // Buffer storm detection: rapid BUFFERING→READY cycling
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (bufferStormWindowStart == 0L || now - bufferStormWindowStart > BUFFER_STORM_WINDOW_MS) {
+                            bufferStormWindowStart = now
+                            bufferStormCount = 0
+                        }
+                        bufferStormCount++
+                        if (bufferStormCount >= BUFFER_STORM_THRESHOLD && !ffmpegRebuildAttemptedForBufferStorm) {
+                            val isHevc = player?.videoFormat?.sampleMimeType == androidx.media3.common.MimeTypes.VIDEO_H265
+                            if (isHevc && AudioLogger.isFfmpegAvailable) {
+                                ffmpegRebuildAttemptedForBufferStorm = true
+                                bufferStormCount = 0
+                                val channelName = healthMonitor?.channelName ?: "unknown"
+                                AudioLogger.log("Buffer storm detected on HEVC — rebuilding with FFmpeg-preferred audio")
+                                streamDiagnosticLogger.logAppEvent("BUFFER_STORM_FFMPEG_REBUILD",
+                                    "storms=$BUFFER_STORM_THRESHOLD, isAmlogic=${AudioPipelineFactory.isAmlogicDevice()}, channel=$channelName")
+                                rebuildPlayerWithFfmpegPreferred()
+                            }
+                        }
                     }
                     Player.STATE_READY -> {
                         showBufferingOverlay(false)
@@ -1236,6 +1261,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // Track whether HW decoder has ever sustained 24fps — if yes, black screens
             // are rebuffer recovery issues, not decoder incompatibility. Don't escalate to SW.
             var hwDecoderProvenGood = false
+            var watchdogOverlayShown = false
             val isLowMemory = run {
                 val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 am.memoryClass <= 192
@@ -1260,6 +1286,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         noNewFramesSinceMs = android.os.SystemClock.elapsedRealtime()
                     }
                     val frozenMs = android.os.SystemClock.elapsedRealtime() - noNewFramesSinceMs
+                    // Show buffering overlay so user sees spinner instead of black screen
+                    if (frozenMs >= FRAME_WATCHDOG_INTERVAL_MS && !watchdogOverlayShown) {
+                        watchdogOverlayShown = true
+                        withContext(Dispatchers.Main) {
+                            showBufferingOverlay(true)
+                            android.widget.Toast.makeText(context,
+                                "Optimizing video playback…", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     if (frozenMs >= FRAME_WATCHDOG_FROZEN_MS) {
                         watchdogResetCount++
                         noNewFramesSinceMs = 0L
@@ -1278,6 +1313,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         // are rebuffer recovery issues. Use hard reset (stop/prepare/play)
                         // instead of escalating to SW decoder which would be worse.
                         if (hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
+                            // On amlogic, HEVC hard resets lead to buffer storms.
+                            // After 2 hard resets, try FFmpeg audio (EAC3 interaction fix)
+                            if (AudioPipelineFactory.isAmlogicDevice() && watchdogResetCount >= 2
+                                && !ffmpegRebuildAttemptedForBufferStorm) {
+                                val isHevc = p.videoFormat?.sampleMimeType == androidx.media3.common.MimeTypes.VIDEO_H265
+                                if (isHevc && AudioLogger.isFfmpegAvailable) {
+                                    ffmpegRebuildAttemptedForBufferStorm = true
+                                    AudioLogger.log("Frame watchdog: amlogic HEVC — FFmpeg audio rebuild after $watchdogResetCount hard resets")
+                                    streamDiagnosticLogger.logAppEvent("WATCHDOG_AMLOGIC_FFMPEG",
+                                        "resets=$watchdogResetCount, channel=$channelName")
+                                    rebuildPlayerWithFfmpegPreferred()
+                                    continue
+                                }
+                            }
                             AudioLogger.log("Frame watchdog: HW decoder proven good — hard reset (step $watchdogResetCount)")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_HARD_RESET",
                                 "reset=$watchdogResetCount, hwProven=true, channel=$channelName")
@@ -1336,6 +1385,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                 } else {
                     noNewFramesSinceMs = 0L
+                    watchdogOverlayShown = false
                     // Check if HW decoder is rendering at full framerate (20+ fps = proven good)
                     // This means black screens are rebuffer recovery, not decoder incompatibility
                     if (!hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
@@ -1571,6 +1621,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 audioFallbackAttempted = false
                 audioDisabledByFallback = false
                 userTrackOverrideActive = false
+                bufferStormCount = 0
+                bufferStormWindowStart = 0L
+                ffmpegRebuildAttemptedForBufferStorm = false
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
@@ -1623,6 +1676,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 audioFallbackAttempted = false
                 audioDisabledByFallback = false
                 userTrackOverrideActive = false
+                bufferStormCount = 0
+                bufferStormWindowStart = 0L
+                ffmpegRebuildAttemptedForBufferStorm = false
                 trackSelector?.setParameters(
                     trackSelector!!.buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
@@ -1754,6 +1810,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         audioFallbackAttempted = false
         audioDisabledByFallback = false
         userTrackOverrideActive = false
+        bufferStormCount = 0
+        bufferStormWindowStart = 0L
+        ffmpegRebuildAttemptedForBufferStorm = false
 
         // Re-enable audio in case it was disabled by Stage 2 fallback
         // Re-apply subtitle preference (enabled/disabled + preferred language)
@@ -2100,11 +2159,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Release MediaSession before player
         mediaSession?.release()
         mediaSession = null
-        // Release player last — stop + clear surface before release to prevent code 1003 crash
+        // Remove listeners before release to prevent queued callback races (code 1003 crash)
         player?.let { p ->
+            corePlayerListener?.let { p.removeListener(it) }
+            diagnosticListener?.let { l -> p.removeListener(l); p.removeAnalyticsListener(l) }
             try { p.stop(); p.clearVideoSurface() } catch (_: Exception) { }
             try { p.release() } catch (_: Exception) { }
         }
+        corePlayerListener = null
+        diagnosticListener = null
         player = null
         trackSelector = null
         glue = null
@@ -2326,6 +2389,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Require 3 consecutive polls with new frames (6s) before resetting recovery ladder
         // Prevents MTK single-frame-then-black from resetting watchdogResetCount
         private const val SUSTAINED_PLAYBACK_POLLS = 3
+        // Buffer storm detection: rapid BUFFERING→READY cycling (amlogic HEVC+EAC3)
+        private const val BUFFER_STORM_THRESHOLD = 5
+        private const val BUFFER_STORM_WINDOW_MS = 30_000L
 
         fun newInstance(
             streamUrl: String,

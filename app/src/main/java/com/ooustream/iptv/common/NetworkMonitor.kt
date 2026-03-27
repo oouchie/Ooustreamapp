@@ -30,6 +30,16 @@ class NetworkMonitor @Inject constructor(
     /** Diagnostic logger — set after Hilt injection to avoid circular dependency */
     var diagnosticLogger: StreamDiagnosticLogger? = null
 
+    // Throttle NETWORK/CAPABILITIES logging to reduce diagnostic log noise
+    private var lastCapabilitiesLogTime = 0L
+    private var lastLoggedDownMbps = -1
+    private var lastLoggedIsWifi: Boolean? = null
+
+    companion object {
+        private const val CAPABILITIES_LOG_INTERVAL_MS = 60_000L  // 60 seconds
+        private const val BANDWIDTH_CHANGE_THRESHOLD = 0.20f       // 20% change
+    }
+
     private val _state = MutableStateFlow(getCurrentState())
     val state: StateFlow<NetworkState> = _state.asStateFlow()
 
@@ -58,7 +68,20 @@ class NetworkMonitor @Inject constructor(
             )
             val downMbps = capabilities.linkDownstreamBandwidthKbps / 1000
             val upMbps = capabilities.linkUpstreamBandwidthKbps / 1000
-            diagnosticLogger?.logNetworkCapabilities(downMbps, upMbps, isWifi)
+
+            // Throttle logging: only log if time elapsed OR significant change
+            val now = android.os.SystemClock.elapsedRealtime()
+            val timeElapsed = now - lastCapabilitiesLogTime >= CAPABILITIES_LOG_INTERVAL_MS
+            val wifiChanged = lastLoggedIsWifi != null && isWifi != lastLoggedIsWifi
+            val bandwidthChanged = lastLoggedDownMbps > 0 &&
+                kotlin.math.abs(downMbps - lastLoggedDownMbps).toFloat() / lastLoggedDownMbps > BANDWIDTH_CHANGE_THRESHOLD
+
+            if (timeElapsed || wifiChanged || bandwidthChanged || lastCapabilitiesLogTime == 0L) {
+                lastCapabilitiesLogTime = now
+                lastLoggedDownMbps = downMbps
+                lastLoggedIsWifi = isWifi
+                diagnosticLogger?.logNetworkCapabilities(downMbps, upMbps, isWifi)
+            }
         }
     }
 
