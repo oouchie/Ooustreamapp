@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.1",
-  "version_code": 46,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.1/app-release.apk",
-  "changelog": "v3.5.1 — Stability & Device Compatibility Fixes\n\n• Fixed crash on mt8695 Fire TV Sticks (Build.SOC_MODEL API 31+ access)\n• Fixed UserPlanManager crash when server returns malformed response\n• Fixed ExoPlayer release crash (listener callback race condition)\n• HEVC buffer storm recovery on amlogic devices (FFmpeg audio rebuild)\n• \"Optimizing video playback\" message during decoder recovery\n• Reduced diagnostic log noise (network capability throttling)",
+  "version_name": "3.5.2",
+  "version_code": 47,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.2/app-release.apk",
+  "changelog": "v3.5.2 — EPG Freshness & Diagnostics\n\n• Fixed EPG times showing 4 hours off (now uses device timezone correctly)\n• EPG auto-scrolls to current program in Live TV\n• Fresher EPG data (5-min cache, periodic refresh during playback)\n• Live TV auto-retry when server drops connection\n• Debug logs now include user/device identification for support",
   "mandatory": false
 }
