@@ -26,7 +26,10 @@ class EpisodeRecyclerAdapter(
     var watchProgressMap: Map<String, WatchProgressEntity> = emptyMap()
         set(value) {
             field = value
-            notifyDataSetChanged()
+            // Resubmit current list to trigger DiffUtil-based rebind
+            val current = currentList.toList()
+            submitList(null)
+            submitList(current)
         }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EpisodeViewHolder {

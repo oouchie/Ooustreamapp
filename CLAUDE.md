@@ -8,7 +8,21 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.5.1 (versionCode 46)
+- **Current Version**: 3.5.3 (versionCode 48)
+
+## PERFORMANCE REQUIREMENTS
+
+Before writing any code that touches ExoPlayer, UI rendering, RecyclerView, image loading, memory, or network — read and follow `PERFORMANCE_AGENT.md` in the project root. Every ExoPlayer instance must use the standard configuration pattern. Every RecyclerView must follow the 60fps rules. Every player release must use the safe release pattern. No exceptions.
+
+Key non-negotiables from the performance agent:
+- `setEnableDecoderFallback(true)` on every ExoPlayer
+- `android:largeHeap="true"` in manifest
+- Device tier detection (HIGH/MID/LOW/ULTRA_LOW) applied to all configs
+- Memory budget: browsing <150MB, playback <200MB, MultiView <350MB
+- safeReleasePlayer() for every player.release() call
+- DiffUtil for every RecyclerView adapter (never notifyDataSetChanged)
+- Coil hardware bitmaps enabled, cache sizes per device tier
+- MultiView: own HandlerThread per player, staggered startup, SurfaceView never GONE
 
 ## Build
 ```bash

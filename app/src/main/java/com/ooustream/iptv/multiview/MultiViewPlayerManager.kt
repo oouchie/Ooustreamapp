@@ -52,7 +52,7 @@ class MultiViewPlayerManager(
      */
     fun createPlayer(slotIndex: Int, streamUrl: String, playerView: PlayerView?) {
         // Release existing player and thread for this slot
-        players[slotIndex]?.release()
+        safeRelease(players[slotIndex])
         playbackThreads[slotIndex]?.quitSafely()
 
         // Store URL for recovery
@@ -367,7 +367,7 @@ class MultiViewPlayerManager(
         AudioLogger.log("MultiView slot $slotIndex: NUCLEAR RESET (full rebuild)")
 
         // Release old player and thread
-        players[slotIndex]?.release()
+        safeRelease(players[slotIndex])
         players[slotIndex] = null
         trackSelectors[slotIndex] = null
         playbackThreads[slotIndex]?.quitSafely()
@@ -409,7 +409,7 @@ class MultiViewPlayerManager(
      * Smaller buffers reduce time-to-first-frame at the cost of less buffer headroom.
      */
     fun createPlayerReduced(slotIndex: Int, streamUrl: String, playerView: PlayerView?) {
-        players[slotIndex]?.release()
+        safeRelease(players[slotIndex])
         playbackThreads[slotIndex]?.quitSafely()
 
         // Store URL for recovery
@@ -488,7 +488,7 @@ class MultiViewPlayerManager(
      * Releases a single slot's player and its playback thread.
      */
     fun releaseSlot(slotIndex: Int) {
-        players[slotIndex]?.release()
+        safeRelease(players[slotIndex])
         players[slotIndex] = null
         trackSelectors[slotIndex] = null
         streamUrls[slotIndex] = null
@@ -502,7 +502,7 @@ class MultiViewPlayerManager(
     fun releaseAll() {
         audioFadeAnimator?.cancel()
         for (i in 0 until 4) {
-            players[i]?.release()
+            safeRelease(players[i])
             players[i] = null
             trackSelectors[i] = null
             streamUrls[i] = null
@@ -518,6 +518,14 @@ class MultiViewPlayerManager(
     fun getActivePlayerCount(): Int = players.count { it != null }
 
     // ── Private Helpers ──────────────────────────────────────────────
+
+    private fun safeRelease(player: ExoPlayer?) {
+        try {
+            player?.stop()
+            player?.clearVideoSurface()
+            player?.release()
+        } catch (_: Exception) {}
+    }
 
     private fun buildLiveMediaItem(streamUrl: String): MediaItem {
         return MediaItem.Builder()

@@ -85,7 +85,11 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
     }
 
     fun release() {
-        player?.release()
+        try {
+            player?.stop()
+            player?.clearVideoSurface()
+            player?.release()
+        } catch (_: Exception) {}
         player = null
         trackSelector = null
     }

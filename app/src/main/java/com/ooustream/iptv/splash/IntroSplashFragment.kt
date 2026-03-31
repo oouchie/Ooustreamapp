@@ -43,7 +43,12 @@ class IntroSplashFragment : Fragment(), KeyEventHandler {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        player = ExoPlayer.Builder(requireContext()).build().apply {
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(requireContext()).apply {
+            setEnableDecoderFallback(true)
+        }
+        player = ExoPlayer.Builder(requireContext())
+            .setRenderersFactory(renderersFactory)
+            .build().apply {
             val uri = RawResourceDataSource.buildRawResourceUri(R.raw.intro)
             setMediaItem(MediaItem.fromUri(uri))
             addListener(object : Player.Listener {
@@ -74,7 +79,7 @@ class IntroSplashFragment : Fragment(), KeyEventHandler {
             duration = 400
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    player?.release()
+                    try { player?.release() } catch (_: Exception) {}
                     player = null
                     // Post to avoid calling fragment transactions inside animation callbacks,
                     // and check lifecycle to prevent IllegalStateException after onSaveInstanceState
@@ -99,7 +104,7 @@ class IntroSplashFragment : Fragment(), KeyEventHandler {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        player?.release()
+        try { player?.release() } catch (_: Exception) {}
         player = null
         playerView = null
     }

@@ -36,6 +36,7 @@ class FavoritesAdapter(
             if (field != value) {
                 field = value
                 isFirstLoad = true
+                // Full rebind required — view TYPE changes (grid vs list layout)
                 notifyDataSetChanged()
             }
         }
@@ -44,6 +45,7 @@ class FavoritesAdapter(
         set(value) {
             if (field != value) {
                 field = value
+                // Full rebind required — every item's delete button visibility changes
                 notifyDataSetChanged()
             }
         }

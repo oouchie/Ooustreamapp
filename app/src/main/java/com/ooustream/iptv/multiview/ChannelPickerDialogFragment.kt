@@ -412,9 +412,16 @@ private class ChannelPickerAdapter(
     override fun getItemCount(): Int = channels.size
 
     fun updateChannels(newChannels: List<LiveStream>) {
+        val oldChannels = channels
         channels = newChannels
         epgCache.clear()
-        notifyDataSetChanged()
+        val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
+            override fun getOldListSize() = oldChannels.size
+            override fun getNewListSize() = newChannels.size
+            override fun areItemsTheSame(old: Int, new: Int) = oldChannels[old].streamId == newChannels[new].streamId
+            override fun areContentsTheSame(old: Int, new: Int) = oldChannels[old].streamId == newChannels[new].streamId && oldChannels[old].name == newChannels[new].name
+        })
+        diff.dispatchUpdatesTo(this)
     }
 
     fun updateEpg(streamId: Int, epgTitle: String?) {

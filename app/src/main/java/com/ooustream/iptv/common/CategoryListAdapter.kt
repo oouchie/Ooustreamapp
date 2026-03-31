@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.ooustream.iptv.R
 import kotlinx.coroutines.CoroutineScope
@@ -31,10 +32,19 @@ class CategoryListAdapter(
     private var specialEmojiColors: Map<String, Int> = emptyMap()
 
     fun updateData(newItems: List<CategoryItem>, newSelectedId: String?, emojiColors: Map<String, Int> = emptyMap()) {
+        val oldItems = items
+        val oldSelectedId = selectedId
         items = newItems
         selectedId = newSelectedId
         specialEmojiColors = emojiColors
-        notifyDataSetChanged()
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = oldItems.size
+            override fun getNewListSize() = newItems.size
+            override fun areItemsTheSame(old: Int, new: Int) = oldItems[old].id == newItems[new].id
+            override fun areContentsTheSame(old: Int, new: Int) =
+                oldItems[old] == newItems[new] && (oldSelectedId == selectedId || (oldItems[old].id != oldSelectedId && newItems[new].id != selectedId))
+        })
+        diff.dispatchUpdatesTo(this)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CategoryViewHolder {

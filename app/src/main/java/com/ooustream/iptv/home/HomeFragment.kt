@@ -1429,7 +1429,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val dataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+            setEnableDecoderFallback(true)
+        }
         val player = ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(com.ooustream.iptv.player.BufferConfigs.forContentType(ContentType.VOD))
             .setTrackSelector(trackSelector)
@@ -1513,8 +1517,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroDwellJob?.cancel()
         heroPreviewActive = false
         heroPreviewPlayer?.let { player ->
-            player.stop()
-            player.release()
+            try {
+                player.stop()
+                player.clearVideoSurface()
+                player.release()
+            } catch (_: Exception) {}
         }
         heroPreviewPlayer = null
         heroPreviewView?.let { pv ->
