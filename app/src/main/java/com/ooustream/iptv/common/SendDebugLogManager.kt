@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
+import android.provider.Settings
 import android.view.Gravity
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -17,6 +18,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
 import com.ooustream.iptv.BuildConfig
+import com.ooustream.iptv.data.repository.CredentialStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -34,7 +36,8 @@ import javax.inject.Singleton
 @Singleton
 class SendDebugLogManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val logger: StreamDiagnosticLogger
+    private val logger: StreamDiagnosticLogger,
+    private val credentialStore: CredentialStore
 ) {
     companion object {
         private const val SUPPORT_EMAIL = "info@ooustick.com"
@@ -54,10 +57,11 @@ class SendDebugLogManager @Inject constructor(
     }
 
     private fun uploadToFirebase(activityContext: Context, logFile: File, description: String) {
+        val user = try { credentialStore.load()?.username ?: "unknown" } catch (_: Exception) { "unknown" }
         val refId = "DL-${UUID.randomUUID().toString().take(8).uppercase()}"
         val deviceInfo = "${Build.BRAND} ${Build.MODEL}"
         val dateStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
-        val storagePath = "debug-logs/$dateStr-$refId.txt"
+        val storagePath = "debug-logs/$dateStr-${user}-$refId.txt"
 
         // Show uploading dialog
         val progressDialog = AlertDialog.Builder(activityContext)
@@ -72,13 +76,17 @@ class SendDebugLogManager @Inject constructor(
         val storageRef = FirebaseStorage.getInstance().reference.child(storagePath)
         val uri = android.net.Uri.fromFile(logFile)
 
-        // Add metadata: description + device info
+        // Add metadata: description + device info + user identity
+        val username = try { credentialStore.load()?.username ?: "unknown" } catch (_: Exception) { "unknown" }
+        val deviceId = try { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown" } catch (_: Exception) { "unknown" }
         val metadata = com.google.firebase.storage.StorageMetadata.Builder()
             .setCustomMetadata("ref_id", refId)
             .setCustomMetadata("device", deviceInfo)
             .setCustomMetadata("app_version", BuildConfig.VERSION_NAME)
             .setCustomMetadata("android_version", Build.VERSION.RELEASE)
             .setCustomMetadata("description", description.take(500))
+            .setCustomMetadata("username", username)
+            .setCustomMetadata("device_id", deviceId)
             .setContentType("text/plain")
             .build()
 

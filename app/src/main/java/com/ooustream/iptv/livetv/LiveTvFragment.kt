@@ -358,6 +358,42 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         epgList.adapter = EpgAdapter(emptyList())
                     } else {
                         epgList.adapter = EpgAdapter(programs)
+                        // Auto-scroll to the currently airing program so user sees "now", not past programs
+                        val nowEpoch = System.currentTimeMillis() / 1000
+                        // Strategy 1: exact range match via unix timestamps
+                        var scrollIndex = programs.indexOfFirst { p ->
+                            val start = p.startTimestamp?.toLongOrNull() ?: return@indexOfFirst false
+                            val end = p.stopTimestamp?.toLongOrNull() ?: return@indexOfFirst false
+                            nowEpoch in start..end
+                        }
+                        // Strategy 2: exact range match via date strings (parsed as local time)
+                        if (scrollIndex < 0) {
+                            val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                            val nowDate = java.util.Date()
+                            scrollIndex = programs.indexOfFirst { p ->
+                                try {
+                                    val start = p.start?.let { fmt.parse(it) } ?: return@indexOfFirst false
+                                    val end = p.end?.let { fmt.parse(it) } ?: return@indexOfFirst false
+                                    nowDate.after(start) && nowDate.before(end)
+                                } catch (_: Exception) { false }
+                            }
+                        }
+                        // Strategy 3: last program that started before now (handles gaps/missing end times)
+                        if (scrollIndex < 0) {
+                            val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                            val nowMs = System.currentTimeMillis()
+                            scrollIndex = programs.indexOfLast { p ->
+                                val startMs = p.startTimestamp?.toLongOrNull()?.let { it * 1000 }
+                                    ?: try { p.start?.let { fmt.parse(it)?.time } } catch (_: Exception) { null }
+                                startMs != null && startMs <= nowMs
+                            }
+                        }
+                        if (scrollIndex > 0) {
+                            epgList.post {
+                                (epgList.layoutManager as? LinearLayoutManager)
+                                    ?.scrollToPositionWithOffset(scrollIndex, 0)
+                            }
+                        }
                     }
 
                     // Update focused channel card with EPG text (real or inferred)
@@ -380,7 +416,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                             }
                             if (current?.title != null) {
                                 epgTextView?.text = current.title
-                                epgTimeView?.text = ChannelDisplayHelper.formatEpgTimeCompact(current.start)
+                                epgTimeView?.text = ChannelDisplayHelper.formatEpgTimeCompact(current.start, current.startTimestamp)
                                 epgContainer?.visibility = View.VISIBLE
                                 smartEpgFiller.learnPattern(channel.streamId, channel.name, current.title!!)
 
@@ -480,8 +516,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             description.text = program.description ?: ""
             description.visibility = if (program.description.isNullOrBlank()) View.GONE else View.VISIBLE
 
-            // Format time display
-            time.text = formatEpgTime(program.start)
+            // Format time display — prefer Unix timestamp (timezone-correct)
+            time.text = formatEpgTime(program)
 
             // Highlight current program with aurora styling
             val isCurrent = isCurrentProgram(program)
@@ -492,14 +528,20 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             }
         }
 
-        private fun formatEpgTime(startTime: String?): String {
+        private fun formatEpgTime(program: EpgProgram): String {
+            // Prefer Unix timestamp — always timezone-correct
+            val epochSec = program.startTimestamp?.toLongOrNull()
+            if (epochSec != null) {
+                val outputFormat = SimpleDateFormat("h:mm a", Locale.US)
+                return outputFormat.format(java.util.Date(epochSec * 1000))
+            }
+            // Fallback: parse start string as local time (Xtream servers provide local times)
+            val startTime = program.start
             if (startTime.isNullOrBlank()) return ""
             return try {
                 val inputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-                inputFormat.timeZone = TimeZone.getTimeZone("UTC")
                 val date = inputFormat.parse(startTime) ?: return startTime
                 val outputFormat = SimpleDateFormat("h:mm a", Locale.US)
-                outputFormat.timeZone = TimeZone.getDefault()
                 outputFormat.format(date)
             } catch (e: Exception) {
                 startTime
@@ -513,10 +555,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                 val now = System.currentTimeMillis() / 1000
                 return now in startTs..stopTs
             }
-            // Fallback: parse start/end strings
+            // Fallback: parse start/end strings as local time (Xtream servers provide local times)
             return try {
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-                fmt.timeZone = TimeZone.getTimeZone("UTC")
                 val now = Date()
                 val start = program.start?.let { fmt.parse(it) }
                 val end = program.end?.let { fmt.parse(it) }

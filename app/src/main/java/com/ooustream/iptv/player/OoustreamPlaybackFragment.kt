@@ -106,6 +106,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var controlsBar: PlayerControlsBar? = null
     private var controlsManager: PlayerControlsManager? = null
     private var currentEpg: List<com.ooustream.iptv.data.model.EpgProgram> = emptyList()
+    private var lastEpgRefreshMs = 0L
 
     // Playback hardening state
     private var mediaSession: MediaSession? = null
@@ -740,6 +741,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         if (channel != null) {
                             val epg = try { epgCacheRepository.getEpg(channel.streamId) } catch (_: Exception) { emptyList() }
                             currentEpg = epg
+                            lastEpgRefreshMs = System.currentTimeMillis()
                             val now = System.currentTimeMillis() / 1000
                             val currentProg = epg.find { p ->
                                 val start = p.startTimestamp?.toLongOrNull() ?: return@find false
@@ -806,14 +808,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 when (viewModel.contentType) {
                     ContentType.LIVE -> {
                         val needsReload = bar.updateLiveProgress(currentEpg)
-                        if (needsReload) {
-                            // EPG program ended — reload
+                        val now = System.currentTimeMillis()
+                        // Refresh EPG when: program ended, or every 5 minutes
+                        val periodicRefreshDue = now - lastEpgRefreshMs > 5 * 60 * 1000L
+                        if (needsReload || periodicRefreshDue) {
                             val channels = viewModel.channels.value
                             val idx = viewModel.currentChannelIndex.value
                             val channel = channels.getOrNull(idx)
                             if (channel != null) {
-                                val epg = try { epgCacheRepository.getEpg(channel.streamId) } catch (_: Exception) { emptyList() }
+                                // First try cache; if no current program found, force-refresh from server
+                                var epg = try { epgCacheRepository.getEpg(channel.streamId) } catch (_: Exception) { emptyList() }
+                                val nowSec = now / 1000
+                                val hasCurrent = epg.any { prog ->
+                                    val s = prog.startTimestamp?.toLongOrNull() ?: return@any false
+                                    val e = prog.stopTimestamp?.toLongOrNull() ?: return@any false
+                                    nowSec in s..e
+                                }
+                                if (!hasCurrent) {
+                                    epg = try { epgCacheRepository.forceRefresh(channel.streamId) } catch (_: Exception) { emptyList() }
+                                }
                                 currentEpg = epg
+                                lastEpgRefreshMs = now
                                 bar.bindLive(channel, epg, idx)
                             }
                         }
@@ -1004,6 +1019,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         showBufferingOverlay(false)
                         stallDetectorJob?.cancel()
                         frameWatchdogJob?.cancel()
+                        // Live streams should never end — server dropped connection, auto-retry
+                        if (viewModel.contentType == ContentType.LIVE) {
+                            streamDiagnosticLogger.logAppEvent("LIVE_STREAM_ENDED", "channel=${glue?.title}, auto-retrying")
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                delay(1000)
+                                val p = player ?: return@launch
+                                p.seekToDefaultPosition()
+                                p.prepare()
+                                p.play()
+                            }
+                            return
+                        }
                         if (viewModel.contentType != ContentType.LIVE) {
                             val p = player
                             val dur = p?.duration ?: 0
@@ -1860,6 +1887,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val epg = try { epgCacheRepository.getEpg(channel.streamId) } catch (_: Exception) { emptyList() }
             currentEpg = epg
+            lastEpgRefreshMs = System.currentTimeMillis()
 
             // Check for current program to decide if we need inferred EPG
             val now = System.currentTimeMillis() / 1000

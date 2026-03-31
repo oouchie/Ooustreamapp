@@ -24,6 +24,18 @@ class EpgCacheRepository @Inject constructor(
             return deserializePrograms(cached.programs)
         }
 
+        return fetchAndCache(streamId)
+    }
+
+    /**
+     * Force-refresh EPG from server, bypassing cache.
+     * Used when cached EPG has no program matching current time.
+     */
+    suspend fun forceRefresh(streamId: Int): List<EpgProgram> {
+        return fetchAndCache(streamId)
+    }
+
+    private suspend fun fetchAndCache(streamId: Int): List<EpgProgram> {
         // Fetch from network and decode Base64 title/description
         val programs = try {
             (contentRepository.getShortEpg(streamId).epgListings ?: emptyList()).map { p ->
@@ -80,6 +92,6 @@ class EpgCacheRepository @Inject constructor(
     }
 
     companion object {
-        private const val CACHE_DURATION_MS = 30 * 60 * 1000L // 30 minutes
+        private const val CACHE_DURATION_MS = 5 * 60 * 1000L // 5 minutes
     }
 }

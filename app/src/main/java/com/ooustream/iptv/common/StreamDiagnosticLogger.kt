@@ -6,8 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
 import android.util.Log
 import com.ooustream.iptv.BuildConfig
+import com.ooustream.iptv.data.repository.CredentialStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.BufferedWriter
 import java.io.File
@@ -27,7 +29,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class StreamDiagnosticLogger @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val credentialStore: CredentialStore
 ) {
     private val logDir = File(context.filesDir, "diagnostics")
     private var currentLogFile: File? = null
@@ -265,6 +268,8 @@ class StreamDiagnosticLogger @Inject constructor(
             appendLine("Hardware: ${Build.HARDWARE}")
             appendLine("RAM: ${getDeviceRamMb()}MB")
             appendLine("Is TV: ${isTV()}")
+            appendLine("User: ${getUsername()}")
+            appendLine("Device ID: ${getDeviceId()}")
             appendLine("═══════════════════════════════════════════════════")
             appendLine()
         }
@@ -306,6 +311,8 @@ class StreamDiagnosticLogger @Inject constructor(
             appendLine("║ RAM Free: ${getAvailableRamMb()}MB available")
             appendLine("║ Storage Free: ${getAvailableStorageMb()}MB")
             appendLine("║ Is TV: ${isTV()}")
+            appendLine("║ User: ${getUsername()}")
+            appendLine("║ Device ID: ${getDeviceId()}")
             appendLine("╚═══════════════════════════════════════════════╝")
         }
     }
@@ -333,5 +340,18 @@ class StreamDiagnosticLogger @Inject constructor(
 
     private fun isTV(): Boolean {
         return context.packageManager.hasSystemFeature("android.software.leanback")
+    }
+
+    private fun getUsername(): String {
+        return try {
+            credentialStore.load()?.username ?: "not_logged_in"
+        } catch (_: Exception) { "unknown" }
+    }
+
+    private fun getDeviceId(): String {
+        return try {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                ?: "unknown"
+        } catch (_: Exception) { "unknown" }
     }
 }

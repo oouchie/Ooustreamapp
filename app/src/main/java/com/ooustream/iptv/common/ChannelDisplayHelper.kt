@@ -133,14 +133,20 @@ object ChannelDisplayHelper {
     /**
      * Format EPG time for compact display: "9:00p" or "21:00"
      */
-    fun formatEpgTimeCompact(startTime: String?): String {
+    fun formatEpgTimeCompact(startTime: String?, startTimestamp: String? = null): String {
+        // Prefer Unix timestamp — always timezone-correct
+        val epochSec = startTimestamp?.toLongOrNull()
+        if (epochSec != null) {
+            val outputFormat = SimpleDateFormat("h:mma", Locale.US)
+            return outputFormat.format(java.util.Date(epochSec * 1000))
+                .lowercase().replace("am", "a").replace("pm", "p")
+        }
+        // Fallback: parse start string as local time (Xtream servers provide local times)
         if (startTime.isNullOrBlank()) return ""
         return try {
             val inputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-            inputFormat.timeZone = TimeZone.getTimeZone("UTC")
             val date = inputFormat.parse(startTime) ?: return ""
             val outputFormat = SimpleDateFormat("h:mma", Locale.US)
-            outputFormat.timeZone = TimeZone.getDefault()
             outputFormat.format(date).lowercase().replace("am", "a").replace("pm", "p")
         } catch (e: Exception) {
             ""

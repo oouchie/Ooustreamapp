@@ -84,7 +84,7 @@ class MainActivity : FragmentActivity() {
                 } else {
                     supportFragmentManager.beginTransaction()
                         .replace(R.id.main_container, LoginFragment())
-                        .commit()
+                        .commitAllowingStateLoss()
                 }
             }
             supportFragmentManager.beginTransaction()
