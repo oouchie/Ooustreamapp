@@ -158,7 +158,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         } catch (_: Exception) { }
 
         val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val loadControl = if (am.memoryClass <= 128) {
+        // AFTMM (mt8695, 1285MB RAM) has memoryClass ~160 but only 164-184MB actual heap.
+        // 60s buffer at HIGH quality fills the heap and causes OOM in PlayerControlsBar.formatDuration().
+        // Threshold raised from 128 to 192 to match watchdog's low-memory classification.
+        val loadControl = if (am.memoryClass <= 192) {
             BufferConfigs.forLowMemory(viewModel.contentType)
         } else {
             BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
@@ -1013,7 +1016,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         showBufferingOverlay(false)
                         stallDetectorJob?.cancel()
                         retryCount = 0
-                        startFrameWatchdog()
+                        // Only start watchdog if not already running — restarting it
+                        // resets watchdogResetCount to 0, preventing escalation to SW decoder.
+                        // Seek flushes cause BUFFERING→READY which was restarting the watchdog
+                        // every ~8s, trapping the recovery ladder at step 1 forever.
+                        if (frameWatchdogJob?.isActive != true) {
+                            startFrameWatchdog()
+                        }
                     }
                     Player.STATE_ENDED -> {
                         showBufferingOverlay(false)
@@ -1832,7 +1841,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Auto-close track picker on channel switch
         if (trackPickerOverlay?.isShowing == true) trackPickerOverlay?.dismiss()
 
-        // Reset audio state for new channel
+        // Reset audio + video recovery state for new channel
         retryCount = 0
         audioFallbackAttempted = false
         audioDisabledByFallback = false
@@ -1840,6 +1849,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         bufferStormCount = 0
         bufferStormWindowStart = 0L
         ffmpegRebuildAttemptedForBufferStorm = false
+        // Force-restart watchdog so the new channel gets a fresh escalation ladder
+        frameWatchdogJob?.cancel()
+        frameWatchdogJob = null
 
         // Re-enable audio in case it was disabled by Stage 2 fallback
         // Re-apply subtitle preference (enabled/disabled + preferred language)

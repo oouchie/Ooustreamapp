@@ -77,10 +77,13 @@ class VodFragment : Fragment(), KeyEventHandler {
 
         navHints.text = "OK: Play Movie \u2022 Long-press: More Info \u2022 Back: Home"
 
-        // Hide TV-only elements on mobile
+        // Hide TV-only elements on mobile + enable touch passthrough on Leanback grids
         if (!DeviceUtils.isTV(requireContext())) {
             navHints.visibility = View.GONE
             view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
+            // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
+            posterGrid.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+            posterGrid.isFocusableInTouchMode = false
         }
 
         // Content info overlay for long-press
@@ -307,11 +310,17 @@ class VodFragment : Fragment(), KeyEventHandler {
                 tmdbId = movie.tmdbId
             )
         }
-        // Use atomic notifyDataSetChanged (null DiffCallback) to prevent
-        // VerticalGridView position -1 crash from granular diff notifications
+        // Reset grid to position 0 before updating to prevent Leanback internal crash:
+        // GridLayoutManager.prependVisibleItems reads stale firstVisibleIndex=-1 during
+        // the deferred layout pass from notifyDataSetChanged, causing position -1 IOOBE.
+        try { if (posterAdapter.size() > 0) grid.selectedPosition = 0 } catch (_: Exception) { }
         posterAdapter.setItems(newItems, null)
         if (newItems.isNotEmpty() && savedPos >= 0) {
-            grid.selectedPosition = savedPos.coerceAtMost(newItems.size - 1)
+            grid.post {
+                try {
+                    grid.selectedPosition = savedPos.coerceAtMost(newItems.size - 1)
+                } catch (_: Exception) { }
+            }
         }
     }
 
