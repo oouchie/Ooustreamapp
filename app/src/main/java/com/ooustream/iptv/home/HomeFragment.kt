@@ -80,6 +80,7 @@ import java.util.Calendar
 class HomeFragment : Fragment(), KeyEventHandler {
 
     @Inject lateinit var userPlanManager: UserPlanManager
+    @Inject lateinit var credentialStore: com.ooustream.iptv.data.repository.CredentialStore
 
     private val viewModel: HomeViewModel by viewModels()
 
@@ -142,6 +143,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var auroraBackground: AuroraBackgroundView
     private lateinit var becauseYouWatchedContainer: LinearLayout
     private lateinit var sportsBanner: View
+    private lateinit var top10Label: TextView
+    private lateinit var top10Row: HorizontalGridView
+    private lateinit var genreRowsContainer: LinearLayout
+    private lateinit var heroGreeting: TextView
 
     // Adapters
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
@@ -157,6 +162,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private val sectionObjectAdapter = ArrayObjectAdapter(sectionPresenterSelector)
     private val trendingObjectAdapter = ArrayObjectAdapter(PosterPresenter())
     private val trendingSeriesObjectAdapter = ArrayObjectAdapter(PosterPresenter())
+    private val top10ObjectAdapter = ArrayObjectAdapter(Top10Presenter())
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -217,7 +223,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
         if (!DeviceUtils.isTV(requireContext())) setupHeroSwipeGesture()
         observeFeaturedContent()
         observeContinueWatching()
-        observeLiveSports()
+        // Sports banner removed — unnecessary UI clutter
+        sportsBanner.visibility = View.GONE
         observeNewEpisodes()
         observeForYouContent()
         observeBecauseYouWatched()
@@ -225,8 +232,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
         observeTrendingContent()
         setupTrendingSeriesRow()
         observeTrendingSeries()
+        setupTop10Row()
+        observeTop10Content()
+        observeGenreRows()
         setupWatchAgainRow()
         observeWatchItAgain()
+        setupGreeting()
         loadFeatured()
         setupOnboarding(view)
 
@@ -471,6 +482,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun bindViews(view: View) {
         heroBackdrop = view.findViewById(R.id.hero_backdrop)
+        // Bulletproof clipping: clipBounds works with hardware-accelerated transforms
+        // where clipToOutline/clipChildren fails on Fire TV
+        val heroContainerView = view.findViewById<View>(R.id.hero_container)
+        heroContainerView.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            v.clipBounds = android.graphics.Rect(0, 0, v.width, v.height)
+        }
         heroTitle = view.findViewById(R.id.hero_title)
         heroGenre = view.findViewById(R.id.hero_genre)
         heroWatchNow = view.findViewById(R.id.hero_watch_now)
@@ -496,6 +513,19 @@ class HomeFragment : Fragment(), KeyEventHandler {
         trendingSeriesRow = view.findViewById(R.id.trending_series_row)
         becauseYouWatchedContainer = view.findViewById(R.id.because_you_watched_container)
         sportsBanner = view.findViewById(R.id.sports_banner)
+        top10Label = view.findViewById(R.id.top10_label)
+        top10Row = view.findViewById(R.id.top10_row)
+        genreRowsContainer = view.findViewById(R.id.genre_rows_container)
+        heroGreeting = view.findViewById(R.id.hero_greeting)
+
+        // On mobile: let touch events pass directly to grid children (Leanback grids intercept first tap for focus)
+        if (!DeviceUtils.isTV(requireContext())) {
+            val grids = listOf(continueWatchingRow, newEpisodesRow, watchAgainRow, forYouRow,
+                forYouLiveRow, channelStripRow, sectionsRow, trendingRow, trendingSeriesRow, top10Row)
+            for (grid in grids) {
+                grid.isFocusableInTouchMode = true
+            }
+        }
     }
 
     // ── Aurora Background ──────────────────────────────────────────────────
@@ -568,14 +598,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         frostedHeader.alpha = progress
                     }
 
-                    // Backdrop: parallax at 0.4x + fade + subtle scale down
-                    heroBackdrop.translationY = -scrollY * 0.4f
+                    // Backdrop: fade only (no translationY — Fire TV doesn't clip translated views)
                     heroBackdrop.alpha = 1f - progress
-                    heroBackdrop.scaleX = 1f - (progress * 0.05f)
-                    heroBackdrop.scaleY = 1f - (progress * 0.05f)
 
                     // Content overlay: faster parallax (0.6x) + faster fade
-                    heroContentOverlay?.translationY = -scrollY * 0.6f
+                    // Content overlay fades faster than backdrop for depth
+
                     heroContentOverlay?.alpha = 1f - (progress * 1.3f).coerceAtMost(1f)
 
                     // Bottom gradient: intensifies on scroll
@@ -788,6 +816,176 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     }
                 }
             }
+        }
+    }
+
+    // ── Greeting ─────────────────────────────────────────────────────────
+
+    private fun setupGreeting() {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val greeting = when (hour) {
+            in 5..11 -> "Good Morning"
+            in 12..16 -> "Good Afternoon"
+            in 17..20 -> "Good Evening"
+            else -> "Good Night"
+        }
+        val username = try {
+            credentialStore.load()?.username?.replaceFirstChar { it.uppercase() }
+        } catch (_: Exception) { null }
+        heroGreeting.text = if (!username.isNullOrBlank()) "$greeting, $username" else greeting
+        heroGreeting.visibility = View.VISIBLE
+    }
+
+    // ── Top 10 Row ──────────────────────────────────────────────────────
+
+    private fun setupTop10Row() {
+        val bridgeAdapter = ItemBridgeAdapter(top10ObjectAdapter)
+        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                val position = viewHolder.adapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val top10 = top10ObjectAdapter.get(position) as? Top10Item ?: return@setOnClickListener
+                    val item = top10.poster
+                    val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
+                        vodId = item.id,
+                        vodName = item.title,
+                        coverUrl = item.imageUrl,
+                        containerExtension = item.extension
+                    )
+                    requireActivity().supportFragmentManager.beginTransaction()
+                        .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
+                        .replace(R.id.main_container, fragment)
+                        .addToBackStack(null)
+                        .commit()
+                }
+                attachRowDimming(top10Row, top10Label, viewHolder, position)
+            }
+        })
+        top10Row.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
+        top10Row.adapter = bridgeAdapter
+    }
+
+    private fun observeTop10Content() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.top10Content.collect { items ->
+                    val top10Items = items.mapIndexed { index, vod ->
+                        Top10Item(
+                            rank = index + 1,
+                            poster = com.ooustream.iptv.common.PosterItem(
+                                id = vod.streamId,
+                                title = vod.name,
+                                imageUrl = vod.streamIcon,
+                                rating = vod.rating,
+                                extension = vod.containerExtension,
+                                type = "vod",
+                                tmdbId = vod.tmdbId
+                            )
+                        )
+                    }
+                    top10ObjectAdapter.safeReplaceAll(top10Items)
+                    if (top10Items.isNotEmpty()) {
+                        top10Label.visibility = View.VISIBLE
+                        top10Row.visibility = View.VISIBLE
+                    } else {
+                        top10Label.visibility = View.GONE
+                        top10Row.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Genre Rows ──────────────────────────────────────────────────────
+
+    private fun observeGenreRows() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.genreRows.collect { rows ->
+                    renderGenreRows(rows)
+                }
+            }
+        }
+    }
+
+    private fun renderGenreRows(rows: List<HomeViewModel.GenreRow>) {
+        genreRowsContainer.removeAllViews()
+        if (rows.isEmpty()) {
+            genreRowsContainer.visibility = View.GONE
+            return
+        }
+        genreRowsContainer.visibility = View.VISIBLE
+
+        val spacingMd = resources.getDimensionPixelSize(R.dimen.spacing_md)
+        val overscanMargin = resources.getDimensionPixelSize(R.dimen.overscan_margin)
+        val rowHeight = resources.getDimensionPixelSize(R.dimen.row_trending_height)
+
+        for (row in rows) {
+            val label = TextView(requireContext()).apply {
+                text = row.genreName
+                setTextColor(resources.getColor(R.color.text_primary, null))
+                textSize = 18f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(overscanMargin, 0, overscanMargin, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 24.dp }
+            }
+
+            val gridView = androidx.leanback.widget.HorizontalGridView(requireContext()).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    rowHeight
+                ).apply { topMargin = 12.dp }
+                setPadding(overscanMargin, 0, 0, 0)
+                clipToPadding = false
+                clipChildren = false
+                isFocusable = true
+                isFocusableInTouchMode = !DeviceUtils.isTV(requireContext())
+                descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                setItemSpacing(spacingMd)
+            }
+
+            val objectAdapter = ArrayObjectAdapter(PosterPresenter())
+            val posterItems = row.items.map { vod ->
+                com.ooustream.iptv.common.PosterItem(
+                    id = vod.streamId,
+                    title = vod.name,
+                    imageUrl = vod.streamIcon,
+                    rating = vod.rating,
+                    extension = vod.containerExtension,
+                    type = "vod",
+                    tmdbId = vod.tmdbId
+                )
+            }
+            objectAdapter.addAll(0, posterItems)
+
+            val bridge = ItemBridgeAdapter(objectAdapter)
+            bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+                override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                    val position = viewHolder.adapterPosition
+                    viewHolder.itemView.setOnClickListener {
+                        val item = objectAdapter.get(position) as? com.ooustream.iptv.common.PosterItem ?: return@setOnClickListener
+                        val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
+                            vodId = item.id,
+                            vodName = item.title,
+                            coverUrl = item.imageUrl,
+                            containerExtension = item.extension
+                        )
+                        requireActivity().supportFragmentManager.beginTransaction()
+                            .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
+                            .replace(R.id.main_container, fragment)
+                            .addToBackStack(null)
+                            .commit()
+                    }
+                    attachRowDimming(gridView, label, viewHolder, position)
+                }
+            })
+            gridView.adapter = bridge
+
+            genreRowsContainer.addView(label)
+            genreRowsContainer.addView(gridView)
         }
     }
 
@@ -1091,6 +1289,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 clipToPadding = false
                 clipChildren = false
                 isFocusable = true
+                isFocusableInTouchMode = !DeviceUtils.isTV(requireContext())
                 descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                 setItemSpacing(spacingMd)
             }
@@ -1275,7 +1474,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 .withEndAction {
                     loadHeroImage(item)
                     bindHeroContent(item)
-                    // Reset Ken Burns
                     heroBackdrop.scaleX = 1f
                     heroBackdrop.scaleY = 1f
                     heroBackdrop.animate()
@@ -1335,14 +1533,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
         heroGenre.text = item.genre
     }
 
-    /** Ken Burns: slow zoom 1.0→1.05x over 8 seconds */
+    /** Ken Burns disabled — scale transforms overflow hero_container on Fire TV */
     private fun startKenBurns() {
         kenBurnsJob?.cancel()
-        heroBackdrop.animate()
-            .scaleX(1.05f).scaleY(1.05f)
-            .setDuration(8_000)
-            .setInterpolator(android.view.animation.LinearInterpolator())
-            .start()
+        // No scale animation — keep heroBackdrop at 1.0x so it stays within container bounds
     }
 
     private fun loadHeroImage(item: FeaturedItem) {

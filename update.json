@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.4",
-  "version_code": 49,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.4/app-release.apk",
-  "changelog": "v3.5.4 — Watchdog & Stability Fixes\n\n• Fixed black screen loop on 1080p AVC content (AFTMM/AFTSSS) — watchdog now properly escalates to software decoder instead of looping seek flushes forever\n• Fixed OOM crash on devices with 160-192MB heap class — buffer sizing threshold raised to prevent 60s buffer from filling memory\n• Fixed VOD/Series grid crash (position -1) — additional Leanback GridLayoutManager safety guards",
+  "version_name": "3.5.5",
+  "version_code": 50,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.5/app-release.apk",
+  "changelog": "v3.5.5 — Home Redesign & Hero Fix\n\n• NEW: Top 10 Today row on Home — Netflix-style ranked cards from trending algorithm\n• NEW: Personalized Genre Rows — up to 4 dynamic category rows sorted by your most-watched categories\n• NEW: Time-of-day greeting on hero (Good Morning/Afternoon/Evening, username)\n• Fixed: Hero backdrop image bleeding into Continue Watching row on Fire TV — root cause was Ken Burns scale transform combined with a Fire TV clipping bug\n• Removed: Sports banner (reduces Home load time by saving a network call)\n• Mobile: Single-tap fullscreen on Live TV, improved grid touch responsiveness, search result tap fixes",
   "mandatory": false
 }

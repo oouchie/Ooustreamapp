@@ -95,7 +95,20 @@
                     android:orientation="vertical"
                     android:paddingStart="@dimen/overscan_margin"
                     android:paddingEnd="@dimen/overscan_margin"
-                    android:paddingBottom="28dp">
+                    android:paddingBottom="16dp">
+
+                    <!-- Time-of-day greeting -->
+                    <TextView
+                        android:id="@+id/hero_greeting"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="2dp"
+                        android:textColor="#B3FFFFFF"
+                        android:textSize="14sp"
+                        android:letterSpacing="0.03"
+                        android:visibility="gone"
+                        tools:text="Good Evening, Marcus"
+                        tools:visibility="visible" />
 
                     <!-- Metadata chips: rating | year | genre -->
                     <LinearLayout
@@ -295,6 +308,34 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <!-- Top 10 Section -->
+                <TextView
+                    android:id="@+id/top10_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:paddingEnd="@dimen/overscan_margin"
+                    android:layout_marginTop="24dp"
+                    android:text="Top 10 Today"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/top10_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/row_top10_height"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="@dimen/overscan_margin"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:visibility="gone"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
                 <!-- New Episodes Section -->
@@ -498,6 +539,14 @@
                     android:focusable="true"
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
+
+                <!-- Genre Rows (dynamically populated) -->
+                <LinearLayout
+                    android:id="@+id/genre_rows_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
 
                 <!-- Watch It Again Section (bottom of home) -->
                 <TextView

@@ -50,6 +50,11 @@
     <dimen name="row_trending_height">185dp</dimen>
     <dimen name="row_new_episodes_height">185dp</dimen>
     <dimen name="row_watch_again_height">185dp</dimen>
+    <dimen name="row_top10_height">185dp</dimen>
+    <dimen name="top10_card_width">220dp</dimen>
+    <dimen name="top10_card_height">165dp</dimen>
+    <dimen name="top10_poster_width">110dp</dimen>
+    <dimen name="top10_number_size">80sp</dimen>
 
     <!-- Grid -->
     <integer name="poster_columns">3</integer>

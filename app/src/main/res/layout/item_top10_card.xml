@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="@dimen/top10_card_width"
+    android:layout_height="@dimen/top10_card_height"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:foreground="?android:attr/selectableItemBackground"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- Large rank number — overlaps poster left edge -->
+    <TextView
+        android:id="@+id/top10_number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:textSize="@dimen/top10_number_size"
+        android:textStyle="bold"
+        android:textColor="#33FFC107"
+        android:fontFamily="sans-serif-black"
+        android:includeFontPadding="false"
+        android:letterSpacing="-0.05"
+        tools:text="1" />
+
+    <!-- Poster image — offset to right to make room for number -->
+    <FrameLayout
+        android:layout_width="@dimen/top10_poster_width"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/bg_poster_card_aurora"
+        android:clipToOutline="true">
+
+        <ImageView
+            android:id="@+id/top10_poster"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop" />
+
+        <!-- Bottom gradient for title readability -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/gradient_poster_bottom" />
+
+        <!-- Title overlay at bottom -->
+        <TextView
+            android:id="@+id/top10_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:paddingHorizontal="8dp"
+            android:paddingBottom="8dp"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/text_badge"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textStyle="bold"
+            tools:text="Movie Title" />
+
+        <!-- Rating badge top-right -->
+        <TextView
+            android:id="@+id/top10_rating"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="6dp"
+            android:background="#99000000"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:textColor="#FFC107"
+            android:textSize="@dimen/text_micro"
+            android:textStyle="bold"
+            tools:text="8.7" />
+    </FrameLayout>
+</FrameLayout>

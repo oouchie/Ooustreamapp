@@ -27,6 +27,11 @@
     <dimen name="row_for_you_live_height">96dp</dimen>
     <dimen name="row_sections_height">160dp</dimen>
     <dimen name="row_trending_height">240dp</dimen>
+    <dimen name="row_top10_height">240dp</dimen>
+    <dimen name="top10_card_width">280dp</dimen>
+    <dimen name="top10_card_height">210dp</dimen>
+    <dimen name="top10_poster_width">140dp</dimen>
+    <dimen name="top10_number_size">100sp</dimen>
 
     <!-- Overlays -->
     <dimen name="track_picker_width">320dp</dimen>

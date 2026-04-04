@@ -371,6 +371,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
     }
 
     private fun createResultRow(): HorizontalGridView {
+        val isTV = com.ooustream.iptv.common.DeviceUtils.isTV(requireContext())
         return HorizontalGridView(requireContext()).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -380,8 +381,13 @@ class SearchFragment : Fragment(), KeyEventHandler {
                 bottomMargin = (8 * resources.displayMetrics.density).toInt()
             }
             setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT)
-            isFocusable = false
-            isFocusableInTouchMode = false
+            // On TV: keep focus on search bar (don't let grid steal focus)
+            // On mobile: allow focus/touch on grid children for single-tap clicks
+            isFocusable = !isTV
+            isFocusableInTouchMode = !isTV
+            if (!isTV) {
+                descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+            }
         }
     }
 

@@ -112,10 +112,13 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
-        // Hide TV-only UI on mobile
+        // Hide TV-only UI on mobile + enable touch passthrough on Leanback grids
         if (!DeviceUtils.isTV(requireContext())) {
             navHints.visibility = View.GONE
             view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
+            // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
+            channelsList.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+            channelsList.isFocusableInTouchMode = false
         }
         navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
 
@@ -248,6 +251,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     val pos = viewHolder.adapterPosition
                     if (pos < 0 || pos >= filteredChannels.size) return@setOnClickListener
                     val channel = filteredChannels[pos]
+                    // On mobile: single tap goes straight to fullscreen
+                    if (!DeviceUtils.isTV(requireContext())) {
+                        goFullscreen(channel)
+                        return@setOnClickListener
+                    }
                     if (previewingChannel?.streamId == channel.streamId) {
                         // Second tap — go fullscreen
                         goFullscreen(channel)

@@ -123,10 +123,7 @@ class HomeViewModel @Inject constructor(
             } catch (_: Exception) { }
         }
 
-        // Load Live Sports / Events banner
-        viewModelScope.launch(Dispatchers.IO) {
-            loadLiveSportsEvent()
-        }
+        // Live Sports banner removed — saves a network call + EPG parsing
 
         // Load Quick Tune channel strip
         viewModelScope.launch(Dispatchers.IO) {
@@ -208,6 +205,14 @@ class HomeViewModel @Inject constructor(
     private val _trendingSeries = MutableStateFlow<List<Series>>(emptyList())
     val trendingSeries: StateFlow<List<Series>> = _trendingSeries.asStateFlow()
 
+    private val _top10Content = MutableStateFlow<List<VodStream>>(emptyList())
+    val top10Content: StateFlow<List<VodStream>> = _top10Content.asStateFlow()
+
+    data class GenreRow(val genreName: String, val categoryId: String, val items: List<VodStream>)
+
+    private val _genreRows = MutableStateFlow<List<GenreRow>>(emptyList())
+    val genreRows: StateFlow<List<GenreRow>> = _genreRows.asStateFlow()
+
     /** Saved focus state for restoration on back navigation */
     var savedFocusRowId: Int = -1
     var savedFocusPosition: Int = -1
@@ -285,9 +290,13 @@ class HomeViewModel @Inject constructor(
             }
 
             // Trending Movies: rating × recency, boosted by user's watched categories
-            _trendingContent.value = scoreTrendingVod(vodStreams)
+            val trending = scoreTrendingVod(vodStreams)
+            _trendingContent.value = trending
 
-            // Fetch banner/backdrop images + trending series in parallel
+            // Top 10: take the top 10 from trending
+            _top10Content.value = trending.take(10)
+
+            // Fetch banner/backdrop images + trending series + genre rows in parallel
             coroutineScope {
                 // Trending Series: rating × recency, boosted by user preferences
                 launch {
@@ -295,6 +304,37 @@ class HomeViewModel @Inject constructor(
                         val rawSeries = contentRepository.getSeries()
                         val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
+                    } catch (_: Exception) { }
+                }
+
+                // Genre Rows: top 4 categories by user watch affinity, 15 items each
+                launch {
+                    try {
+                        val categories = contentRepository.getVodCategories()
+                        val filteredCats = contentFilterManager.filterCategories("vod", categories)
+                        val userCounts = try {
+                            watchAnalyticsRepository.getCategoryWatchCounts("vod")
+                                .associate { it.categoryId to it.totalCount }
+                        } catch (_: Exception) { emptyMap() }
+
+                        // Pick top categories: prefer user's most-watched, fallback to largest categories
+                        val catsByAffinity = filteredCats
+                            .map { cat -> cat to (userCounts[cat.categoryId] ?: 0) }
+                            .sortedByDescending { it.second }
+                            .map { it.first }
+                            .take(6)
+
+                        // Pick up to 4 genres that have enough content
+                        val genreRows = catsByAffinity.mapNotNull { cat ->
+                            val catStreams = vodStreams.filter { it.categoryId == cat.categoryId }
+                            if (catStreams.size < 5) return@mapNotNull null
+                            val scored = catStreams
+                                .sortedByDescending { it.rating?.toDoubleOrNull() ?: (it.rating5based?.times(2.0) ?: 0.0) }
+                                .take(15)
+                            GenreRow(cat.categoryName, cat.categoryId, scored)
+                        }.take(4)
+
+                        _genreRows.value = genreRows
                     } catch (_: Exception) { }
                 }
 

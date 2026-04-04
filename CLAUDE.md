@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 ExoPlayer, FFmpeg audio decoder (Jellyfin), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 21 | **Target SDK**: 34
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.5.3 (versionCode 48)
+- **Current Version**: 3.5.5 (versionCode 50)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -456,4 +456,16 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - **v3.3.3** — AC3/EAC3 audio fix for mt8695 Fire TV Sticks: FFmpeg-preferred player rebuild when hardware falsely claims surround support, `audioDisabledByFallback` flag to prevent `onTracksChanged` from undoing Stage 2, broadened `isAudioDecoderError()` detection, three-stage audio recovery ladder
 - **v3.3.4** — Faster software video decoder fallback: frame watchdog interval 3s→2s, frozen threshold 5s→3s, software fallback on first failure (was 2). HEVC black screen recovery ~5s instead of ~18s
 - **v3.5.1** — Stability & Device Compatibility: DefaultAudioSink.Builder SOC_MODEL crash fix (API <31 safe fallback), UserPlanManager null userInfo guard, ExoPlayer release listener cleanup (code 1003 fix), amlogic HEVC buffer storm detection + FFmpeg audio rebuild, watchdog "Optimizing video playback" overlay, network capability log throttling (60s interval)
-- **v3.5.2** (in progress) — EPG Freshness & Diagnostics: EPG cache TTL 30min→5min, periodic EPG refresh every 5min during live playback, force-refresh from server when no current program found in cache, live TV auto-retry on STATE_ENDED (server connection drops), debug log user/device identification (Xtream username + ANDROID_ID in log headers and Firebase metadata), splash→login `commitAllowingStateLoss()` crash fix
+- **v3.5.2** — EPG Freshness & Diagnostics: EPG cache TTL 30min→5min, periodic EPG refresh every 5min during live playback, force-refresh from server when no current program found in cache, live TV auto-retry on STATE_ENDED (server connection drops), debug log user/device identification (Xtream username + ANDROID_ID in log headers and Firebase metadata), splash→login `commitAllowingStateLoss()` crash fix
+- **v3.5.3** — Performance Hardening
+- **v3.5.4** — Watchdog & Stability: fixed black screen loop on 1080p AVC (AFTMM/AFTSSS), OOM crash fix on 160-192MB heap devices, VOD/Series grid position -1 safety guards
+- **v3.5.5** — Home Redesign & Hero Fix: Top 10 Today row (Netflix-style ranked cards), personalized Genre Rows (up to 4 by watch affinity), time-of-day greeting on hero ("Good Evening, username"), sports banner removed, mobile touch fixes (single-tap fullscreen Live TV, grid touch passthrough, search grid taps), hero container clipping fix (disabled Ken Burns scale, added programmatic `clipBounds` on hero_container — Fire TV `clipToOutline` doesn't clip hardware-accelerated transforms)
+
+### Phase 14 — Home Redesign & Hero Clipping (v3.5.5)
+- **Top 10 Today row** — Netflix-style ranked row on Home showing top 10 VOD items from trending score (rating × recency × user affinity). `Top10Presenter.kt` custom presenter with rank numeral overlay, `item_top10_card.xml` layout, dimens for TV/phone/small phone. (`home/Top10Presenter.kt`, `res/layout/item_top10_card.xml`)
+- **Personalized Genre Rows** — Up to 4 dynamic genre rows on Home, sorted by user watch affinity (most-watched categories first), 15 items each, rating-sorted. Dynamically generated at runtime in `HomeFragment.renderGenreRows()`. (`home/HomeFragment.kt`, `home/HomeViewModel.kt` — `GenreRow` data class, `_genreRows` StateFlow)
+- **Time-of-day greeting** — Hero shows "Good Morning/Afternoon/Evening/Night, Username" above the metadata chips. Username pulled from `CredentialStore`. (`home/HomeFragment.setupGreeting()`, `res/layout/fragment_home.xml`)
+- **Sports banner removed** — `observeLiveSports()` and `loadLiveSportsEvent()` call removed from HomeFragment/HomeViewModel. Saves a network call + EPG parsing on every Home load. Banner View hidden via `sportsBanner.visibility = GONE`.
+- **Mobile touch fixes** — `isFocusableInTouchMode = true` on all 10 Home grid rows so touch events reach children instead of being intercepted by Leanback for focus. Live TV single-tap on mobile goes straight to fullscreen (skips preview-then-tap TV flow). Search result grids use `FOCUS_AFTER_DESCENDANTS` on mobile for touch passthrough. (`home/HomeFragment.kt`, `livetv/LiveTvFragment.kt`, `search/SearchFragment.kt`)
+- **Hero container clipping fix** — Static hero backdrop was bleeding past the hero_container into the Continue Watching row on Fire TV. Root cause: Ken Burns 1.05x scale transform + Fire TV's `clipToOutline="true"` silently fails to clip hardware-accelerated transforms. Fix: disabled Ken Burns entirely (`startKenBurns` now no-op) and added programmatic `clipBounds` via `addOnLayoutChangeListener` on `hero_container` — `View.setClipBounds(Rect)` IS respected by the GPU rendering pipeline. Trailer wasn't affected because PlayerView's TextureView has its own hardware-layer clipping. (`home/HomeFragment.kt` `bindViews()` and `startKenBurns()`)
+
