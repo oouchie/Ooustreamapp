@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.3",
-  "version_code": 48,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.3/app-release.apk",
-  "changelog": "v3.5.3 — Performance Hardening\n\n• Safe player release across all ExoPlayer instances (prevents crash on stuck decoders)\n• DiffUtil for category, channel picker, and episode adapters (smoother scrolling)\n• Decoder fallback enabled on splash and hero preview players\n• Performance agent rules embedded for all future development",
+  "version_name": "3.5.4",
+  "version_code": 49,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.4/app-release.apk",
+  "changelog": "v3.5.4 — Watchdog & Stability Fixes\n\n• Fixed black screen loop on 1080p AVC content (AFTMM/AFTSSS) — watchdog now properly escalates to software decoder instead of looping seek flushes forever\n• Fixed OOM crash on devices with 160-192MB heap class — buffer sizing threshold raised to prevent 60s buffer from filling memory\n• Fixed VOD/Series grid crash (position -1) — additional Leanback GridLayoutManager safety guards",
   "mandatory": false
 }
