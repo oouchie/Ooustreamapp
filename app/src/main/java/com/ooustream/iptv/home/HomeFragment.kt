@@ -909,6 +909,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun renderGenreRows(rows: List<HomeViewModel.GenreRow>) {
+        // Prevent IllegalArgumentException in ViewRootImpl.performFocusNavigation —
+        // if any child of this container currently has focus, removing it mid-navigation
+        // crashes the focus system. Clear focus first.
+        if (genreRowsContainer.hasFocus()) {
+            genreRowsContainer.clearFocus()
+        }
         genreRowsContainer.removeAllViews()
         if (rows.isEmpty()) {
             genreRowsContainer.visibility = View.GONE
@@ -1250,6 +1256,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun renderBecauseYouWatchedRows(rows: List<BecauseYouWatchedRow>) {
+        // Clear focus before rebuild to prevent ViewRootImpl.performFocusNavigation crash
+        if (becauseYouWatchedContainer.hasFocus()) {
+            becauseYouWatchedContainer.clearFocus()
+        }
         becauseYouWatchedContainer.removeAllViews()
         if (rows.isEmpty()) {
             becauseYouWatchedContainer.visibility = View.GONE
@@ -1904,12 +1914,21 @@ class HomeFragment : Fragment(), KeyEventHandler {
         streamName: String,
         streamIcon: String = ""
     ) {
+        // Guard against view being destroyed between click and handler invocation.
+        // If the fragment's view is already torn down (fast back-press, rapid nav),
+        // viewLifecycleOwner throws IllegalStateException when accessed.
+        if (view == null || !isAdded || isDetached) return
         viewLifecycleOwner.lifecycleScope.launch {
-            val progress = viewModel.getWatchProgress(streamId)
+            val progress = try { viewModel.getWatchProgress(streamId) } catch (_: Exception) { null }
+            // Re-check view state after the coroutine resumes — it may have been destroyed
+            // while we were awaiting the DB query
+            if (view == null || !isAdded || isDetached) return@launch
+            val act = activity ?: return@launch
             com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
                 context = requireContext(),
                 progress = progress
             ) { forceBeginning ->
+                if (view == null || !isAdded || isDetached) return@showIfNeeded
                 val fragment = OoustreamPlaybackFragment.newInstance(
                     streamUrl = streamUrl,
                     contentType = ContentType.VOD,
@@ -1918,11 +1937,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     streamIcon = streamIcon,
                     forceStartFromBeginning = forceBeginning
                 )
-                val tx = requireActivity().supportFragmentManager.beginTransaction()
-                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                tx.replace(R.id.main_container, fragment)
-                    .addToBackStack(null)
-                    .commit()
+                try {
+                    val tx = act.supportFragmentManager.beginTransaction()
+                    FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                    tx.replace(R.id.main_container, fragment)
+                        .addToBackStack(null)
+                        .commitAllowingStateLoss()
+                } catch (_: IllegalStateException) {
+                    // Activity state saved (e.g., backgrounded) — safe to drop
+                }
             }
         }
     }

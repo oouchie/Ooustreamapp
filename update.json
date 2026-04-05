@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.5",
-  "version_code": 50,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.5/app-release.apk",
-  "changelog": "v3.5.5 — Home Redesign & Hero Fix\n\n• NEW: Top 10 Today row on Home — Netflix-style ranked cards from trending algorithm\n• NEW: Personalized Genre Rows — up to 4 dynamic category rows sorted by your most-watched categories\n• NEW: Time-of-day greeting on hero (Good Morning/Afternoon/Evening, username)\n• Fixed: Hero backdrop image bleeding into Continue Watching row on Fire TV — root cause was Ken Burns scale transform combined with a Fire TV clipping bug\n• Removed: Sports banner (reduces Home load time by saving a network call)\n• Mobile: Single-tap fullscreen on Live TV, improved grid touch responsiveness, search result tap fixes",
+  "version_name": "3.5.6",
+  "version_code": 51,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.6/app-release.apk",
+  "changelog": "v3.5.6 — libVLC Fallback Player\n\nMajor: movies and series that couldn't play before now play inside the app.\n\n• NEW: libVLC secondary backend — when ExoPlayer can't decode a stream (HEVC 10-bit HDR, edge-case H.264 encodes), the app now auto-swaps to libVLC inside the same player fragment without leaving the app. Same controls, same UI, same experience.\n• NEW: Early HEVC Main 10 detection on MTK devices — swaps to libVLC in ~3 seconds instead of walking the full recovery ladder.\n• NEW: MTK watchdog shortcut — cuts fallback activation from 2+ minutes to ~20 seconds for problem H.264 streams.\n• NEW: 'Optimizing playback for this content' transition overlay so users know the app is working.\n• NEW: Triple-layer screen-on protection — Fire TV screensaver no longer pops during libVLC playback.\n• Fixed: Live TV cursor disappearing after tapping a channel.\n• Fixed: Continue Watching now resumes correctly when libVLC takes over — progress is saved and restored regardless of which backend played the content.\n• Fixed: Home screen crashes on rapid navigation (hero tap + view destroy race).\n• Fixed: Focus navigation crash when genre rows rebuild mid D-pad scroll.\n• Fixed: Splash-to-home crash when app backgrounded during intro animation.",
   "mandatory": false
 }

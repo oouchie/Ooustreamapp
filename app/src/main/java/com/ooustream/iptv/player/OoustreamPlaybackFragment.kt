@@ -6,12 +6,15 @@ import android.content.Context
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import android.app.AlertDialog
@@ -63,7 +66,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
-class OoustreamPlaybackFragment : VideoSupportFragment() {
+class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.KeyEventHandler {
 
     // Lock Leanback to BG_NONE — prevent green brand color overlay
     private var bgLocked = false
@@ -124,6 +127,23 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var diagnosticListener: ExoPlayerDiagnosticListener? = null
     private var healthMonitor: PlaybackHealthMonitor? = null
     private var usingSoftwareVideoDecoder = false
+    // Cache video codec string from first TRACKS_CHANGED so we can identify the format
+    // (e.g. HEVC Main 10) even after a SW rebuild where videoFormat becomes null
+    private var cachedVideoCodecs: String = ""
+    private var cachedVideoMime: String = ""
+    // Early libVLC swap tracking — prevents infinite swap loops if VLC also fails
+    private var earlyVlcSwapAttempted = false
+    // Track recent MediaCodecVideoRenderer errors for fast-fail on broken streams
+    private val recentVideoRendererErrors = ArrayDeque<Long>()
+    // libVLC secondary backend for codecs ExoPlayer can't decode (HEVC Main 10, etc.)
+    // When active, all controlsBar callbacks route to libVLC instead of ExoPlayer.
+    private var libVlc: org.videolan.libvlc.LibVLC? = null
+    private var vlcMediaPlayer: org.videolan.libvlc.MediaPlayer? = null
+    private var vlcVideoLayout: org.videolan.libvlc.util.VLCVideoLayout? = null
+    private var useVlcBackend = false
+    private var vlcPositionJob: Job? = null
+    private var vlcHasRenderedFirstFrame = false
+    private var vlcTransitionOverlay: View? = null
     private var corePlayerListener: Player.Listener? = null
     // Buffer storm detection: rapid BUFFERING→READY cycling on amlogic HEVC+EAC3
     private var bufferStormCount = 0
@@ -906,6 +926,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         corePlayerListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
+                // Fast-fail for persistent video renderer errors on the same stream.
+                // Some H.264 encodings (e.g. some Chicago series files) trip both HW and SW
+                // decoders with repeated MediaCodecVideoRenderer errors. Without fast-fail,
+                // the retry ladder cycles ~15 times (>2 minutes) before giving up.
+                // Threshold: 3 video renderer errors within 30 seconds → swap to libVLC.
+                val errMsg = error.message?.lowercase() ?: ""
+                if (errMsg.contains("mediacodecvideorenderer")) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    recentVideoRendererErrors.addLast(now)
+                    // Drop entries older than 30s
+                    while (recentVideoRendererErrors.isNotEmpty()
+                        && now - recentVideoRendererErrors.first() > 30_000L) {
+                        recentVideoRendererErrors.removeFirst()
+                    }
+                    if (recentVideoRendererErrors.size >= 3 && !earlyVlcSwapAttempted) {
+                        earlyVlcSwapAttempted = true
+                        AudioLogger.log("3+ MediaCodecVideoRenderer errors in 30s — swapping to libVLC")
+                        streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
+                            "reason=video_renderer_error_repeat, count=${recentVideoRendererErrors.size}, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            swapToVlcInPlace()
+                        }
+                        return
+                    }
+                }
                 // Audio decoder error: three-stage fallback
                 if (isAudioDecoderError(error)) {
                     if (!audioFallbackAttempted) {
@@ -1071,6 +1116,33 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
             override fun onTracksChanged(tracks: Tracks) {
                 AudioLogger.logTrackSelection(tracks)
+                // Cache video codec/mime before any player rebuild loses this info —
+                // used by watchdog give-up path to identify HEVC Main 10 content
+                tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.let { group ->
+                    if (group.length > 0) {
+                        val videoFormat = group.getTrackFormat(0)
+                        cachedVideoMime = videoFormat.sampleMimeType ?: ""
+                        cachedVideoCodecs = videoFormat.codecs ?: ""
+                    }
+                }
+                // Early HEVC Main 10 detection on MTK devices — known to fail (decoder accepts
+                // the stream, renders 1 GOP, then silently stalls). Swap to libVLC immediately
+                // instead of waiting ~27s for the watchdog to walk the full recovery ladder.
+                // Only trigger on initial playback (not after a player rebuild to avoid loops).
+                if (!earlyVlcSwapAttempted
+                    && !usingSoftwareVideoDecoder
+                    && cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
+                    && (cachedVideoCodecs.startsWith("hvc1.2") || cachedVideoCodecs.startsWith("hev1.2"))
+                    && AudioPipelineFactory.isMtkDevice()) {
+                    earlyVlcSwapAttempted = true
+                    AudioLogger.log("HEVC Main 10 on MTK device detected — swapping to libVLC preemptively")
+                    streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
+                        "reason=hevc_main10_mtk, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
+                    viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                        swapToVlcInPlace()
+                    }
+                    return
+                }
                 // Don't override user's manual track selection from TrackPickerOverlay
                 if (userTrackOverrideActive) return
                 // Don't re-enable audio if Stage 2 fallback intentionally disabled it
@@ -1310,8 +1382,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     noNewFramesSinceMs = 0L
                     continue
                 }
-                val counters = p.videoDecoderCounters ?: continue
-                val currentFrames = counters.renderedOutputBufferCount
+                // Counters can be null if the video decoder failed to initialize.
+                // This happens with HEVC Main 10 on mt8696 where the rebuilt SW player
+                // never creates a video decoder. Treat null as 0 frames so the frozen
+                // timer escalates instead of silently skipping forever.
+                val currentFrames = p.videoDecoderCounters?.renderedOutputBufferCount ?: 0
                 if (lastRenderedFrameCount < 0) {
                     lastRenderedFrameCount = currentFrames
                     continue
@@ -1337,11 +1412,26 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         lastRenderedFrameCount = -1
                         val channelName = healthMonitor?.channelName ?: "unknown"
 
-                        if (watchdogResetCount > MAX_WATCHDOG_RESETS) {
-                            AudioLogger.log("Frame watchdog: giving up after $MAX_WATCHDOG_RESETS resets — stream likely broken")
+                        // Fast-fail: if we're already on the SW decoder and its counters are still
+                        // null, the decoder never initialized. No point running steps 3/4 (they just
+                        // restart the same broken SW player). Give up immediately.
+                        val swDecoderFailedToInit = usingSoftwareVideoDecoder && p.videoDecoderCounters == null
+
+                        if (watchdogResetCount > MAX_WATCHDOG_RESETS || swDecoderFailedToInit) {
+                            // ExoPlayer gave up — either HW decoder silently died (HEVC Main 10
+                            // on mt8696 MTK) or SW fallback couldn't init. Either way, this codec
+                            // can't be decoded natively by ExoPlayer on this device.
+                            val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
+                            val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
+                            val decoderNull = p.videoDecoderCounters == null
+                            val reason = if (swDecoderFailedToInit) "sw_decoder_init_failed" else "max_resets"
+                            AudioLogger.log("Frame watchdog: giving up ($reason) — swapping to libVLC fallback")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
-                                "resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, channel=$channelName")
-                            showFriendlyError("This stream's video isn't playing correctly. The source may be temporarily unavailable.")
+                                "reason=$reason, resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, decoderNull=$decoderNull, codecs=$codecs, mime=$mime, channel=$channelName")
+                            // Swap to libVLC fallback fragment — keeps user in the app
+                            withContext(Dispatchers.Main) {
+                                swapToVlcInPlace()
+                            }
                             return@launch
                         }
 
@@ -1375,6 +1465,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         }
 
                         // Escalating recovery: each step tries something DIFFERENT
+                        // On MTK devices, if the HW decoder has NEVER proven itself (no sustained
+                        // playback), the problem stream is fundamentally incompatible with ExoPlayer
+                        // on this chipset. SW fallback almost always fails too (c2.android decoder
+                        // doesn't handle these edge-case streams). Skip straight to libVLC on step 2
+                        // instead of wasting 60-90 seconds on SW rebuild → 720p cap → 480p cap.
+                        if (watchdogResetCount == 2
+                            && AudioPipelineFactory.isMtkDevice()
+                            && !hwDecoderProvenGood
+                            && !usingSoftwareVideoDecoder) {
+                            AudioLogger.log("Frame watchdog: step 2 MTK shortcut — swapping straight to libVLC")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_MTK_VLC_SHORTCUT",
+                                "reset=2, hwProven=false, channel=$channelName")
+                            withContext(Dispatchers.Main) {
+                                swapToVlcInPlace()
+                            }
+                            return@launch
+                        }
+
                         when (watchdogResetCount) {
                             1 -> {
                                 // Step 1: Seek flush — forces decoder to reset output pipeline
@@ -1383,7 +1491,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 p.seekTo(p.currentPosition)
                             }
                             2 -> {
-                                // Step 2: Software decoder
+                                // Step 2: Software decoder (non-MTK devices, or MTK with proven HW)
                                 // On low-memory devices: cap to 720p IMMEDIATELY (1080p SW = instant OOM)
                                 if (isLowMemory) {
                                     AudioLogger.log("Frame watchdog: step 2 — 720p + software decoder (low-memory device)")
@@ -1700,34 +1808,487 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             "Playback error. Please try again or choose a different stream."
     }
 
-    /** Show a user-friendly error dialog with Retry and Exit options. */
+    /** Show a user-friendly error dialog with Retry and Exit options.
+     *  Posts to main thread via Handler to ensure dialog shows even when called from
+     *  watchdog coroutine after Leanback glue has suppressed focus events. */
     private fun showFriendlyError(message: String) {
-        val ctx = context ?: return
+        val act = activity ?: return
+        // Cancel watchdogs first so they don't keep running while dialog is up
+        frameWatchdogJob?.cancel()
+        stallDetectorJob?.cancel()
         player?.stop()
-        AlertDialog.Builder(ctx)
-            .setTitle(R.string.error_stream)
-            .setMessage(message)
-            .setPositiveButton(R.string.retry) { _, _ ->
-                retryCount = 0
-                audioFallbackAttempted = false
-                audioDisabledByFallback = false
-                userTrackOverrideActive = false
-                bufferStormCount = 0
-                bufferStormWindowStart = 0L
-                ffmpegRebuildAttemptedForBufferStorm = false
-                trackSelector?.setParameters(
-                    trackSelector!!.buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                )
-                player?.prepare()
-                player?.play()
+        try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            if (!isAdded || isDetached) return@post
+            try {
+                AlertDialog.Builder(act)
+                    .setTitle(R.string.error_stream)
+                    .setMessage(message)
+                    .setPositiveButton(R.string.retry) { _, _ ->
+                        retryCount = 0
+                        audioFallbackAttempted = false
+                        audioDisabledByFallback = false
+                        userTrackOverrideActive = false
+                        bufferStormCount = 0
+                        bufferStormWindowStart = 0L
+                        ffmpegRebuildAttemptedForBufferStorm = false
+                        trackSelector?.setParameters(
+                            trackSelector!!.buildUponParameters()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        )
+                        player?.prepare()
+                        player?.play()
+                    }
+                    .setNegativeButton(R.string.cancel) { _, _ ->
+                        act.onBackPressedDispatcher.onBackPressed()
+                    }
+                    .setCancelable(false)
+                    .show()
+                streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_SHOWN", "msg=$message")
+            } catch (e: Exception) {
+                streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_FAILED", "err=${e.message}")
+                Toast.makeText(act, message, Toast.LENGTH_LONG).show()
+                act.onBackPressedDispatcher.onBackPressed()
             }
-            .setNegativeButton(R.string.cancel) { _, _ ->
-                activity?.onBackPressedDispatcher?.onBackPressed()
+        }
+    }
+
+    /** Swap from ExoPlayer to libVLC IN-PLACE inside this same fragment.
+     *  User keeps exact same UI (controls bar, poster, scrim, focus behavior) —
+     *  only the video decode pipeline changes. Used when ExoPlayer can't decode
+     *  the current content (HEVC Main 10, weird H.264, etc.).
+     *
+     *  Preserves URL, title, stream type, and position. If ExoPlayer hasn't had
+     *  time to seek to the saved position yet (early swap during initial buffer),
+     *  falls back to reading the resume position directly from the DB. */
+    private fun swapToVlcInPlace() {
+        if (!isAdded || isDetached) return
+        if (useVlcBackend) return // already on VLC
+
+        // Resolve the position to resume at:
+        //   1. If ExoPlayer is past the saved position (i.e., successfully seeked + played), use it
+        //   2. Otherwise fetch the saved position from the DB (Continue Watching)
+        val exoPos = player?.currentPosition ?: 0L
+        val forceBeginning = arguments?.getBoolean("force_start_from_beginning", false) == true
+        val url = viewModel.streamUrl
+        streamDiagnosticLogger.logAppEvent("VLC_SWAP_IN_PLACE",
+            "url=${url.take(50)}, exoPos=${exoPos}ms, forceBeginning=$forceBeginning")
+
+        if (forceBeginning || viewModel.contentType == ContentType.LIVE) {
+            // User chose "Play from Beginning" or live TV — start from 0
+            doSwapToVlcInPlace(exoPos.coerceAtLeast(0L))
+        } else if (exoPos > 5_000L) {
+            // ExoPlayer made it past 5s — it successfully seeked + played, use its position
+            doSwapToVlcInPlace(exoPos)
+        } else {
+            // ExoPlayer didn't get far enough to seek — fetch saved position from DB
+            viewLifecycleOwner.lifecycleScope.launch {
+                val savedPos = viewModel.getResumePositionSync()
+                val resolvedPos = if (savedPos > 0) savedPos else exoPos.coerceAtLeast(0L)
+                streamDiagnosticLogger.logAppEvent("VLC_SWAP_RESUME_FROM_DB",
+                    "exoPos=${exoPos}ms, savedPos=${savedPos}ms, resolvedPos=${resolvedPos}ms")
+                doSwapToVlcInPlace(resolvedPos)
             }
-            .setCancelable(false)
-            .show()
+        }
+    }
+
+    private fun doSwapToVlcInPlace(positionMs: Long) {
+        if (!isAdded || isDetached) return
+        if (useVlcBackend) return
+        val url = viewModel.streamUrl
+
+        // Show "Optimizing" overlay so user isn't staring at a black screen
+        showVlcTransitionOverlay()
+
+        // 1. Stop all ExoPlayer monitoring/recovery jobs
+        frameWatchdogJob?.cancel()
+        stallDetectorJob?.cancel()
+        retryJob?.cancel()
+        healthMonitor?.stop()
+
+        // 2. Release ExoPlayer cleanly
+        try {
+            val p = player
+            if (p != null) {
+                diagnosticListener?.let { p.removeListener(it); p.removeAnalyticsListener(it) }
+                corePlayerListener?.let { p.removeListener(it) }
+                mediaSession?.release()
+                mediaSession = null
+                p.stop()
+                p.clearMediaItems()
+                safeReleasePlayer(p)
+            }
+        } catch (e: Exception) {
+            streamDiagnosticLogger.logAppEvent("VLC_SWAP_EXOPLAYER_RELEASE_ERROR", "err=${e.message}")
+        }
+        player = null
+        useVlcBackend = true
+        vlcHasRenderedFirstFrame = false
+
+        // 3. Initialize libVLC in the SAME fragment
+        try {
+            initializeVlcBackend(url, positionMs)
+        } catch (e: Exception) {
+            streamDiagnosticLogger.logAppEvent("VLC_SWAP_FAILED", "err=${e.message}")
+            hideVlcTransitionOverlay()
+            showFriendlyError("Unable to play this video on this device.")
+            return
+        }
+
+        // 4. Rebind controls bar callbacks to libVLC methods
+        rewireControlsBarForVlc()
+
+        // 5. Start periodic position update loop for libVLC
+        startVlcPositionUpdates()
+    }
+
+    /** Initialize libVLC, attach its video layout, load media, start playback. */
+    private fun initializeVlcBackend(url: String, startPositionMs: Long) {
+        // Add VLCVideoLayout as a child of the fragment's root view.
+        // Later bringToFront() calls on controls/overlays ensure correct z-order:
+        //   [Leanback SurfaceView (dead)] < [VLCVideoLayout] < [controlsBar] < [overlays]
+        val root = view as? ViewGroup ?: return
+        vlcVideoLayout = org.videolan.libvlc.util.VLCVideoLayout(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            keepScreenOn = true
+        }
+        root.addView(vlcVideoLayout)
+        // Bring controls bar and transition overlay to front so VLC video stays behind them
+        controlsBar?.bringToFront()
+        vlcTransitionOverlay?.bringToFront()
+        seekFeedback?.bringToFront()
+        // Hide the Leanback SurfaceView (it would show black since ExoPlayer is dead).
+        // Walk the view tree and hide any SurfaceView that isn't our VLC layout's child.
+        try {
+            fun hideSurfaceViews(v: View) {
+                if (v is android.view.SurfaceView
+                    && v.parent !== vlcVideoLayout
+                    && !isDescendantOf(v, vlcVideoLayout)) {
+                    v.visibility = View.INVISIBLE
+                }
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) hideSurfaceViews(v.getChildAt(i))
+                }
+            }
+            hideSurfaceViews(root)
+        } catch (_: Exception) {}
+
+        val options = arrayListOf(
+            "--no-drop-late-frames",
+            "--no-skip-frames",
+            "--rtsp-tcp",
+            "--http-reconnect",
+            "--network-caching=1500"
+        )
+        libVlc = org.videolan.libvlc.LibVLC(requireContext(), options)
+        vlcMediaPlayer = org.videolan.libvlc.MediaPlayer(libVlc).apply {
+            attachViews(vlcVideoLayout!!, null, false, false)
+            setEventListener { event -> handleVlcEvent(event, startPositionMs) }
+        }
+
+        val media = org.videolan.libvlc.Media(libVlc, android.net.Uri.parse(url)).apply {
+            setHWDecoderEnabled(true, false)
+            // Set start time as a media option so libVLC seeks to the resume position
+            // as part of opening the stream — much more reliable than seeking after Playing event.
+            // Uses seconds (libVLC --start-time convention).
+            if (startPositionMs > 0) {
+                val startSec = startPositionMs / 1000
+                addOption(":start-time=$startSec")
+            }
+        }
+        vlcMediaPlayer?.media = media
+        media.release()
+        vlcMediaPlayer?.play()
+
+        streamDiagnosticLogger.logAppEvent("VLC_BACKEND_START",
+            "url=${url.take(50)}, position=${startPositionMs}ms, startTimeOpt=${startPositionMs / 1000}s")
+    }
+
+    private fun handleVlcEvent(
+        event: org.videolan.libvlc.MediaPlayer.Event,
+        startPositionMs: Long
+    ) {
+        when (event.type) {
+            org.videolan.libvlc.MediaPlayer.Event.Playing -> {
+                streamDiagnosticLogger.logAppEvent("VLC_PLAYING",
+                    "time=${vlcMediaPlayer?.time}ms, length=${vlcMediaPlayer?.length}ms")
+                activity?.runOnUiThread {
+                    controlsBar?.updatePlayPauseIcon(true)
+                }
+            }
+            org.videolan.libvlc.MediaPlayer.Event.Paused -> {
+                activity?.runOnUiThread { controlsBar?.updatePlayPauseIcon(false) }
+            }
+            org.videolan.libvlc.MediaPlayer.Event.Vout -> {
+                val wasFirstFrame = !vlcHasRenderedFirstFrame
+                vlcHasRenderedFirstFrame = true
+                val currentTime = vlcMediaPlayer?.time ?: 0L
+                streamDiagnosticLogger.logAppEvent("VLC_VOUT",
+                    "time=${currentTime}ms, wantedStart=${startPositionMs}ms")
+                // Safety-net seek: if the :start-time media option didn't land the playback
+                // at the desired resume position (tolerance 3s), seek to it now.
+                if (wasFirstFrame && startPositionMs > 3_000L
+                    && Math.abs(currentTime - startPositionMs) > 3_000L) {
+                    vlcMediaPlayer?.time = startPositionMs
+                    streamDiagnosticLogger.logAppEvent("VLC_VOUT_SAFETY_SEEK",
+                        "from=${currentTime}ms, to=${startPositionMs}ms")
+                }
+                activity?.runOnUiThread {
+                    hideVlcTransitionOverlay()
+                    // Briefly show controls so user sees the familiar UI confirming playback
+                    controlsManager?.show()
+                }
+            }
+            org.videolan.libvlc.MediaPlayer.Event.EndReached -> {
+                streamDiagnosticLogger.logAppEvent("VLC_END_REACHED", "")
+                activity?.runOnUiThread {
+                    val dur = vlcMediaPlayer?.length ?: 0L
+                    if (dur > 0 && viewModel.contentType != ContentType.LIVE) {
+                        viewModel.saveProgress(dur, dur, 1.0f)
+                        viewModel.markCompleted()
+                    }
+                    activity?.onBackPressedDispatcher?.onBackPressed()
+                }
+            }
+            org.videolan.libvlc.MediaPlayer.Event.EncounteredError -> {
+                streamDiagnosticLogger.logAppEvent("VLC_ERROR", "libVLC reported error")
+                activity?.runOnUiThread {
+                    hideVlcTransitionOverlay()
+                    showFriendlyError("Playback failed. This video format isn't supported.")
+                }
+            }
+        }
+    }
+
+    private fun isDescendantOf(v: View, ancestor: View?): Boolean {
+        if (ancestor == null) return false
+        var parent: android.view.ViewParent? = v.parent
+        while (parent != null) {
+            if (parent === ancestor) return true
+            parent = parent.parent
+        }
+        return false
+    }
+
+    /** KeyEventHandler implementation — intercepts keys when on libVLC backend since
+     *  Leanback's glue is stale after ExoPlayer release and won't trigger controls. */
+    override fun onKeyEvent(keyCode: Int): Boolean {
+        // Only intercept when we're on the libVLC backend — let Leanback handle ExoPlayer mode
+        if (!useVlcBackend) return false
+
+        val mgr = controlsManager
+        val bar = controlsBar
+        val mp = vlcMediaPlayer
+        if (mgr == null || bar == null || mp == null) return false
+
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (!mgr.isVisible) {
+                    mgr.show()
+                } else {
+                    // Toggle play/pause
+                    if (mp.isPlaying) mp.pause() else mp.play()
+                    bar.updatePlayPauseIcon(mp.isPlaying)
+                    mgr.resetAutoHideTimer()
+                }
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (!mgr.isVisible) {
+                    mgr.show()
+                    true
+                } else {
+                    // Let controls bar handle directional navigation within its own buttons
+                    mgr.resetAutoHideTimer()
+                    false
+                }
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                val newPos = (mp.time - 10_000L).coerceAtLeast(0L)
+                mp.time = newPos
+                bar.updatePosition(newPos, mp.length.coerceAtLeast(0L))
+                if (!mgr.isVisible) mgr.show() else mgr.resetAutoHideTimer()
+                true
+            }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                val dur = mp.length.coerceAtLeast(0L)
+                val newPos = (mp.time + 10_000L).coerceAtMost(dur)
+                mp.time = newPos
+                bar.updatePosition(newPos, dur)
+                if (!mgr.isVisible) mgr.show() else mgr.resetAutoHideTimer()
+                true
+            }
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                // If controls are visible, hide them first instead of exiting player
+                if (mgr.isVisible) {
+                    mgr.hide()
+                    true
+                } else {
+                    false
+                }
+            }
+            else -> false
+        }
+    }
+
+    /** Rewire PlayerControlsBar button callbacks to drive libVLC instead of ExoPlayer. */
+    private fun rewireControlsBarForVlc() {
+        val bar = controlsBar ?: return
+        bar.onPlayPause = {
+            vlcMediaPlayer?.let { mp ->
+                if (mp.isPlaying) mp.pause() else mp.play()
+                bar.updatePlayPauseIcon(mp.isPlaying)
+            }
+        }
+        bar.onSeekBack = {
+            vlcMediaPlayer?.let { mp ->
+                val newPos = (mp.time - 10_000L).coerceAtLeast(0L)
+                mp.time = newPos
+                seekFeedback?.showSeek(-10_000)
+                bar.updatePosition(newPos, mp.length.coerceAtLeast(0L))
+            }
+        }
+        bar.onSeekForward = {
+            vlcMediaPlayer?.let { mp ->
+                val dur = mp.length.coerceAtLeast(0L)
+                val newPos = (mp.time + 10_000L).coerceAtMost(dur)
+                mp.time = newPos
+                seekFeedback?.showSeek(10_000)
+                bar.updatePosition(newPos, dur)
+            }
+        }
+        bar.onDpadSeek = { deltaMs ->
+            vlcMediaPlayer?.let { mp ->
+                val dur = mp.length.coerceAtLeast(0L)
+                val newPos = (mp.time + deltaMs).coerceIn(0L, dur)
+                mp.time = newPos
+                bar.updatePosition(newPos, dur)
+            }
+        }
+        // Disable ExoPlayer-specific actions that don't work with libVLC
+        bar.onTracksClicked = {
+            Toast.makeText(requireContext(),
+                "Track selection unavailable in compatible mode",
+                Toast.LENGTH_SHORT).show()
+        }
+        bar.onStatsToggle = {
+            Toast.makeText(requireContext(),
+                "Stats overlay unavailable in compatible mode",
+                Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Periodic position update loop for libVLC — drives controlsBar.updatePosition()
+     *  AND persists watch progress so Continue Watching / Watch It Again rows stay in sync.
+     *  Mirrors the ExoPlayer loop (5s save cadence, 5% threshold). */
+    private fun startVlcPositionUpdates() {
+        vlcPositionJob?.cancel()
+        vlcPositionJob = viewLifecycleOwner.lifecycleScope.launch {
+            var tickCount = 0
+            while (isActive && useVlcBackend) {
+                val mp = vlcMediaPlayer ?: break
+                val position = mp.time.coerceAtLeast(0L)
+                val duration = mp.length.coerceAtLeast(0L)
+                if (duration > 0) {
+                    // Display update every tick (1s) for smooth seek bar
+                    controlsBar?.updatePosition(position, duration)
+                    // Persist progress every 5 ticks (5s) — matches ExoPlayer cadence.
+                    // 5% threshold prevents Continue Watching row from flooding with brief previews.
+                    if (tickCount % 5 == 0
+                        && viewModel.contentType != ContentType.LIVE
+                        && position > 0) {
+                        val pct = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                        if (pct > 0.05f) {
+                            viewModel.saveProgress(position, duration, pct)
+                        }
+                    }
+                }
+                tickCount++
+                delay(1000)
+            }
+        }
+    }
+
+    /** Show the "Optimizing playback for this content" transition overlay. */
+    private fun showVlcTransitionOverlay() {
+        if (vlcTransitionOverlay != null) return
+        val root = view as? ViewGroup ?: return
+        val ctx = requireContext()
+
+        val overlay = FrameLayout(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0xE6000000.toInt()) // 90% opaque black
+            isClickable = true
+            isFocusable = true
+        }
+
+        val contentColumn = LinearLayout(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER
+            )
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        }
+
+        val spinner = ProgressBar(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (72 * resources.displayMetrics.density).toInt(),
+                (72 * resources.displayMetrics.density).toInt()
+            )
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(0xFFFFC107.toInt())
+        }
+
+        val title = TextView(ctx).apply {
+            text = "Optimizing playback for this content"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (24 * resources.displayMetrics.density).toInt() }
+        }
+
+        val subtitle = TextView(ctx).apply {
+            text = "Using compatible decoder. This may take a few seconds."
+            setTextColor(0xCCFFFFFF.toInt())
+            textSize = 14f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * resources.displayMetrics.density).toInt() }
+        }
+
+        contentColumn.addView(spinner)
+        contentColumn.addView(title)
+        contentColumn.addView(subtitle)
+        overlay.addView(contentColumn)
+        root.addView(overlay)
+        vlcTransitionOverlay = overlay
+    }
+
+    private fun hideVlcTransitionOverlay() {
+        val overlay = vlcTransitionOverlay ?: return
+        overlay.animate().alpha(0f).setDuration(300).withEndAction {
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+            vlcTransitionOverlay = null
+        }.start()
     }
 
     /** Skip to the next episode in a series. */
@@ -2107,8 +2668,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (viewModel.contentType == ContentType.LIVE) {
             watchSessionLogger.onPlayerExit()
         }
+        // ExoPlayer progress save on exit
         player?.let { p ->
-            // Explicit progress save on exit for VOD/Series (no upper bound)
             if (viewModel.contentType != ContentType.LIVE) {
                 val pos = p.currentPosition
                 val dur = p.duration
@@ -2121,6 +2682,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
         }
         player?.pause()
+        // libVLC progress save on exit — keeps Continue Watching row in sync
+        vlcMediaPlayer?.let { mp ->
+            if (viewModel.contentType != ContentType.LIVE) {
+                val pos = mp.time.coerceAtLeast(0L)
+                val dur = mp.length.coerceAtLeast(0L)
+                if (dur > 0) {
+                    val pct = pos.toFloat() / dur.toFloat()
+                    if (pct > 0.05f) {
+                        viewModel.saveProgress(pos, dur, pct)
+                    }
+                }
+            }
+            try { mp.pause() } catch (_: Exception) {}
+        }
     }
 
     // ─── Suppress Leanback default controls ────────────────────────────
@@ -2151,6 +2726,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             ChannelListHolder.lastPlayedIndex = idx
             ChannelListHolder.lastPlayedChannel = channels.getOrNull(idx)
         }
+        // Release libVLC backend if active
+        vlcPositionJob?.cancel()
+        vlcPositionJob = null
+        try {
+            vlcMediaPlayer?.stop()
+            vlcMediaPlayer?.detachViews()
+            vlcMediaPlayer?.release()
+        } catch (_: Exception) {}
+        try { libVlc?.release() } catch (_: Exception) {}
+        vlcMediaPlayer = null
+        libVlc = null
+        vlcVideoLayout = null
+        useVlcBackend = false
         // Safety net: ensure screen can sleep after player exits
         activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Cancel async jobs

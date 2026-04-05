@@ -417,14 +417,16 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        // Clear back stack so Home is the root
-        // Use try/catch for popBackStackImmediate — it throws if called after onSaveInstanceState
-        // (e.g., splash animation finishes while app is backgrounded)
-        try {
-            supportFragmentManager.popBackStackImmediate(null,
-                androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
-        } catch (_: IllegalStateException) {
-            // State already saved — fall through and use commitAllowingStateLoss
+        // Clear back stack so Home is the root.
+        // Skip the pop entirely if state is already saved (splash animation finishing while
+        // app backgrounded) — commitAllowingStateLoss below handles the replace safely.
+        if (!supportFragmentManager.isStateSaved) {
+            try {
+                supportFragmentManager.popBackStackImmediate(null,
+                    androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+            } catch (_: IllegalStateException) {
+                // Race condition: state saved between check and call — proceed anyway
+            }
         }
         val tx = supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.HOME)

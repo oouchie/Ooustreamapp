@@ -72,6 +72,16 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Suspend version — returns saved resume position directly (0 if none or completed).
+     *  Used by libVLC swap to fetch the DB position when ExoPlayer hasn't had time to seek. */
+    suspend fun getResumePositionSync(): Long {
+        if (contentType == ContentType.LIVE) return 0L
+        val progress = watchProgressRepository.getProgress(streamId)
+        return if (progress != null && !progress.completed && progress.progressPercent > 0.05f) {
+            progress.position
+        } else 0L
+    }
+
     fun saveProgress(position: Long, duration: Long, percent: Float) {
         if (contentType == ContentType.LIVE) return
         viewModelScope.launch {

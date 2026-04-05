@@ -129,13 +129,21 @@ open class ChannelPresenter(
                 }
                 v.setTag(R.id.focus_effect_job, job)
             } else {
-                // Background handled by StateListDrawable — instant, no inflation needed
-                v.overlay.clear()
-                v.animate().cancel()
-                v.scaleX = 1f
-                v.scaleY = 1f
-                accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.brand_cyan))
-                name.setTextColor(0xFFFFFFFF.toInt())
+                // DEBOUNCED: defer clearing focus effects by 100ms. If focus comes back
+                // within that window (e.g., briefly after an OK tap triggers sibling
+                // focusability changes and causes a focus flicker), the next hasFocus=true
+                // cancels this job and the gold cursor stays visible. Prevents the
+                // "cursor disappears on first tap" bug.
+                val clearJob = CoroutineScope(Dispatchers.Main).launch {
+                    delay(100)
+                    v.overlay.clear()
+                    v.animate().cancel()
+                    v.scaleX = 1f
+                    v.scaleY = 1f
+                    accentBar.setBackgroundColor(ContextCompat.getColor(v.context, R.color.brand_cyan))
+                    name.setTextColor(0xFFFFFFFF.toInt())
+                }
+                v.setTag(R.id.focus_effect_job, clearJob)
             }
         }
     }

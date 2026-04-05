@@ -129,6 +129,7 @@ object AudioPipelineFactory {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(true)
+            forceEnableMediaCodecAsynchronousQueueing()
         }
     }
 
@@ -258,6 +259,11 @@ object AudioPipelineFactory {
             setEnableDecoderFallback(true)
             // Enable AudioTrack-level playback speed control
             setEnableAudioTrackPlaybackParams(true)
+            // Force async MediaCodec buffer queueing on API < 31. This matches how IJKPlayer
+            // (used by IPTV Smarters) feeds the MTK HEVC decoder — async callbacks instead of
+            // synchronous polling. Fixes HEVC Main 10 (10-bit) silent decoder stalls on mt8696
+            // where the decoder renders 1 frame then stops with sync queueing.
+            forceEnableMediaCodecAsynchronousQueueing()
         }
     }
 }
