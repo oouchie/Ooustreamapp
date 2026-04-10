@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Ooustream — Pro Upgrade (9x16)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1080px;
+    height: 1920px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    position: relative;
+  }
+
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,193,7,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,193,7,0.025) 1px, transparent 1px);
+    background-size: 72px 72px;
+    pointer-events: none;
+  }
+
+  /* Main glow centered in content zone */
+  .bg-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1100px;
+    height: 1100px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.13) 0%,
+      rgba(255, 193, 7, 0.05) 40%,
+      transparent 70%
+    );
+    pointer-events: none;
+  }
+
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .fade-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 220px;
+    background: linear-gradient(180deg, #0A0A0A 0%, transparent 100%);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  .fade-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 220px;
+    background: linear-gradient(0deg, #0A0A0A 0%, transparent 100%);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  .corner {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    z-index: 20;
+  }
+  .corner-tl { top: 36px; left: 36px; border-top: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-tr { top: 36px; right: 36px; border-top: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+  .corner-bl { bottom: 36px; left: 36px; border-bottom: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-br { bottom: 36px; right: 36px; border-bottom: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+
+  /* Top brand area */
+  .brand-strip {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    z-index: 10;
+  }
+
+  .brand-name {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+  }
+
+  /* Content zone: center 60% = 576px–1344px */
+  .content-zone {
+    position: absolute;
+    top: 576px;
+    left: 0; right: 0;
+    height: 768px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 80px;
+    z-index: 10;
+    gap: 0;
+  }
+
+  .pro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 12px 32px;
+    border-radius: 100px;
+    margin-bottom: 32px;
+    box-shadow: 0 0 50px rgba(255,193,7,0.65), 0 0 100px rgba(255,193,7,0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pro-badge::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -80%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .headline {
+    font-size: 110px;
+    font-weight: 900;
+    line-height: 0.88;
+    text-align: center;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .headline-line1 { display: block; color: #ffffff; }
+  .headline-line2 {
+    display: block;
+    color: #FFC107;
+    text-shadow: 0 0 80px rgba(255,193,7,0.8), 0 0 160px rgba(255,193,7,0.4);
+  }
+
+  .subheadline {
+    font-size: 34px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.8);
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .subheadline span { color: #FFC107; }
+
+  /* 2x2 grid */
+  .multiview-grid-wrapper {
+    position: relative;
+    margin-bottom: 48px;
+  }
+
+  .multiview-grid-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -24px;
+    border-radius: 28px;
+    background: radial-gradient(ellipse at center, rgba(255,193,7,0.14) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .multiview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 12px;
+    width: 560px;
+    height: 340px;
+    position: relative;
+  }
+
+  .screen {
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid;
+  }
+
+  .screen-1 { background: linear-gradient(135deg, #0d1f0d, #071207); border-color: rgba(76,175,80,0.55); box-shadow: 0 0 24px rgba(76,175,80,0.15); }
+  .screen-2 { background: linear-gradient(135deg, #0d1520, #070b12); border-color: rgba(33,150,243,0.55); box-shadow: 0 0 24px rgba(33,150,243,0.15); }
+  .screen-3 { background: linear-gradient(135deg, #1f0d0d, #120707); border-color: rgba(244,67,54,0.55); box-shadow: 0 0 24px rgba(244,67,54,0.15); }
+  .screen-4 { background: linear-gradient(135deg, #1a120d, #100b07); border-color: rgba(255,152,0,0.55); box-shadow: 0 0 24px rgba(255,152,0,0.15); }
+
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(180deg, transparent 0px, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 4px);
+    pointer-events: none;
+  }
+
+  .screen-badge {
+    position: absolute;
+    bottom: 8px; left: 8px; right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.6);
+    border-radius: 6px;
+    padding: 5px 8px;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #f44;
+    box-shadow: 0 0 8px rgba(255,68,68,0.8);
+    flex-shrink: 0;
+  }
+
+  .screen-label { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8); }
+
+  .grid-center-badge {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 68px; height: 68px;
+    border-radius: 50%;
+    background: rgba(10,10,10,0.8);
+    border: 2.5px solid rgba(255,193,7,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    box-shadow: 0 0 24px rgba(255,193,7,0.4);
+    backdrop-filter: blur(8px);
+  }
+
+  .grid-center-badge span {
+    font-size: 15px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: 0.1em;
+  }
+
+  /* Bottom CTA zone */
+  .bottom-zone {
+    position: absolute;
+    bottom: 100px;
+    left: 0; right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    z-index: 10;
+  }
+
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 34px 80px;
+    border-radius: 100px;
+    box-shadow: 0 0 70px rgba(255,193,7,0.5), 0 0 140px rgba(255,193,7,0.25), 0 10px 50px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .url-brand {
+    font-size: 24px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="vignette"></div>
+  <div class="fade-top"></div>
+  <div class="fade-bottom"></div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <!-- Top brand -->
+  <div class="brand-strip">
+    <div class="brand-name">Ooustream</div>
+  </div>
+
+  <!-- Center content zone -->
+  <div class="content-zone">
+    <div class="pro-badge">&#11088; PRO</div>
+
+    <h1 class="headline">
+      <span class="headline-line1">Unlock</span>
+      <span class="headline-line2">MultiView</span>
+    </h1>
+
+    <p class="subheadline"><span>4 Live Streams.</span> One Screen.</p>
+
+    <div class="multiview-grid-wrapper">
+      <div class="multiview-grid">
+        <div class="screen screen-1">
+          <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">ESPN</span></div>
+        </div>
+        <div class="screen screen-2">
+          <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">NFL Network</span></div>
+        </div>
+        <div class="screen screen-3">
+          <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">NBA TV</span></div>
+        </div>
+        <div class="screen screen-4">
+          <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">Fox Sports</span></div>
+        </div>
+        <div class="grid-center-badge"><span>PRO</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA zone -->
+  <div class="bottom-zone">
+    <div class="cta-button">
+      UPGRADE TO PRO <span style="font-size:46px;font-weight:900;">&#8594;</span>
+    </div>
+    <div class="url-brand">ooustick.com/subscribe/pro</div>
+  </div>
+</body>
+</html>

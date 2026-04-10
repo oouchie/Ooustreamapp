@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Ooustream — Pro Upgrade (1x1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    position: relative;
+  }
+
+  /* Subtle grid */
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,193,7,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,193,7,0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  /* Large gold glow behind the 2x2 grid */
+  .bg-glow {
+    position: absolute;
+    top: 42%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    height: 800px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.14) 0%,
+      rgba(255, 193, 7, 0.06) 40%,
+      rgba(255, 193, 7, 0.02) 65%,
+      transparent 80%
+    );
+    pointer-events: none;
+  }
+
+  /* Vignette */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    z-index: 20;
+  }
+  .corner-tl { top: 28px; left: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-tr { top: 28px; right: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+  .corner-bl { bottom: 28px; left: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-br { bottom: 28px; right: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+
+  .container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 80px;
+    z-index: 10;
+  }
+
+  /* PRO badge */
+  .pro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 10px 28px;
+    border-radius: 100px;
+    margin-bottom: 30px;
+    box-shadow: 0 0 40px rgba(255,193,7,0.6), 0 0 80px rgba(255,193,7,0.25), 0 4px 20px rgba(0,0,0,0.4);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pro-badge::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -80%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform: skewX(-20deg);
+  }
+
+  /* Headline */
+  .headline {
+    font-size: 88px;
+    font-weight: 900;
+    line-height: 0.9;
+    text-align: center;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .headline-line1 {
+    display: block;
+    color: #ffffff;
+  }
+
+  .headline-line2 {
+    display: block;
+    color: #FFC107;
+    text-shadow: 0 0 60px rgba(255,193,7,0.8), 0 0 120px rgba(255,193,7,0.4);
+  }
+
+  /* Subheadline */
+  .subheadline {
+    font-size: 32px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.8);
+    text-align: center;
+    letter-spacing: 0.02em;
+    margin-bottom: 44px;
+  }
+
+  .subheadline span {
+    color: #FFC107;
+  }
+
+  /* 2x2 MultiView Grid */
+  .multiview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+    width: 480px;
+    height: 300px;
+    margin-bottom: 44px;
+    position: relative;
+  }
+
+  /* Grid container outer glow */
+  .multiview-grid-wrapper {
+    position: relative;
+    margin-bottom: 44px;
+  }
+
+  .multiview-grid-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    border-radius: 24px;
+    background: radial-gradient(ellipse at center, rgba(255,193,7,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .screen {
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid;
+  }
+
+  .screen-1 {
+    background: linear-gradient(135deg, #0d1f0d 0%, #0a1a0a 60%, #071207 100%);
+    border-color: rgba(76, 175, 80, 0.5);
+    box-shadow: 0 0 20px rgba(76,175,80,0.15), inset 0 0 30px rgba(76,175,80,0.05);
+  }
+
+  .screen-2 {
+    background: linear-gradient(135deg, #0d1520 0%, #0a1018 60%, #070b12 100%);
+    border-color: rgba(33, 150, 243, 0.5);
+    box-shadow: 0 0 20px rgba(33,150,243,0.15), inset 0 0 30px rgba(33,150,243,0.05);
+  }
+
+  .screen-3 {
+    background: linear-gradient(135deg, #1f0d0d 0%, #1a0a0a 60%, #120707 100%);
+    border-color: rgba(244, 67, 54, 0.5);
+    box-shadow: 0 0 20px rgba(244,67,54,0.15), inset 0 0 30px rgba(244,67,54,0.05);
+  }
+
+  .screen-4 {
+    background: linear-gradient(135deg, #1a120d 0%, #150e0a 60%, #100b07 100%);
+    border-color: rgba(255, 152, 0, 0.5);
+    box-shadow: 0 0 20px rgba(255,152,0,0.15), inset 0 0 30px rgba(255,152,0,0.05);
+  }
+
+  /* Scanline texture on screens */
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(0,0,0,0.15) 3px,
+      rgba(0,0,0,0.15) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* Live dot + channel name badge */
+  .screen-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 5px;
+    padding: 4px 8px;
+    backdrop-filter: blur(4px);
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f44;
+    box-shadow: 0 0 6px rgba(255,68,68,0.8);
+    flex-shrink: 0;
+  }
+
+  .screen-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Center "PRO" watermark on grid */
+  .grid-center-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255,193,7,0.12);
+    border: 2px solid rgba(255,193,7,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    box-shadow: 0 0 20px rgba(255,193,7,0.3);
+  }
+
+  .grid-center-badge span {
+    font-size: 13px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: 0.1em;
+  }
+
+  /* CTA button */
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 28px 64px;
+    border-radius: 100px;
+    box-shadow: 0 0 60px rgba(255,193,7,0.45), 0 0 120px rgba(255,193,7,0.2), 0 8px 40px rgba(0,0,0,0.5);
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+    transform: skewX(-20deg);
+  }
+
+  /* URL */
+  .url-brand {
+    font-size: 22px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="vignette"></div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div class="container">
+    <div class="pro-badge">&#11088; PRO</div>
+
+    <h1 class="headline">
+      <span class="headline-line1">Unlock</span>
+      <span class="headline-line2">MultiView</span>
+    </h1>
+
+    <p class="subheadline"><span>4 Live Streams.</span> One Screen.</p>
+
+    <!-- 2x2 MultiView Grid -->
+    <div class="multiview-grid-wrapper">
+      <div class="multiview-grid">
+        <div class="screen screen-1">
+          <div class="screen-badge">
+            <div class="live-dot"></div>
+            <span class="screen-label">ESPN</span>
+          </div>
+        </div>
+        <div class="screen screen-2">
+          <div class="screen-badge">
+            <div class="live-dot"></div>
+            <span class="screen-label">NFL Network</span>
+          </div>
+        </div>
+        <div class="screen screen-3">
+          <div class="screen-badge">
+            <div class="live-dot"></div>
+            <span class="screen-label">NBA TV</span>
+          </div>
+        </div>
+        <div class="screen screen-4">
+          <div class="screen-badge">
+            <div class="live-dot"></div>
+            <span class="screen-label">Fox Sports</span>
+          </div>
+        </div>
+
+        <!-- Center badge -->
+        <div class="grid-center-badge"><span>PRO</span></div>
+      </div>
+    </div>
+
+    <div class="cta-button">
+      UPGRADE TO PRO <span style="font-size:40px;font-weight:900;">&#8594;</span>
+    </div>
+
+    <div class="url-brand">ooustick.com/subscribe/pro</div>
+  </div>
+</body>
+</html>

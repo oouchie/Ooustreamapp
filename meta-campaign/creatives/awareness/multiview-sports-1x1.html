@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>MultiView Sports — 1x1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+  }
+
+  /* Deep dark gradient with color bleed from screens */
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 55%, rgba(255,193,7,0.06) 0%, transparent 65%),
+      radial-gradient(ellipse 100% 60% at 50% 100%, rgba(20,20,40,0.8) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Scanline effect */
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0,0,0,0.08) 3px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.4;
+  }
+
+  .container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 72px;
+    z-index: 1;
+  }
+
+  /* Eyebrow */
+  .eyebrow {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,193,7,0.65);
+    margin-bottom: 20px;
+  }
+
+  /* Main headline */
+  .headline {
+    font-size: 110px;
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    color: #FFFFFF;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .headline .num {
+    color: #FFC107;
+    text-shadow: 0 0 60px rgba(255,193,7,0.5);
+  }
+
+  .headline-sub {
+    font-size: 44px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    color: rgba(255,255,255,0.7);
+    text-align: center;
+    margin-bottom: 56px;
+  }
+
+  /* 2x2 grid of screens */
+  .screens-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+    width: 700px;
+    height: 394px;
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 52px;
+    box-shadow:
+      0 0 0 1.5px rgba(255,193,7,0.2),
+      0 0 80px rgba(255,193,7,0.12),
+      0 24px 60px rgba(0,0,0,0.8);
+  }
+
+  .screen {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 16px 18px;
+    overflow: hidden;
+  }
+
+  /* Individual screen color themes */
+  .screen-nfl {
+    background: linear-gradient(135deg, #0d2b5e 0%, #1a3a7a 40%, #0a1e44 100%);
+  }
+
+  .screen-nba {
+    background: linear-gradient(135deg, #5a0d0d 0%, #8b1a1a 40%, #3d0808 100%);
+  }
+
+  .screen-pl {
+    background: linear-gradient(135deg, #0d3d1a 0%, #1a5c28 40%, #082b11 100%);
+  }
+
+  .screen-ufc {
+    background: linear-gradient(135deg, #2d1a00 0%, #5a3500 40%, #1e1100 100%);
+  }
+
+  /* Field/court texture line hints */
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.12;
+  }
+
+  .screen-nfl::before {
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(255,255,255,0.5) 24px, rgba(255,255,255,0.5) 25px),
+      linear-gradient(180deg, transparent 40%, rgba(0,80,200,0.2) 100%);
+  }
+
+  .screen-nba::before {
+    background:
+      radial-gradient(circle 140px at 50% 30%, rgba(255,200,100,0.15) 0%, transparent 70%),
+      repeating-linear-gradient(90deg, transparent, transparent 30px, rgba(255,200,100,0.15) 30px, rgba(255,200,100,0.15) 31px);
+  }
+
+  .screen-pl::before {
+    background:
+      repeating-linear-gradient(90deg, transparent, transparent 18px, rgba(255,255,255,0.12) 18px, rgba(255,255,255,0.12) 19px),
+      repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(255,255,255,0.08) 18px, rgba(255,255,255,0.08) 19px);
+  }
+
+  .screen-ufc::before {
+    background:
+      radial-gradient(circle 100px at 50% 40%, rgba(255,140,0,0.2) 0%, transparent 60%);
+  }
+
+  /* Screen inner corner bracket accent */
+  .screen-corner {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    border-top: 1.5px solid rgba(255,193,7,0.5);
+    border-left: 1.5px solid rgba(255,193,7,0.5);
+  }
+
+  /* Live badge */
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 20px;
+    padding: 4px 10px;
+  }
+
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ff3b3b;
+    box-shadow: 0 0 8px rgba(255,59,59,0.9);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .live-text {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: #FFFFFF;
+    text-transform: uppercase;
+  }
+
+  /* Sport label */
+  .sport-label {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #FFFFFF;
+    text-transform: uppercase;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    position: relative;
+    z-index: 1;
+  }
+
+  .sport-sub {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Score display */
+  .score-display {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 1;
+  }
+
+  .score-num {
+    font-size: 28px;
+    font-weight: 900;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+    line-height: 1;
+  }
+
+  .score-sep {
+    font-size: 18px;
+    color: rgba(255,255,255,0.35);
+    font-weight: 400;
+  }
+
+  /* Pro badge */
+  .pro-badge {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .pro-badge-inner {
+    background: linear-gradient(135deg, #FFC107, #FF8F00);
+    color: #0A0A0A;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 8px 20px;
+    border-radius: 30px;
+    box-shadow: 0 0 24px rgba(255,193,7,0.4);
+  }
+
+  .pro-desc {
+    font-size: 18px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.04em;
+  }
+
+  .domain {
+    position: absolute;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.26);
+    white-space: nowrap;
+    z-index: 11;
+  }
+
+  .domain span { color: rgba(255,193,7,0.42); }
+</style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="scanlines"></div>
+
+  <div class="container">
+
+    <div class="eyebrow">Ooustream Pro Feature</div>
+
+    <h1 class="headline">
+      <span class="num">4</span> Games.
+    </h1>
+    <div class="headline-sub">One Screen.</div>
+
+    <div class="screens-grid">
+
+      <!-- NFL -->
+      <div class="screen screen-nfl">
+        <div class="screen-corner"></div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span class="live-text">Live</span>
+        </div>
+        <div class="score-display">
+          <span class="score-num">21</span>
+          <span class="score-sep">–</span>
+          <span class="score-num">17</span>
+        </div>
+        <div class="sport-label">NFL</div>
+        <div class="sport-sub">Chiefs vs Eagles · Q3</div>
+      </div>
+
+      <!-- NBA -->
+      <div class="screen screen-nba">
+        <div class="screen-corner"></div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span class="live-text">Live</span>
+        </div>
+        <div class="score-display">
+          <span class="score-num">89</span>
+          <span class="score-sep">–</span>
+          <span class="score-num">84</span>
+        </div>
+        <div class="sport-label">NBA</div>
+        <div class="sport-sub">Lakers vs Celtics · 4Q</div>
+      </div>
+
+      <!-- Premier League -->
+      <div class="screen screen-pl">
+        <div class="screen-corner"></div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span class="live-text">Live</span>
+        </div>
+        <div class="score-display">
+          <span class="score-num">2</span>
+          <span class="score-sep">–</span>
+          <span class="score-num">1</span>
+        </div>
+        <div class="sport-label">Premier League</div>
+        <div class="sport-sub">Arsenal vs Man City · 67'</div>
+      </div>
+
+      <!-- UFC -->
+      <div class="screen screen-ufc">
+        <div class="screen-corner"></div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span class="live-text">Live</span>
+        </div>
+        <div class="score-display">
+          <span class="score-num" style="font-size:22px;color:#FFC107;">RD 3</span>
+        </div>
+        <div class="sport-label">UFC</div>
+        <div class="sport-sub">Jones vs Miocic · PPV</div>
+      </div>
+
+    </div>
+
+    <div class="pro-badge">
+      <div class="pro-badge-inner">Ooustream Pro</div>
+      <span class="pro-desc">Watch it all. Miss nothing.</span>
+    </div>
+
+  </div>
+
+  <div class="domain"><span>ooustick</span>.com</div>
+</body>
+</html>

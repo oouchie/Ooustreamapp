@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Feature Deep Dive — 1x1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: #0A0A0A;
+  }
+
+  .container {
+    width: 1080px;
+    height: 1080px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 52px 64px 44px;
+    position: relative;
+  }
+
+  /* Ambient background */
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 700px 700px at 50% 50%, rgba(255,193,7,0.04) 0%, transparent 65%),
+      radial-gradient(ellipse 400px 400px at 80% 10%, rgba(255,193,7,0.03) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Gold border card effect — corner brackets */
+  .container::before,
+  .container::after {
+    content: '';
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-color: #FFC107;
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .container::before {
+    top: 20px; left: 20px;
+    border-width: 2px 0 0 2px;
+  }
+  .container::after {
+    bottom: 20px; right: 20px;
+    border-width: 0 2px 2px 0;
+  }
+
+  /* Additional corner brackets via inner wrapper */
+  .inner-brackets::before,
+  .inner-brackets::after {
+    content: '';
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-color: #FFC107;
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .inner-brackets::before {
+    top: 20px; right: 20px;
+    border-width: 2px 2px 0 0;
+  }
+  .inner-brackets::after {
+    bottom: 20px; left: 20px;
+    border-width: 0 0 2px 2px;
+  }
+
+  .inner-brackets {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Outer border */
+  .outer-border {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255,193,7,0.18);
+    box-shadow: 0 0 60px rgba(255,193,7,0.12), inset 0 0 80px rgba(255,193,7,0.02);
+    pointer-events: none;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .eyebrow {
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .title {
+    font-size: 48px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: -1.5px;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .title-underline {
+    width: 120px;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #FFC107, transparent);
+    border-radius: 2px;
+    margin-top: 10px;
+    box-shadow: 0 0 14px rgba(255,193,7,0.5);
+  }
+
+  /* Feature grid — 2 columns x 3 rows */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(3, 1fr);
+    gap: 16px;
+    width: 100%;
+    flex: 1;
+    margin: 24px 0 20px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .feature-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,193,7,0.1);
+    border-radius: 16px;
+    padding: 22px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    transition: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,193,7,0.2), transparent);
+  }
+
+  .icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: rgba(255,193,7,0.1);
+    border: 1px solid rgba(255,193,7,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 0 16px rgba(255,193,7,0.1);
+  }
+
+  .feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding-top: 2px;
+  }
+
+  .feature-name {
+    font-size: 19px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.3px;
+    white-space: nowrap;
+  }
+
+  .feature-desc {
+    font-size: 14px;
+    font-weight: 400;
+    color: #888;
+    line-height: 1.4;
+  }
+
+  /* Footer */
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .footer-url {
+    font-size: 20px;
+    font-weight: 700;
+    color: #FFC107;
+    letter-spacing: 0.5px;
+  }
+
+  .footer-arrow {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,193,7,0.15);
+    border: 1px solid rgba(255,193,7,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #FFC107;
+  }
+
+  .footer-tagline {
+    font-size: 14px;
+    font-weight: 500;
+    color: #444;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="bg-glow"></div>
+  <div class="outer-border"></div>
+  <div class="inner-brackets"></div>
+
+  <div class="header">
+    <div class="eyebrow">Everything in one device</div>
+    <div class="title">What's Inside Ooustream</div>
+    <div class="title-underline"></div>
+  </div>
+
+  <div class="grid">
+    <div class="feature-card">
+      <div class="icon-wrap">📺</div>
+      <div class="feature-text">
+        <div class="feature-name">Live TV</div>
+        <div class="feature-desc">Channels streaming 24/7</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="icon-wrap">🎬</div>
+      <div class="feature-text">
+        <div class="feature-name">Movies</div>
+        <div class="feature-desc">Thousands of titles</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="icon-wrap">🎭</div>
+      <div class="feature-text">
+        <div class="feature-name">Series</div>
+        <div class="feature-desc">Binge your favorites</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="icon-wrap">🔍</div>
+      <div class="feature-text">
+        <div class="feature-name">Smart Search</div>
+        <div class="feature-desc">Find anything instantly</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="icon-wrap">🤖</div>
+      <div class="feature-text">
+        <div class="feature-name">For You</div>
+        <div class="feature-desc">AI-powered picks</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="icon-wrap">⊞</div>
+      <div class="feature-text">
+        <div class="feature-name">MultiView</div>
+        <div class="feature-desc">4 screens at once</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-tagline">Get yours at</div>
+    <div class="footer-url">ooustick.com</div>
+    <div class="footer-arrow">→</div>
+  </div>
+
+</div>
+</body>
+</html>

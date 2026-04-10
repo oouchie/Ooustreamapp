@@ -1370,6 +1370,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             // are rebuffer recovery issues, not decoder incompatibility. Don't escalate to SW.
             var hwDecoderProvenGood = false
             var watchdogOverlayShown = false
+            // HEVC slideshow detection: SW HEVC decoder renders frames but too slowly (8fps)
+            // because OMX.google.hevc.decoder can't keep up with 1080p on mt8695.
+            // Track consecutive polls where fps is catastrophically low.
+            var consecutiveSlideshowPolls = 0
             val isLowMemory = run {
                 val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 am.memoryClass <= 192
@@ -1530,16 +1534,39 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 } else {
                     noNewFramesSinceMs = 0L
                     watchdogOverlayShown = false
+                    val framesDelta = currentFrames - lastRenderedFrameCount
                     // Check if HW decoder is rendering at full framerate (20+ fps = proven good)
                     // This means black screens are rebuffer recovery, not decoder incompatibility
                     if (!hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
-                        val framesDelta = currentFrames - lastRenderedFrameCount
                         // FRAME_WATCHDOG_INTERVAL_MS = 2s, so 20fps = 40+ frames per poll
                         // Use a lower threshold (30 frames) to account for timing jitter
                         if (framesDelta >= 30) {
                             hwDecoderProvenGood = true
                             AudioLogger.log("Frame watchdog: HW decoder proven good ($framesDelta frames in ${FRAME_WATCHDOG_INTERVAL_MS}ms)")
                         }
+                    }
+                    // HEVC slideshow detection: OMX.google.hevc.decoder on MTK renders
+                    // frames but at ~8fps (1080p HEVC is too heavy for software decode).
+                    // The existing watchdog never triggers because frames ARE rendering.
+                    // Detect sustained catastrophically low fps and swap to libVLC.
+                    if (!earlyVlcSwapAttempted && !useVlcBackend
+                        && cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
+                        && AudioPipelineFactory.isMtkDevice()
+                        && framesDelta in 1 until HEVC_SLIDESHOW_MIN_FRAMES) {
+                        consecutiveSlideshowPolls++
+                        if (consecutiveSlideshowPolls >= HEVC_SLIDESHOW_POLLS) {
+                            val actualFps = framesDelta.toFloat() / (FRAME_WATCHDOG_INTERVAL_MS / 1000f)
+                            AudioLogger.log("Frame watchdog: HEVC slideshow detected — ${actualFps.toInt()}fps sustained for ${consecutiveSlideshowPolls * FRAME_WATCHDOG_INTERVAL_MS / 1000}s, swapping to libVLC")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_HEVC_SLIDESHOW",
+                                "fps=${actualFps.toInt()}, polls=$consecutiveSlideshowPolls, framesDelta=$framesDelta, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            earlyVlcSwapAttempted = true
+                            withContext(Dispatchers.Main) {
+                                swapToVlcInPlace()
+                            }
+                            return@launch
+                        }
+                    } else {
+                        consecutiveSlideshowPolls = 0
                     }
                     lastRenderedFrameCount = currentFrames
                     // Only reset recovery ladder after SUSTAINED playback (3 polls = 6s of frames)
@@ -1866,6 +1893,25 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         if (!isAdded || isDetached) return
         if (useVlcBackend) return // already on VLC
 
+        // Native crash guard: if a previous VLC swap crashed the app (native SIGSEGV in
+        // libVLC on MTK devices), the "vlc_swap_pending" flag will still be set from last
+        // run. Skip VLC and show a friendly error instead of crashing again.
+        val prefs = requireContext().getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("vlc_swap_pending", false)) {
+            val lastChannel = prefs.getString("vlc_swap_channel", "unknown")
+            AudioLogger.log("VLC swap skipped — previous swap crashed the app (channel=$lastChannel)")
+            streamDiagnosticLogger.logAppEvent("VLC_SWAP_CRASH_GUARD",
+                "skipped=true, previousCrashChannel=$lastChannel, channel=${healthMonitor?.channelName ?: "unknown"}")
+            showFriendlyError("This content uses a video format not supported on this device.")
+            return
+        }
+        // Set the pending flag BEFORE starting the swap — cleared after VLC renders first frame.
+        // If the app dies in between, the flag persists and blocks the next attempt.
+        prefs.edit()
+            .putBoolean("vlc_swap_pending", true)
+            .putString("vlc_swap_channel", healthMonitor?.channelName ?: viewModel.streamName)
+            .apply()
+
         // Resolve the position to resume at:
         //   1. If ExoPlayer is past the saved position (i.e., successfully seeked + played), use it
         //   2. Otherwise fetch the saved position from the DB (Continue Watching)
@@ -2026,6 +2072,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             org.videolan.libvlc.MediaPlayer.Event.Vout -> {
                 val wasFirstFrame = !vlcHasRenderedFirstFrame
                 vlcHasRenderedFirstFrame = true
+                // Clear the native crash guard — VLC survived and rendered a frame
+                if (wasFirstFrame) {
+                    try {
+                        requireContext().getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
+                            .edit().putBoolean("vlc_swap_pending", false).apply()
+                    } catch (_: Exception) {}
+                }
                 val currentTime = vlcMediaPlayer?.time ?: 0L
                 streamDiagnosticLogger.logAppEvent("VLC_VOUT",
                     "time=${currentTime}ms, wantedStart=${startPositionMs}ms")
@@ -3017,6 +3070,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         // Require 3 consecutive polls with new frames (6s) before resetting recovery ladder
         // Prevents MTK single-frame-then-black from resetting watchdogResetCount
         private const val SUSTAINED_PLAYBACK_POLLS = 3
+        // HEVC slideshow detection: consecutive low-fps polls before VLC swap
+        // 3 polls × 2s = 6 seconds of <15fps before triggering (avoids false positives on channel switch)
+        private const val HEVC_SLIDESHOW_POLLS = 3
+        // Min rendered frames per 2s poll to NOT be a slideshow (15fps × 2s = 30 frames)
+        private const val HEVC_SLIDESHOW_MIN_FRAMES = 30
         // Buffer storm detection: rapid BUFFERING→READY cycling (amlogic HEVC+EAC3)
         private const val BUFFER_STORM_THRESHOLD = 5
         private const val BUFFER_STORM_WINDOW_MS = 30_000L

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Ooustream — Cut The Cord (16x9)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    position: relative;
+  }
+
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,193,7,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,193,7,0.025) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+  }
+
+  /* Left zone glow */
+  .bg-glow-left {
+    position: absolute;
+    top: 50%;
+    left: 32%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    height: 900px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.16) 0%,
+      rgba(255, 193, 7, 0.06) 35%,
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+
+  /* Vertical divider */
+  .divider {
+    position: absolute;
+    top: 80px;
+    bottom: 80px;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(255,193,7,0.2), rgba(255,193,7,0.3), rgba(255,193,7,0.2), transparent);
+    z-index: 5;
+  }
+
+  /* Right zone glow */
+  .bg-glow-right {
+    position: absolute;
+    top: 50%;
+    left: 68%;
+    transform: translate(-50%, -50%);
+    width: 700px;
+    height: 700px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.10) 0%,
+      rgba(255, 193, 7, 0.04) 40%,
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+
+  .corner {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    z-index: 20;
+  }
+  .corner-tl { top: 28px; left: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-tr { top: 28px; right: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+  .corner-bl { bottom: 28px; left: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-br { bottom: 28px; right: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+
+  /* Two-column layout */
+  .layout {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    z-index: 10;
+  }
+
+  /* LEFT: headline + value props */
+  .left-col {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 100px 80px 120px;
+    gap: 0;
+  }
+
+  .badge-free-shipping {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFC107, #FFD54F);
+    color: #0A0A0A;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 26px;
+    border-radius: 100px;
+    margin-bottom: 36px;
+    width: fit-content;
+    box-shadow: 0 0 40px rgba(255,193,7,0.5), 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  .headline {
+    font-size: 118px;
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .headline-top { display: block; color: #ffffff; }
+  .headline-bottom {
+    display: block;
+    color: #FFC107;
+    text-shadow: 0 0 80px rgba(255,193,7,0.7), 0 0 160px rgba(255,193,7,0.3);
+  }
+
+  .subheadline {
+    font-size: 26px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.04em;
+    margin-bottom: 48px;
+  }
+
+  .value-props {
+    display: flex;
+    gap: 0;
+    width: fit-content;
+  }
+
+  .value-prop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 36px;
+    border: 1px solid rgba(255,193,7,0.15);
+    background: rgba(255,193,7,0.03);
+  }
+
+  .value-prop:first-child { border-radius: 14px 0 0 14px; }
+  .value-prop:last-child { border-radius: 0 14px 14px 0; }
+  .value-prop + .value-prop { border-left: none; }
+
+  .value-prop-icon { font-size: 30px; line-height: 1; }
+  .value-prop-label { font-size: 17px; font-weight: 600; color: rgba(255,255,255,0.85); }
+
+  /* RIGHT: device + CTA */
+  .right-col {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 120px 80px 100px;
+    gap: 0;
+  }
+
+  /* CSS Device — larger for landscape */
+  .device-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 56px;
+  }
+
+  .device-body {
+    width: 380px;
+    height: 56px;
+    background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 50%, #111 100%);
+    border-radius: 32px;
+    position: relative;
+    border: 1.5px solid rgba(255,193,7,0.3);
+    box-shadow: 0 0 60px rgba(255,193,7,0.25), 0 12px 50px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .device-body::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: #FFC107;
+    box-shadow: 0 0 18px rgba(255,193,7,0.9), 0 0 36px rgba(255,193,7,0.5);
+  }
+
+  .device-body::after {
+    content: '';
+    position: absolute;
+    top: 8px; left: 60px; right: 60px;
+    height: 1.5px;
+    background: linear-gradient(90deg, transparent, rgba(255,193,7,0.5), rgba(255,255,255,0.2), rgba(255,193,7,0.5), transparent);
+  }
+
+  .device-cable {
+    width: 4px; height: 36px;
+    background: linear-gradient(180deg, #333, #222);
+    border-radius: 0 0 4px 4px;
+  }
+
+  .device-shadow {
+    width: 280px; height: 18px;
+    background: radial-gradient(ellipse, rgba(255,193,7,0.18) 0%, transparent 70%);
+    margin-top: 6px;
+    filter: blur(5px);
+  }
+
+  .brand-label {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 40px;
+  }
+
+  /* CTA */
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 30px 80px;
+    border-radius: 100px;
+    box-shadow: 0 0 70px rgba(255,193,7,0.45), 0 0 140px rgba(255,193,7,0.2), 0 10px 50px rgba(0,0,0,0.5);
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    justify-content: center;
+    max-width: 560px;
+  }
+
+  .cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .url-brand {
+    font-size: 22px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow-left"></div>
+  <div class="bg-glow-right"></div>
+  <div class="divider"></div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div class="layout">
+    <!-- LEFT COLUMN -->
+    <div class="left-col">
+      <div class="badge-free-shipping">&#10003;&nbsp; Free Shipping — Limited Time</div>
+
+      <h1 class="headline">
+        <span class="headline-top">Cut The</span>
+        <span class="headline-bottom">Cord.</span>
+      </h1>
+
+      <p class="subheadline">Everything on TV. Nothing you don't need.</p>
+
+      <div class="value-props">
+        <div class="value-prop">
+          <span class="value-prop-icon">&#128250;</span>
+          <span class="value-prop-label">Live TV</span>
+        </div>
+        <div class="value-prop">
+          <span class="value-prop-icon">&#127916;</span>
+          <span class="value-prop-label">Movies</span>
+        </div>
+        <div class="value-prop">
+          <span class="value-prop-icon">&#127944;</span>
+          <span class="value-prop-label">MultiView</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-col">
+      <div class="device-wrapper">
+        <div class="device-body"></div>
+        <div class="device-cable"></div>
+        <div class="device-shadow"></div>
+      </div>
+
+      <div class="brand-label">Ooustream</div>
+
+      <div class="cta-button">
+        START FREE TRIAL <span style="font-size:44px;font-weight:900;">&#8594;</span>
+      </div>
+
+      <div class="url-brand">ooustick.com</div>
+    </div>
+  </div>
+</body>
+</html>

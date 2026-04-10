@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.6",
-  "version_code": 51,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.6/app-release.apk",
-  "changelog": "v3.5.6 — libVLC Fallback Player\n\nMajor: movies and series that couldn't play before now play inside the app.\n\n• NEW: libVLC secondary backend — when ExoPlayer can't decode a stream (HEVC 10-bit HDR, edge-case H.264 encodes), the app now auto-swaps to libVLC inside the same player fragment without leaving the app. Same controls, same UI, same experience.\n• NEW: Early HEVC Main 10 detection on MTK devices — swaps to libVLC in ~3 seconds instead of walking the full recovery ladder.\n• NEW: MTK watchdog shortcut — cuts fallback activation from 2+ minutes to ~20 seconds for problem H.264 streams.\n• NEW: 'Optimizing playback for this content' transition overlay so users know the app is working.\n• NEW: Triple-layer screen-on protection — Fire TV screensaver no longer pops during libVLC playback.\n• Fixed: Live TV cursor disappearing after tapping a channel.\n• Fixed: Continue Watching now resumes correctly when libVLC takes over — progress is saved and restored regardless of which backend played the content.\n• Fixed: Home screen crashes on rapid navigation (hero tap + view destroy race).\n• Fixed: Focus navigation crash when genre rows rebuild mid D-pad scroll.\n• Fixed: Splash-to-home crash when app backgrounded during intro animation.",
+  "version_name": "3.5.7",
+  "version_code": 52,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.7/app-release.apk",
+  "changelog": "v3.5.7 — VLC Stability & HEVC Slideshow Fix\n\n• Fixed: libVLC native crash on MTK devices (AFTKRT, AFTMM) when swapping to VLC for HEVC Main 10 content. Added crash guard that prevents repeated crashes.\n• Fixed: HEVC slideshow on software decoder — channels using regular HEVC on MTK devices (8fps slideshow) now auto-swap to libVLC after 6 seconds instead of playing unwatchably forever.\n• Stability: VLC swap timing improved to prevent native initialization race condition.",
   "mandatory": false
 }

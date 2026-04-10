@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Ooustream — Pro Upgrade (16x9)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    position: relative;
+  }
+
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,193,7,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,193,7,0.02) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+  }
+
+  /* Left column glow */
+  .bg-glow-left {
+    position: absolute;
+    top: 50%;
+    left: 30%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    height: 900px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.12) 0%,
+      rgba(255, 193, 7, 0.04) 40%,
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+
+  /* Right column glow (behind 2x2 grid) */
+  .bg-glow-right {
+    position: absolute;
+    top: 50%;
+    left: 70%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    height: 800px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.10) 0%,
+      rgba(255, 193, 7, 0.03) 45%,
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Vertical divider */
+  .divider {
+    position: absolute;
+    top: 70px;
+    bottom: 70px;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(255,193,7,0.2), rgba(255,193,7,0.3), rgba(255,193,7,0.2), transparent);
+    z-index: 5;
+  }
+
+  .corner {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    z-index: 20;
+  }
+  .corner-tl { top: 28px; left: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-tr { top: 28px; right: 28px; border-top: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+  .corner-bl { bottom: 28px; left: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-br { bottom: 28px; right: 28px; border-bottom: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+
+  .layout {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    z-index: 10;
+  }
+
+  /* LEFT: headline + features + CTA */
+  .left-col {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 100px 80px 130px;
+    gap: 0;
+  }
+
+  .pro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 9px 26px;
+    border-radius: 100px;
+    margin-bottom: 28px;
+    width: fit-content;
+    box-shadow: 0 0 40px rgba(255,193,7,0.65), 0 0 80px rgba(255,193,7,0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pro-badge::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -80%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .headline {
+    font-size: 112px;
+    font-weight: 900;
+    line-height: 0.88;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .headline-line1 { display: block; color: #ffffff; }
+  .headline-line2 {
+    display: block;
+    color: #FFC107;
+    text-shadow: 0 0 80px rgba(255,193,7,0.8), 0 0 160px rgba(255,193,7,0.4);
+  }
+
+  .subheadline {
+    font-size: 28px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.8);
+    margin-bottom: 40px;
+  }
+
+  .subheadline span { color: #FFC107; }
+
+  .feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 44px;
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 20px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .feature-check {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(255,193,7,0.1);
+    border: 1.5px solid rgba(255,193,7,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #FFC107;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 28px 64px;
+    border-radius: 100px;
+    box-shadow: 0 0 60px rgba(255,193,7,0.45), 0 0 120px rgba(255,193,7,0.2), 0 8px 40px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+    width: fit-content;
+  }
+
+  .cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .url-brand {
+    font-size: 18px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.05em;
+  }
+
+  /* RIGHT: 2x2 grid */
+  .right-col {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 100px 80px 100px;
+    gap: 0;
+  }
+
+  .multiview-grid-wrapper {
+    position: relative;
+  }
+
+  .multiview-grid-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -32px;
+    border-radius: 32px;
+    background: radial-gradient(ellipse at center, rgba(255,193,7,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Outer frame border */
+  .multiview-grid-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,193,7,0.15);
+    pointer-events: none;
+  }
+
+  .multiview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 12px;
+    width: 680px;
+    height: 420px;
+    position: relative;
+    background: rgba(255,193,7,0.04);
+    border-radius: 16px;
+    padding: 12px;
+  }
+
+  .screen {
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid;
+  }
+
+  .screen-1 { background: linear-gradient(135deg, #0d1f0d, #071207); border-color: rgba(76,175,80,0.55); box-shadow: 0 0 24px rgba(76,175,80,0.15); }
+  .screen-2 { background: linear-gradient(135deg, #0d1520, #070b12); border-color: rgba(33,150,243,0.55); box-shadow: 0 0 24px rgba(33,150,243,0.15); }
+  .screen-3 { background: linear-gradient(135deg, #1f0d0d, #120707); border-color: rgba(244,67,54,0.55); box-shadow: 0 0 24px rgba(244,67,54,0.15); }
+  .screen-4 { background: linear-gradient(135deg, #1a120d, #100b07); border-color: rgba(255,152,0,0.55); box-shadow: 0 0 24px rgba(255,152,0,0.15); }
+
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(180deg, transparent 0px, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px);
+    pointer-events: none;
+  }
+
+  /* Screen content simulation */
+  .screen-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .screen-content-bars {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 36px;
+    opacity: 0.25;
+  }
+
+  .bar {
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  .bar-1 { background: currentColor; height: 60%; }
+  .bar-2 { background: currentColor; height: 100%; }
+  .bar-3 { background: currentColor; height: 45%; }
+  .bar-4 { background: currentColor; height: 80%; }
+  .bar-5 { background: currentColor; height: 35%; }
+
+  .screen-1 .screen-content { color: rgba(76,175,80,0.8); }
+  .screen-2 .screen-content { color: rgba(33,150,243,0.8); }
+  .screen-3 .screen-content { color: rgba(244,67,54,0.8); }
+  .screen-4 .screen-content { color: rgba(255,152,0,0.8); }
+
+  .screen-badge {
+    position: absolute;
+    bottom: 8px; left: 8px; right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.65);
+    border-radius: 6px;
+    padding: 5px 9px;
+  }
+
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #f44; box-shadow: 0 0 8px rgba(255,68,68,0.8); flex-shrink: 0; }
+  .screen-label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); }
+
+  /* Active audio indicator on screen 1 */
+  .audio-badge {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: rgba(255,193,7,0.9);
+    color: #0A0A0A;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    padding: 3px 7px;
+    border-radius: 4px;
+  }
+
+  .grid-center-badge {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: rgba(10,10,10,0.85);
+    border: 2.5px solid rgba(255,193,7,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    box-shadow: 0 0 28px rgba(255,193,7,0.45);
+    backdrop-filter: blur(8px);
+  }
+
+  .grid-center-badge span { font-size: 16px; font-weight: 900; color: #FFC107; letter-spacing: 0.1em; }
+</style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow-left"></div>
+  <div class="bg-glow-right"></div>
+  <div class="vignette"></div>
+  <div class="divider"></div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div class="layout">
+    <!-- LEFT COLUMN -->
+    <div class="left-col">
+      <div class="pro-badge">&#11088; PRO</div>
+
+      <h1 class="headline">
+        <span class="headline-line1">Unlock</span>
+        <span class="headline-line2">MultiView</span>
+      </h1>
+
+      <p class="subheadline"><span>4 Live Streams.</span> One Screen.</p>
+
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-check">&#10003;</div>
+          <span>Watch 4 live games simultaneously</span>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check">&#10003;</div>
+          <span>Switch audio between streams instantly</span>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check">&#10003;</div>
+          <span>Quad, Main+3, Dual &amp; Triple layouts</span>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check">&#10003;</div>
+          <span>Full HD — no quality compromises</span>
+        </div>
+      </div>
+
+      <div class="cta-button">
+        UPGRADE TO PRO <span style="font-size:40px;font-weight:900;">&#8594;</span>
+      </div>
+
+      <div class="url-brand">ooustick.com/subscribe/pro</div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-col">
+      <div class="multiview-grid-wrapper">
+        <div class="multiview-grid">
+          <div class="screen screen-1">
+            <div class="screen-content">
+              <div class="screen-content-bars">
+                <div class="bar bar-1"></div>
+                <div class="bar bar-2"></div>
+                <div class="bar bar-3"></div>
+                <div class="bar bar-4"></div>
+                <div class="bar bar-5"></div>
+              </div>
+            </div>
+            <div class="audio-badge">AUDIO</div>
+            <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">ESPN</span></div>
+          </div>
+          <div class="screen screen-2">
+            <div class="screen-content">
+              <div class="screen-content-bars">
+                <div class="bar bar-3"></div>
+                <div class="bar bar-1"></div>
+                <div class="bar bar-5"></div>
+                <div class="bar bar-2"></div>
+                <div class="bar bar-4"></div>
+              </div>
+            </div>
+            <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">NFL Network</span></div>
+          </div>
+          <div class="screen screen-3">
+            <div class="screen-content">
+              <div class="screen-content-bars">
+                <div class="bar bar-2"></div>
+                <div class="bar bar-4"></div>
+                <div class="bar bar-1"></div>
+                <div class="bar bar-3"></div>
+                <div class="bar bar-5"></div>
+              </div>
+            </div>
+            <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">NBA TV</span></div>
+          </div>
+          <div class="screen screen-4">
+            <div class="screen-content">
+              <div class="screen-content-bars">
+                <div class="bar bar-5"></div>
+                <div class="bar bar-3"></div>
+                <div class="bar bar-2"></div>
+                <div class="bar bar-1"></div>
+                <div class="bar bar-4"></div>
+              </div>
+            </div>
+            <div class="screen-badge"><div class="live-dot"></div><span class="screen-label">Fox Sports</span></div>
+          </div>
+          <div class="grid-center-badge"><span>PRO</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

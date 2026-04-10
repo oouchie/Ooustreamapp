@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Feature Deep Dive — 9x16</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1080px;
+    height: 1920px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: #0A0A0A;
+  }
+
+  .container {
+    width: 1080px;
+    height: 1920px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  /* Full height ambient glow */
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 900px 600px at 50% 960px, rgba(255,193,7,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 500px 400px at 80% 15%, rgba(255,193,7,0.03) 0%, transparent 60%),
+      radial-gradient(ellipse 500px 400px at 20% 85%, rgba(255,193,7,0.02) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Gold border corners */
+  .corner {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border-color: rgba(255,193,7,0.45);
+    border-style: solid;
+  }
+  .corner-tl { top: 28px; left: 28px; border-width: 2px 0 0 2px; }
+  .corner-tr { top: 28px; right: 28px; border-width: 2px 2px 0 0; }
+  .corner-bl { bottom: 28px; left: 28px; border-width: 0 0 2px 2px; }
+  .corner-br { bottom: 28px; right: 28px; border-width: 0 2px 2px 0; }
+
+  /* Outer subtle border */
+  .outer-border {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255,193,7,0.14);
+    box-shadow: 0 0 60px rgba(255,193,7,0.1), inset 0 0 100px rgba(255,193,7,0.02);
+    pointer-events: none;
+  }
+
+  /* ===== TOP ZONE ===== */
+  .top-zone {
+    width: 100%;
+    height: 340px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    padding: 0 60px;
+    gap: 0;
+  }
+
+  .brand-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FFC107;
+    box-shadow: 0 0 12px rgba(255,193,7,0.8);
+    margin-bottom: 18px;
+  }
+
+  .eyebrow {
+    font-size: 18px;
+    font-weight: 600;
+    color: #666;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .title {
+    font-size: 62px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: -2px;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  .title-underline {
+    width: 140px;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #FFC107, transparent);
+    border-radius: 2px;
+    margin-top: 14px;
+    box-shadow: 0 0 16px rgba(255,193,7,0.5);
+  }
+
+  /* ===== CENTER ZONE — key content in center 60% vertically ===== */
+  /* 1920 * 0.2 = 384px top offset, 1920 * 0.6 = 1152px height */
+  .center-zone {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 56px;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Feature grid: 2 columns x 3 rows */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(3, 1fr);
+    gap: 20px;
+    width: 100%;
+    height: 100%;
+    max-height: 1100px;
+  }
+
+  .feature-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,193,7,0.1);
+    border-radius: 20px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,193,7,0.25), transparent);
+  }
+
+  .icon-wrap {
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    background: rgba(255,193,7,0.1);
+    border: 1px solid rgba(255,193,7,0.22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    box-shadow: 0 0 20px rgba(255,193,7,0.1);
+  }
+
+  .feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .feature-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.4px;
+  }
+
+  .feature-desc {
+    font-size: 17px;
+    font-weight: 400;
+    color: #777;
+    line-height: 1.4;
+  }
+
+  /* ===== BOTTOM ZONE ===== */
+  .bottom-zone {
+    width: 100%;
+    height: 240px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    gap: 16px;
+    padding-bottom: 20px;
+  }
+
+  .divider-line {
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,193,7,0.3), transparent);
+    margin-bottom: 4px;
+  }
+
+  .footer-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .footer-url {
+    font-size: 32px;
+    font-weight: 700;
+    color: #FFC107;
+    letter-spacing: 0;
+  }
+
+  .footer-arrow {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,193,7,0.12);
+    border: 1.5px solid rgba(255,193,7,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #FFC107;
+  }
+
+  .footer-tagline {
+    font-size: 18px;
+    font-weight: 500;
+    color: #444;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="bg-glow"></div>
+  <div class="outer-border"></div>
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <!-- Top branding -->
+  <div class="top-zone">
+    <div class="brand-dot"></div>
+    <div class="eyebrow">Everything in one device</div>
+    <div class="title">What's Inside<br>Ooustream</div>
+    <div class="title-underline"></div>
+  </div>
+
+  <!-- Center feature grid -->
+  <div class="center-zone">
+    <div class="grid">
+      <div class="feature-card">
+        <div class="icon-wrap">📺</div>
+        <div class="feature-text">
+          <div class="feature-name">Live TV</div>
+          <div class="feature-desc">Channels streaming 24/7</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon-wrap">🎬</div>
+        <div class="feature-text">
+          <div class="feature-name">Movies</div>
+          <div class="feature-desc">Thousands of titles</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon-wrap">🎭</div>
+        <div class="feature-text">
+          <div class="feature-name">Series</div>
+          <div class="feature-desc">Binge your favorites</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon-wrap">🔍</div>
+        <div class="feature-text">
+          <div class="feature-name">Smart Search</div>
+          <div class="feature-desc">Find anything instantly</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon-wrap">🤖</div>
+        <div class="feature-text">
+          <div class="feature-name">For You</div>
+          <div class="feature-desc">AI-powered picks</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon-wrap">⊞</div>
+        <div class="feature-text">
+          <div class="feature-name">MultiView</div>
+          <div class="feature-desc">4 screens at once</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA -->
+  <div class="bottom-zone">
+    <div class="divider-line"></div>
+    <div class="footer-tagline">Get yours at</div>
+    <div class="footer-row">
+      <div class="footer-url">ooustick.com</div>
+      <div class="footer-arrow">→</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

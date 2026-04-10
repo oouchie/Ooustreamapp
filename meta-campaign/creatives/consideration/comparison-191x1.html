@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1200">
+<title>Cable vs Ooustream — 1.91:1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1200px;
+    height: 628px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: #0A0A0A;
+  }
+
+  .container {
+    width: 1200px;
+    height: 628px;
+    display: flex;
+    position: relative;
+  }
+
+  /* Ambient background */
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 400px 400px at 240px 314px, rgba(180,0,0,0.09) 0%, transparent 65%),
+      radial-gradient(ellipse 400px 400px at 960px 314px, rgba(255,193,7,0.07) 0%, transparent 65%);
+    pointer-events: none;
+  }
+
+  /* LEFT panel: Cable */
+  .panel-left {
+    width: 380px;
+    height: 100%;
+    background: linear-gradient(155deg, #160000 0%, #0A0000 60%, #0A0A0A 100%);
+    border-right: 1px solid #2a0000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 30px;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+  }
+
+  .col-header-bad {
+    font-size: 38px;
+    font-weight: 900;
+    color: #ff4444;
+    letter-spacing: -1.5px;
+    margin-bottom: 4px;
+  }
+
+  .col-sub-bad {
+    font-size: 11px;
+    font-weight: 600;
+    color: #662222;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 22px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+  }
+
+  .row-bad {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .row-good {
+    background: rgba(255,193,7,0.05);
+    border: 1px solid rgba(255,193,7,0.13);
+  }
+
+  .badge {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .badge-bad {
+    background: rgba(220,30,30,0.2);
+    border: 1.5px solid #cc2222;
+    color: #ff4444;
+  }
+
+  .badge-good {
+    background: rgba(255,193,7,0.15);
+    border: 1.5px solid #FFC107;
+    color: #FFC107;
+  }
+
+  .row-text-bad {
+    font-size: 15px;
+    font-weight: 600;
+    color: #cc9999;
+  }
+
+  .row-text-good {
+    font-size: 15px;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  /* CENTER: VS + CTA */
+  .panel-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 24px;
+    position: relative;
+    z-index: 2;
+    gap: 0;
+  }
+
+  .vs-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #0A0A0A;
+    border: 2.5px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 900;
+    color: #444;
+    margin-bottom: 22px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.9);
+    letter-spacing: -1px;
+  }
+
+  .verdict {
+    font-size: 21px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.5px;
+    text-align: center;
+    line-height: 1.2;
+    margin-bottom: 22px;
+  }
+
+  .verdict em {
+    color: #FFC107;
+    font-style: normal;
+  }
+
+  .cta-pill {
+    background: #FFC107;
+    color: #0A0A0A;
+    font-size: 16px;
+    font-weight: 900;
+    padding: 13px 30px;
+    border-radius: 40px;
+    letter-spacing: -0.2px;
+    box-shadow: 0 0 30px rgba(255,193,7,0.35);
+    margin-bottom: 10px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .url-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+
+  .url-text span {
+    color: #FFC107;
+  }
+
+  /* RIGHT panel: Ooustream */
+  .panel-right {
+    width: 380px;
+    height: 100%;
+    background: linear-gradient(205deg, #0A0A0A 0%, #0d0b00 60%, #111000 100%);
+    border-left: 1px solid rgba(255,193,7,0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 30px;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+  }
+
+  .panel-right::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(255,193,7,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .col-header-good {
+    font-size: 38px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: -1.5px;
+    margin-bottom: 8px;
+  }
+
+  .gold-line {
+    width: 55px;
+    height: 2.5px;
+    background: linear-gradient(90deg, transparent, #FFC107, transparent);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 8px rgba(255,193,7,0.5);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="bg-glow"></div>
+
+  <!-- LEFT: Cable -->
+  <div class="panel-left">
+    <div class="col-header-bad">Cable</div>
+    <div class="col-sub-bad">The old way</div>
+
+    <div class="row row-bad">
+      <div class="badge badge-bad">✕</div>
+      <div class="row-text-bad">$150+ per month</div>
+    </div>
+    <div class="row row-bad">
+      <div class="badge badge-bad">✕</div>
+      <div class="row-text-bad">500 useless channels</div>
+    </div>
+    <div class="row row-bad">
+      <div class="badge badge-bad">✕</div>
+      <div class="row-text-bad">Contract required</div>
+    </div>
+    <div class="row row-bad">
+      <div class="badge badge-bad">✕</div>
+      <div class="row-text-bad">Ugly cable box</div>
+    </div>
+    <div class="row row-bad">
+      <div class="badge badge-bad">✕</div>
+      <div class="row-text-bad">One screen at a time</div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="panel-center">
+    <div class="vs-circle">VS</div>
+    <div class="verdict">The choice is<br><em>obvious.</em></div>
+    <div class="cta-pill">Get Ooustream Now</div>
+    <div class="url-text"><span>ooustick.com</span></div>
+  </div>
+
+  <!-- RIGHT: Ooustream -->
+  <div class="panel-right">
+    <div class="col-header-good">Ooustream</div>
+    <div class="gold-line"></div>
+
+    <div class="row row-good">
+      <div class="badge badge-good">✓</div>
+      <div class="row-text-good">$20/mo</div>
+    </div>
+    <div class="row row-good">
+      <div class="badge badge-good">✓</div>
+      <div class="row-text-good">Everything you want</div>
+    </div>
+    <div class="row row-good">
+      <div class="badge badge-good">✓</div>
+      <div class="row-text-good">No contract ever</div>
+    </div>
+    <div class="row row-good">
+      <div class="badge badge-good">✓</div>
+      <div class="row-text-good">Sleek streaming stick</div>
+    </div>
+    <div class="row row-good">
+      <div class="badge badge-good">✓</div>
+      <div class="row-text-good">4 screens at once (Pro)</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Cable vs Ooustream — 1x1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: #0A0A0A;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .container {
+    width: 1080px;
+    height: 1080px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Top label bar */
+  .top-bar {
+    width: 100%;
+    height: 64px;
+    background: #0A0A0A;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #222;
+    flex-shrink: 0;
+  }
+
+  .top-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #888;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .top-label span {
+    color: #FFC107;
+  }
+
+  /* Split body */
+  .split {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* LEFT — Cable */
+  .left {
+    flex: 1;
+    background: linear-gradient(160deg, #1a0000 0%, #0d0000 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 36px;
+    position: relative;
+    border-right: 1px solid #3a0000;
+  }
+
+  .left::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, rgba(200,0,0,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .left-header {
+    font-size: 38px;
+    font-weight: 900;
+    color: #ff4444;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .left-sub {
+    font-size: 13px;
+    font-weight: 600;
+    color: #882222;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 13px 18px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .icon-bad {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(220,30,30,0.2);
+    border: 2px solid #cc2222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: #ff4444;
+    font-weight: 900;
+  }
+
+  .item-text {
+    font-size: 18px;
+    font-weight: 600;
+    color: #cc9999;
+    line-height: 1.2;
+  }
+
+  /* RIGHT — Ooustream */
+  .right {
+    flex: 1;
+    background: linear-gradient(160deg, #0f0d00 0%, #0A0A0A 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 36px;
+    position: relative;
+  }
+
+  .right::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, rgba(255,193,7,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .right-header {
+    font-size: 38px;
+    font-weight: 900;
+    color: #FFC107;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .right-underline {
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #FFC107, transparent);
+    border-radius: 2px;
+    margin-bottom: 30px;
+    box-shadow: 0 0 10px rgba(255,193,7,0.5);
+  }
+
+  .icon-good {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,193,7,0.15);
+    border: 2px solid #FFC107;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: #FFC107;
+    font-weight: 900;
+  }
+
+  .item-text-good {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ffffff;
+    line-height: 1.2;
+  }
+
+  .item-good {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 13px 18px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    background: rgba(255,193,7,0.04);
+    border: 1px solid rgba(255,193,7,0.12);
+  }
+
+  /* Bottom CTA bar */
+  .bottom-bar {
+    width: 100%;
+    height: 80px;
+    background: #FFC107;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+
+  .cta-text {
+    font-size: 26px;
+    font-weight: 900;
+    color: #0A0A0A;
+    letter-spacing: -0.5px;
+  }
+
+  .cta-url {
+    font-size: 18px;
+    font-weight: 700;
+    color: rgba(10,10,10,0.6);
+  }
+
+  .divider {
+    width: 1px;
+    height: 30px;
+    background: rgba(10,10,10,0.2);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="top-bar">
+    <span class="top-label">The <span>choice</span> is obvious</span>
+  </div>
+
+  <div class="split">
+
+    <!-- LEFT: Cable -->
+    <div class="left">
+      <div class="left-header">Cable</div>
+      <div class="left-sub">The old way</div>
+
+      <div class="item">
+        <div class="icon-bad">✕</div>
+        <div class="item-text">$150+ per month</div>
+      </div>
+      <div class="item">
+        <div class="icon-bad">✕</div>
+        <div class="item-text">500 useless channels</div>
+      </div>
+      <div class="item">
+        <div class="icon-bad">✕</div>
+        <div class="item-text">Contract required</div>
+      </div>
+      <div class="item">
+        <div class="icon-bad">✕</div>
+        <div class="item-text">Ugly cable box</div>
+      </div>
+      <div class="item">
+        <div class="icon-bad">✕</div>
+        <div class="item-text">One screen at a time</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Ooustream -->
+    <div class="right">
+      <div class="right-header">Ooustream</div>
+      <div class="right-underline"></div>
+
+      <div class="item-good">
+        <div class="icon-good">✓</div>
+        <div class="item-text-good">$20/mo</div>
+      </div>
+      <div class="item-good">
+        <div class="icon-good">✓</div>
+        <div class="item-text-good">Everything you want</div>
+      </div>
+      <div class="item-good">
+        <div class="icon-good">✓</div>
+        <div class="item-text-good">No contract ever</div>
+      </div>
+      <div class="item-good">
+        <div class="icon-good">✓</div>
+        <div class="item-text-good">Sleek streaming stick</div>
+      </div>
+      <div class="item-good">
+        <div class="icon-good">✓</div>
+        <div class="item-text-good">4 screens at once (Pro)</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bottom-bar">
+    <span class="cta-text">Switch Today</span>
+    <div class="divider"></div>
+    <span class="cta-url">ooustick.com</span>
+  </div>
+
+</div>
+</body>
+</html>

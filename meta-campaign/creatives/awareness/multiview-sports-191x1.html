@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1200">
+<title>MultiView Sports — 1.91:1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1200px;
+    height: 628px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+  }
+
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 45% 80% at 22% 50%, rgba(255,193,7,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 80% at 70% 50%, rgba(255,193,7,0.05) 0%, transparent 55%);
+    pointer-events: none;
+  }
+
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.05) 3px, rgba(0,0,0,0.05) 4px);
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.28;
+  }
+
+  .left-panel {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 36%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 56px 48px 72px;
+    z-index: 1;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,193,7,0.6);
+    margin-bottom: 14px;
+  }
+
+  .headline {
+    font-size: 82px;
+    font-weight: 900;
+    line-height: 0.88;
+    letter-spacing: -0.04em;
+    color: #FFFFFF;
+    margin-bottom: 6px;
+  }
+
+  .headline .num {
+    color: #FFC107;
+    text-shadow: 0 0 50px rgba(255,193,7,0.5);
+  }
+
+  .headline-sub {
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    color: rgba(255,255,255,0.58);
+    margin-bottom: 32px;
+  }
+
+  .pro-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .pro-badge-inner {
+    background: linear-gradient(135deg, #FFC107, #FF8F00);
+    color: #0A0A0A;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 8px 18px;
+    border-radius: 30px;
+    box-shadow: 0 0 20px rgba(255,193,7,0.38);
+  }
+
+  .pro-desc { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.42); }
+
+  .cta-btn {
+    background: #FFC107;
+    color: #0A0A0A;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 14px 40px;
+    border-radius: 38px;
+    text-transform: uppercase;
+    box-shadow: 0 0 36px rgba(255,193,7,0.36), 0 8px 18px rgba(0,0,0,0.5);
+  }
+
+  .right-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 64%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 44px 72px 44px 44px;
+    z-index: 1;
+  }
+
+  .screens-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    width: 660px;
+    height: 500px;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1.5px rgba(255,193,7,0.2),
+      0 0 70px rgba(255,193,7,0.12),
+      0 18px 48px rgba(0,0,0,0.85);
+  }
+
+  .screen {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 12px 14px;
+    overflow: hidden;
+  }
+
+  .screen-nfl { background: linear-gradient(135deg, #0d2b5e 0%, #1a3a7a 40%, #0a1e44 100%); }
+  .screen-nba { background: linear-gradient(135deg, #5a0d0d 0%, #8b1a1a 40%, #3d0808 100%); }
+  .screen-pl  { background: linear-gradient(135deg, #0d3d1a 0%, #1a5c28 40%, #082b11 100%); }
+  .screen-ufc { background: linear-gradient(135deg, #2d1a00 0%, #5a3500 40%, #1e1100 100%); }
+
+  .screen::before { content: ''; position: absolute; inset: 0; opacity: 0.1; }
+  .screen-nfl::before { background: repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(255,255,255,0.5) 20px, rgba(255,255,255,0.5) 21px); }
+  .screen-nba::before { background: radial-gradient(circle 100px at 50% 30%, rgba(255,200,100,0.2) 0%, transparent 70%); }
+  .screen-pl::before  { background: repeating-linear-gradient(90deg, transparent, transparent 14px, rgba(255,255,255,0.12) 14px, rgba(255,255,255,0.12) 15px); }
+  .screen-ufc::before { background: radial-gradient(circle 80px at 50% 40%, rgba(255,140,0,0.22) 0%, transparent 60%); }
+
+  .screen-corner {
+    position: absolute; top: 7px; left: 7px; width: 14px; height: 14px;
+    border-top: 1.5px solid rgba(255,193,7,0.48);
+    border-left: 1.5px solid rgba(255,193,7,0.48);
+  }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 4px;
+    position: absolute; top: 9px; right: 9px;
+    background: rgba(0,0,0,0.55); border-radius: 16px; padding: 3px 8px;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #ff3b3b; box-shadow: 0 0 7px rgba(255,59,59,0.9);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .live-text { font-size: 9px; font-weight: 800; letter-spacing: 0.12em; color: #FFF; text-transform: uppercase; }
+
+  .score-display {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 8px; z-index: 1;
+  }
+
+  .score-num { font-size: 24px; font-weight: 900; color: rgba(255,255,255,0.9); text-shadow: 0 2px 8px rgba(0,0,0,0.9); line-height: 1; }
+  .score-sep { font-size: 14px; color: rgba(255,255,255,0.35); }
+
+  .sport-label { font-size: 15px; font-weight: 900; letter-spacing: 0.06em; color: #FFF; text-transform: uppercase; text-shadow: 0 1px 6px rgba(0,0,0,0.8); z-index: 1; }
+  .sport-sub   { font-size: 9px; font-weight: 600; letter-spacing: 0.08em; color: rgba(255,255,255,0.45); text-transform: uppercase; margin-top: 2px; z-index: 1; }
+
+  .domain {
+    position: absolute;
+    bottom: 22px;
+    left: 72px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.22);
+    z-index: 11;
+  }
+
+  .domain span { color: rgba(255,193,7,0.36); }
+</style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="scanlines"></div>
+
+  <div class="left-panel">
+    <div class="eyebrow">Ooustream Pro Feature</div>
+    <h1 class="headline"><span class="num">4</span> Games.</h1>
+    <div class="headline-sub">One Screen.</div>
+    <div class="pro-badge-row">
+      <div class="pro-badge-inner">Ooustream Pro</div>
+      <span class="pro-desc">Miss nothing.</span>
+    </div>
+    <div class="cta-btn">Get Ooustream Pro</div>
+  </div>
+
+  <div class="right-panel">
+    <div class="screens-grid">
+      <div class="screen screen-nfl">
+        <div class="screen-corner"></div>
+        <div class="live-badge"><div class="live-dot"></div><span class="live-text">Live</span></div>
+        <div class="score-display"><span class="score-num">21</span><span class="score-sep">–</span><span class="score-num">17</span></div>
+        <div class="sport-label">NFL</div>
+        <div class="sport-sub">Chiefs vs Eagles · Q3</div>
+      </div>
+      <div class="screen screen-nba">
+        <div class="screen-corner"></div>
+        <div class="live-badge"><div class="live-dot"></div><span class="live-text">Live</span></div>
+        <div class="score-display"><span class="score-num">89</span><span class="score-sep">–</span><span class="score-num">84</span></div>
+        <div class="sport-label">NBA</div>
+        <div class="sport-sub">Lakers vs Celtics · 4Q</div>
+      </div>
+      <div class="screen screen-pl">
+        <div class="screen-corner"></div>
+        <div class="live-badge"><div class="live-dot"></div><span class="live-text">Live</span></div>
+        <div class="score-display"><span class="score-num">2</span><span class="score-sep">–</span><span class="score-num">1</span></div>
+        <div class="sport-label">Premier League</div>
+        <div class="sport-sub">Arsenal vs Man City · 67'</div>
+      </div>
+      <div class="screen screen-ufc">
+        <div class="screen-corner"></div>
+        <div class="live-badge"><div class="live-dot"></div><span class="live-text">Live</span></div>
+        <div class="score-display"><span class="score-num" style="font-size:18px;color:#FFC107;">RD 3</span></div>
+        <div class="sport-label">UFC</div>
+        <div class="sport-sub">Jones vs Miocic · PPV</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="domain"><span>ooustick</span>.com</div>
+</body>
+</html>

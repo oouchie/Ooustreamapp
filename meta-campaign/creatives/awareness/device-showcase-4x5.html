@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Device Showcase — 4x5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1080px;
+    height: 1350px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+  }
+
+  .bg-spotlight {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 65% 40% at 50% 58%, rgba(255,193,7,0.1) 0%, rgba(255,193,7,0.03) 35%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255,193,7,0.05) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .bg-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 48%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+  }
+
+  .container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 72px 80px;
+    z-index: 1;
+  }
+
+  .top-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 72px;
+  }
+
+  .overline {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: rgba(255,193,7,0.65);
+    margin-bottom: 20px;
+  }
+
+  .headline {
+    font-size: 88px;
+    font-weight: 900;
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+    color: #FFFFFF;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  .subhead {
+    font-size: 25px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.48);
+    text-align: center;
+  }
+
+  /* Device */
+  .device-section {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 72px;
+  }
+
+  .floor-glow {
+    position: absolute;
+    bottom: -50px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 680px;
+    height: 130px;
+    background: radial-gradient(ellipse, rgba(255,193,7,0.2) 0%, transparent 70%);
+    filter: blur(22px);
+  }
+
+  .floor-reflection {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 500px;
+    height: 44px;
+    background: radial-gradient(ellipse, rgba(255,193,7,0.12) 0%, transparent 70%);
+    filter: blur(8px);
+  }
+
+  .device-body {
+    width: 500px;
+    height: 100px;
+    background: linear-gradient(160deg, #303030 0%, #1e1e1e 35%, #161616 65%, #232323 100%);
+    border-radius: 55px;
+    position: relative;
+    border: 1.5px solid rgba(255,193,7,0.22);
+    box-shadow:
+      inset 0 1px 1px rgba(255,255,255,0.07),
+      inset 0 -1px 1px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(0,0,0,0.5),
+      0 20px 88px rgba(0,0,0,0.95),
+      0 0 130px rgba(255,193,7,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .device-body::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 10%; right: 10%;
+    height: 40%;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.06), transparent);
+    border-radius: 55px 55px 0 0;
+  }
+
+  .device-brand {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    z-index: 1;
+  }
+
+  .device-led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FFC107;
+    box-shadow: 0 0 13px rgba(255,193,7,0.9), 0 0 22px rgba(255,193,7,0.4);
+  }
+
+  .device-name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.17em;
+    color: rgba(255,193,7,0.88);
+    text-transform: uppercase;
+  }
+
+  .hdmi-connector {
+    position: absolute;
+    right: -43px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+  }
+
+  .hdmi-neck {
+    width: 43px;
+    height: 20px;
+    background: linear-gradient(90deg, #2a2a2a, #1e1e1e);
+    border-radius: 0 2px 2px 0;
+    border: 1px solid rgba(255,193,7,0.12);
+    border-left: none;
+  }
+
+  .hdmi-head {
+    width: 32px;
+    height: 28px;
+    background: linear-gradient(135deg, #2e2e2e, #1a1a1a);
+    border-radius: 2px 5px 5px 2px;
+    position: absolute;
+    right: -31px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 1px solid rgba(255,193,7,0.18);
+    box-shadow: 0 0 11px rgba(255,193,7,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hdmi-pins {
+    width: 20px;
+    height: 4px;
+    background: repeating-linear-gradient(90deg, rgba(255,193,7,0.4) 0px, rgba(255,193,7,0.4) 2px, transparent 2px, transparent 4px);
+  }
+
+  /* 2-column feature list */
+  .features-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 60px;
+  }
+
+  .feature-cell {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 28px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .feature-cell:nth-child(even) { border-right: none; }
+  .feature-cell:nth-child(n+5) { border-bottom: none; }
+
+  .feature-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(255,193,7,0.1);
+    border: 1px solid rgba(255,193,7,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 17px;
+    color: #FFC107;
+  }
+
+  .feature-text-wrap .feature-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #FFFFFF;
+    margin-bottom: 3px;
+  }
+
+  .feature-text-wrap .feature-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 400;
+  }
+
+  .cta-btn {
+    background: #FFC107;
+    color: #0A0A0A;
+    font-size: 23px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 24px 76px;
+    border-radius: 56px;
+    text-transform: uppercase;
+    box-shadow:
+      0 0 50px rgba(255,193,7,0.4),
+      0 10px 28px rgba(0,0,0,0.55);
+    margin-bottom: 28px;
+  }
+
+  .domain {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.26);
+  }
+
+  .domain span { color: rgba(255,193,7,0.42); }
+</style>
+</head>
+<body>
+  <div class="bg-spotlight"></div>
+  <div class="bg-vignette"></div>
+
+  <div class="container">
+
+    <div class="top-section">
+      <div class="overline">Introducing</div>
+      <h1 class="headline">Your TV just got<br>an upgrade.</h1>
+      <p class="subhead">Plug in. Stream everything.</p>
+    </div>
+
+    <div class="device-section">
+      <div class="floor-glow"></div>
+      <div class="floor-reflection"></div>
+      <div class="device-body">
+        <div class="device-brand">
+          <div class="device-led"></div>
+          <span class="device-name">Ooustream</span>
+        </div>
+        <div class="hdmi-connector">
+          <div class="hdmi-neck"></div>
+          <div class="hdmi-head"><div class="hdmi-pins"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-cell">
+        <div class="feature-icon">&#9654;</div>
+        <div class="feature-text-wrap">
+          <div class="feature-title">10,000+ Channels</div>
+          <div class="feature-desc">Live TV from around the world</div>
+        </div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-icon">&#9744;</div>
+        <div class="feature-text-wrap">
+          <div class="feature-title">Sports MultiView</div>
+          <div class="feature-desc">4 simultaneous screens</div>
+        </div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-icon">&#9733;</div>
+        <div class="feature-text-wrap">
+          <div class="feature-title">Movies &amp; Series</div>
+          <div class="feature-desc">On-demand library</div>
+        </div>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-icon">&#9675;</div>
+        <div class="feature-text-wrap">
+          <div class="feature-title">No Monthly Fees</div>
+          <div class="feature-desc">$20/mo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-btn">Shop Ooustream</div>
+    <div class="domain"><span>ooustick</span>.com</div>
+
+  </div>
+</body>
+</html>

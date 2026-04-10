@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Ooustream — Cut The Cord (9x16)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1080px;
+    height: 1920px;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    position: relative;
+  }
+
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,193,7,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,193,7,0.03) 1px, transparent 1px);
+    background-size: 72px 72px;
+    pointer-events: none;
+  }
+
+  /* Large glow centered in the content zone (center 60%) */
+  .bg-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1000px;
+    height: 1000px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(255, 193, 7, 0.20) 0%,
+      rgba(255, 193, 7, 0.10) 30%,
+      rgba(255, 193, 7, 0.03) 55%,
+      transparent 70%
+    );
+    pointer-events: none;
+  }
+
+  /* Top fade */
+  .fade-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 260px;
+    background: linear-gradient(180deg, #0A0A0A 0%, transparent 100%);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* Bottom fade */
+  .fade-bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 260px;
+    background: linear-gradient(0deg, #0A0A0A 0%, transparent 100%);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    z-index: 20;
+  }
+
+  .corner-tl { top: 36px; left: 36px; border-top: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-tr { top: 36px; right: 36px; border-top: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+  .corner-bl { bottom: 36px; left: 36px; border-bottom: 3px solid rgba(255,193,7,0.5); border-left: 3px solid rgba(255,193,7,0.5); }
+  .corner-br { bottom: 36px; right: 36px; border-bottom: 3px solid rgba(255,193,7,0.5); border-right: 3px solid rgba(255,193,7,0.5); }
+
+  /* Content zone: center 60% vertically = 576px to 1344px */
+  .content-zone {
+    position: absolute;
+    top: 576px;
+    left: 0;
+    right: 0;
+    height: 768px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 88px;
+    z-index: 10;
+  }
+
+  /* Top brand strip */
+  .brand-strip {
+    position: absolute;
+    top: 80px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    z-index: 10;
+  }
+
+  .brand-name {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .brand-tagline {
+    font-size: 22px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.06em;
+  }
+
+  /* Bottom CTA zone */
+  .bottom-zone {
+    position: absolute;
+    bottom: 100px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    z-index: 10;
+  }
+
+  .badge-free-shipping {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFC107, #FFD54F);
+    color: #0A0A0A;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 14px 36px;
+    border-radius: 100px;
+    box-shadow: 0 0 40px rgba(255, 193, 7, 0.5), 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  .headline {
+    font-size: 136px;
+    font-weight: 900;
+    line-height: 0.9;
+    text-align: center;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .headline-top { display: block; color: #ffffff; }
+  .headline-bottom {
+    display: block;
+    color: #FFC107;
+    text-shadow: 0 0 80px rgba(255, 193, 7, 0.7), 0 0 160px rgba(255, 193, 7, 0.3);
+  }
+
+  .subheadline {
+    font-size: 30px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.55);
+    text-align: center;
+    letter-spacing: 0.04em;
+    margin-bottom: 56px;
+  }
+
+  /* CSS Ooustream */
+  .device-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 56px;
+  }
+
+  .device-body {
+    width: 300px;
+    height: 48px;
+    background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 50%, #111 100%);
+    border-radius: 28px;
+    position: relative;
+    border: 1.5px solid rgba(255, 193, 7, 0.3);
+    box-shadow: 0 0 50px rgba(255, 193, 7, 0.22), 0 10px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .device-body::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FFC107;
+    box-shadow: 0 0 16px rgba(255,193,7,0.9), 0 0 30px rgba(255,193,7,0.5);
+  }
+
+  .device-body::after {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50px;
+    right: 50px;
+    height: 1.5px;
+    background: linear-gradient(90deg, transparent, rgba(255,193,7,0.5), rgba(255,255,255,0.2), rgba(255,193,7,0.5), transparent);
+  }
+
+  .device-cable {
+    width: 4px;
+    height: 30px;
+    background: linear-gradient(180deg, #333, #222);
+    border-radius: 0 0 4px 4px;
+  }
+
+  .device-shadow {
+    width: 220px;
+    height: 16px;
+    background: radial-gradient(ellipse, rgba(255,193,7,0.18) 0%, transparent 70%);
+    margin-top: 6px;
+    filter: blur(4px);
+  }
+
+  /* Value props */
+  .value-props {
+    display: flex;
+    gap: 0;
+    margin-bottom: 0;
+  }
+
+  .value-prop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 44px;
+    border: 1px solid rgba(255, 193, 7, 0.15);
+    background: rgba(255,193,7,0.03);
+  }
+
+  .value-prop:first-child { border-radius: 20px 0 0 20px; }
+  .value-prop:last-child { border-radius: 0 20px 20px 0; }
+  .value-prop + .value-prop { border-left: none; }
+
+  .value-prop-icon { font-size: 38px; line-height: 1; }
+  .value-prop-label { font-size: 22px; font-weight: 600; color: rgba(255,255,255,0.85); letter-spacing: 0.02em; }
+
+  /* CTA */
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(135deg, #FFC107 0%, #FFD54F 50%, #FFC107 100%);
+    color: #0A0A0A;
+    font-size: 44px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 36px 90px;
+    border-radius: 100px;
+    box-shadow: 0 0 70px rgba(255,193,7,0.45), 0 0 140px rgba(255,193,7,0.2), 0 10px 50px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transform: skewX(-20deg);
+  }
+
+  .url-brand {
+    font-size: 28px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="fade-top"></div>
+  <div class="fade-bottom"></div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <!-- Top brand strip -->
+  <div class="brand-strip">
+    <div class="brand-name">Ooustream</div>
+    <div class="brand-tagline">Premium Streaming Device</div>
+  </div>
+
+  <!-- Center content zone -->
+  <div class="content-zone">
+    <div class="badge-free-shipping">&#10003;&nbsp; Free Shipping — Limited Time</div>
+
+    <h1 class="headline" style="margin-top:36px;">
+      <span class="headline-top">Cut The</span>
+      <span class="headline-bottom">Cord.</span>
+    </h1>
+
+    <p class="subheadline">Everything on TV. Nothing you don't need.</p>
+
+    <div class="device-wrapper">
+      <div class="device-body"></div>
+      <div class="device-cable"></div>
+      <div class="device-shadow"></div>
+    </div>
+
+    <div class="value-props">
+      <div class="value-prop">
+        <span class="value-prop-icon">&#128250;</span>
+        <span class="value-prop-label">Live TV</span>
+      </div>
+      <div class="value-prop">
+        <span class="value-prop-icon">&#127916;</span>
+        <span class="value-prop-label">Movies</span>
+      </div>
+      <div class="value-prop">
+        <span class="value-prop-icon">&#127944;</span>
+        <span class="value-prop-label">MultiView</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA zone -->
+  <div class="bottom-zone">
+    <div class="cta-button">
+      START FREE TRIAL <span style="font-size:48px;font-weight:900;">&#8594;</span>
+    </div>
+    <div class="url-brand">ooustick.com</div>
+  </div>
+</body>
+</html>
