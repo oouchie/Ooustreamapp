@@ -46,6 +46,8 @@ import androidx.media3.ui.SubtitleView
 import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
+import com.ooustream.iptv.common.DeviceTier
+import com.ooustream.iptv.common.DeviceTierDetector
 import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.common.DeviceUtils
@@ -217,14 +219,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             )
         }
 
-        // Cap resolution on low-heap devices — 1080p SW decode is unviable at 128MB heap
-        if (am.memoryClass <= 128) {
+        // v3.5.9: Unified device tier detection (replaces inline memoryClass checks)
+        val deviceTier = DeviceTierDetector.tier(requireContext())
+        streamDiagnosticLogger.logAppEvent("DEVICE_TIER", DeviceTierDetector.describe(requireContext()))
+        AudioLogger.log("Device tier: ${DeviceTierDetector.describe(requireContext())}")
+
+        // Apply tier-appropriate video resolution cap. ULTRA_LOW/LOW: cap at 1080p
+        // to block 4K variants (rare on IPTV but a safety net). 1080p AVC hardware
+        // decode usually works fine on these devices — HEVC Main 10 is filtered
+        // separately in onTracksChanged via canDecodeHevcMain10().
+        val maxSize = DeviceTierDetector.maxVideoSize(requireContext())
+        if (maxSize != null) {
             trackSelector!!.setParameters(
                 trackSelector!!.buildUponParameters()
-                    .setMaxVideoSize(1280, 720)
+                    .setMaxVideoSize(maxSize.first, maxSize.second)
             )
-            AudioLogger.log("Low-heap device (${am.memoryClass}MB): capped video to 720p")
-            streamDiagnosticLogger.logAppEvent("RESOLUTION_CAP", "maxRes=720p, heap=${am.memoryClass}MB")
+            AudioLogger.log("$deviceTier tier: capped video to ${maxSize.first}x${maxSize.second}")
+            streamDiagnosticLogger.logAppEvent("RESOLUTION_CAP",
+                "maxRes=${maxSize.first}x${maxSize.second}, ${DeviceTierDetector.describe(requireContext())}")
         }
 
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
@@ -1131,26 +1143,48 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                         cachedVideoCodecs = videoFormat.codecs ?: ""
                     }
                 }
-                // Early HEVC Main 10 detection on MTK devices — known to fail (decoder accepts
-                // the stream, renders 1 GOP, then silently stalls). Swap to libVLC immediately
-                // instead of waiting ~27s for the watchdog to walk the full recovery ladder.
-                // Only trigger on initial playback (not after a player rebuild to avoid loops).
-                if (!earlyVlcSwapAttempted
-                    && !usingSoftwareVideoDecoder
-                    && cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
-                    && (cachedVideoCodecs.startsWith("hvc1.2") || cachedVideoCodecs.startsWith("hev1.2"))
-                    && AudioPipelineFactory.isMtkDevice()) {
-                    earlyVlcSwapAttempted = true
-                    AudioLogger.log("HEVC Main 10 on MTK device detected — swapping to libVLC preemptively")
-                    streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
-                        "reason=hevc_main10_mtk, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
-                    viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
-                        // No fallback on block: this is a proactive preemptive swap.
-                        // If VLC is guarded for this URL, let ExoPlayer keep trying —
-                        // the watchdog will take over if/when playback actually stalls.
-                        swapToVlcInPlace()
+                // v3.5.9: Device-aware HEVC Main 10 routing.
+                //
+                // On ULTRA_LOW/LOW tier (mt8695-class), HEVC Main 10 is not playable
+                // by any path — hardware doesn't support profile 2, software HEVC is
+                // ~8fps on Cortex-A53, and libVLC's HEVC decoder native-crashes on
+                // mt8695 (the v3.5.7 regression). Show a graceful error immediately
+                // instead of attempting an unwatchable swap.
+                //
+                // On MID/HIGH tier, the existing early VLC swap continues to work: the
+                // libVLC backend can handle HEVC Main 10 on capable hardware.
+                if (cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
+                    && (cachedVideoCodecs.startsWith("hvc1.2") || cachedVideoCodecs.startsWith("hev1.2"))) {
+
+                    if (!DeviceTierDetector.canDecodeHevcMain10(requireContext())) {
+                        // ULTRA_LOW / LOW tier — refuse to attempt, show friendly error.
+                        earlyVlcSwapAttempted = true // prevent watchdog from retrying
+                        AudioLogger.log("HEVC Main 10 on ${DeviceTierDetector.tier(requireContext())} tier — hardware can't decode, refusing playback")
+                        streamDiagnosticLogger.logAppEvent("STREAM_CAPABILITY_CHECK",
+                            "result=unsupported, reason=hevc_main10_low_tier, codecs=$cachedVideoCodecs, " +
+                            "${DeviceTierDetector.describe(requireContext())}, channel=${healthMonitor?.channelName ?: "unknown"}")
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            showFriendlyError(
+                                "This channel is streaming in HDR (HEVC 10-bit) which your device can't play. " +
+                                "Try a different channel or contact support."
+                            )
+                        }
+                        return
                     }
-                    return
+
+                    // MID/HIGH tier — early VLC swap (existing v3.5.6 behavior)
+                    if (!earlyVlcSwapAttempted
+                        && !usingSoftwareVideoDecoder
+                        && AudioPipelineFactory.isMtkDevice()) {
+                        earlyVlcSwapAttempted = true
+                        AudioLogger.log("HEVC Main 10 on MTK device (MID+ tier) — swapping to libVLC preemptively")
+                        streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
+                            "reason=hevc_main10_mtk, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            swapToVlcInPlace()
+                        }
+                        return
+                    }
                 }
                 // Don't override user's manual track selection from TrackPickerOverlay
                 if (userTrackOverrideActive) return
