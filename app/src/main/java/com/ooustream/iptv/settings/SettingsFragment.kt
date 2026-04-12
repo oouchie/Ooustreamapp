@@ -1,5 +1,6 @@
 package com.ooustream.iptv.settings
 
+import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.widget.ScrollView
@@ -48,6 +49,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_CLEAR_HISTORY = 12L
         private const val ACTION_SUBTITLE_SETTINGS = 13L
         private const val ACTION_SEND_DEBUG_LOG = 14L
+        private const val ACTION_RESET_PLAYBACK_RECOVERY = 15L
     }
 
     @Inject lateinit var parentalControlManager: ParentalControlManager
@@ -180,6 +182,18 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Reset Playback Recovery (v3.5.8) — escape hatch for the libVLC crash guard.
+        // If a user is stuck with "This content uses a video format not supported"
+        // errors after a previous crash, this clears the guard state so the app
+        // tries libVLC again on the next playback attempt.
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_RESET_PLAYBACK_RECOVERY)
+                .title("Reset Playback Recovery")
+                .description("Clear stored decoder crash state (fix for stuck 'format not supported' errors)")
+                .build()
+        )
+
         // Audio Decoder info (non-actionable)
         val ffmpegAvailable = AudioLogger.isFfmpegAvailable
         val decoderDesc = if (ffmpegAvailable)
@@ -228,7 +242,37 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_CRASH_LOG -> showCrashLog()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
             ACTION_CLEAR_HISTORY -> showClearHistoryConfirmation()
+            ACTION_RESET_PLAYBACK_RECOVERY -> resetPlaybackRecovery()
             ACTION_LOGOUT -> showLogoutConfirmation()
+        }
+    }
+
+    /**
+     * v3.5.8 escape hatch: wipes the libVLC crash guard SharedPreferences so the
+     * player gives libVLC a fresh chance on the next swap attempt. This is the
+     * manual safety valve for the URL-scoped guard in OoustreamPlaybackFragment —
+     * if a user somehow gets wedged despite the URL scoping (e.g. they were
+     * upgraded from v3.5.7's global flag and the version-bump reset didn't fire),
+     * they can recover without having to reinstall or clear app data.
+     */
+    private fun resetPlaybackRecovery() {
+        try {
+            requireContext()
+                .getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .apply()
+            Toast.makeText(
+                requireContext(),
+                "Playback recovery state cleared. Try playing your content again.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            Toast.makeText(
+                requireContext(),
+                "Couldn't reset playback recovery: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 

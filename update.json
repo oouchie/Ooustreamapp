@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.7",
-  "version_code": 52,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.7/app-release.apk",
-  "changelog": "v3.5.7 — VLC Stability & HEVC Slideshow Fix\n\n• Fixed: libVLC native crash on MTK devices (AFTKRT, AFTMM) when swapping to VLC for HEVC Main 10 content. Added crash guard that prevents repeated crashes.\n• Fixed: HEVC slideshow on software decoder — channels using regular HEVC on MTK devices (8fps slideshow) now auto-swap to libVLC after 6 seconds instead of playing unwatchably forever.\n• Stability: VLC swap timing improved to prevent native initialization race condition.",
+  "version_name": "3.5.8",
+  "version_code": 53,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.8/app-release.apk",
+  "changelog": "v3.5.8 — VLC Crash Guard Regression Fix\n\n• Fixed: v3.5.7 crash guard was too aggressive — a single libVLC crash on one stream would permanently block VLC fallback for ALL content on the device, causing 'This content uses a video format not supported' errors on plain 1080p AVC that was perfectly playable before. The guard is now scoped to the exact URL that crashed and resets on every app update.\n• Fixed: When the crash guard blocks libVLC on MTK devices, the player now falls through to software video decoder at 720p instead of showing a hard error. Previously the MTK watchdog shortcut would give up entirely.\n• Added: Settings → 'Reset Playback Recovery' button — manual escape hatch to clear stuck crash guard state without reinstalling the app. Only needed if you were affected by the v3.5.7 regression.\n• Crash guard state from v3.5.7 is automatically cleared on upgrade to v3.5.8.",
   "mandatory": false
 }

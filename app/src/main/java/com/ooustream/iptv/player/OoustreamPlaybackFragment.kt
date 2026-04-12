@@ -43,6 +43,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import androidx.media3.ui.SubtitleView
+import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.AudioLogger
@@ -946,7 +947,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                         streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
                             "reason=video_renderer_error_repeat, count=${recentVideoRendererErrors.size}, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
                         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
-                            swapToVlcInPlace()
+                            val swapped = swapToVlcInPlace()
+                            if (!swapped) {
+                                // VLC guard blocked for this URL — player has already errored
+                                // and we're out of in-player recovery paths for this content.
+                                showFriendlyError("This content uses a video format not supported on this device.")
+                            }
                         }
                         return
                     }
@@ -1139,6 +1145,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                     streamDiagnosticLogger.logAppEvent("EARLY_VLC_SWAP",
                         "reason=hevc_main10_mtk, codecs=$cachedVideoCodecs, channel=${healthMonitor?.channelName ?: "unknown"}")
                     viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                        // No fallback on block: this is a proactive preemptive swap.
+                        // If VLC is guarded for this URL, let ExoPlayer keep trying —
+                        // the watchdog will take over if/when playback actually stalls.
                         swapToVlcInPlace()
                     }
                     return
@@ -1434,7 +1443,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                                 "reason=$reason, resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, decoderNull=$decoderNull, codecs=$codecs, mime=$mime, channel=$channelName")
                             // Swap to libVLC fallback fragment — keeps user in the app
                             withContext(Dispatchers.Main) {
-                                swapToVlcInPlace()
+                                val swapped = swapToVlcInPlace()
+                                if (!swapped) {
+                                    // Already walked the whole SW decoder ladder and libVLC
+                                    // is guarded for this URL. No more recovery paths.
+                                    showFriendlyError("This content uses a video format not supported on this device.")
+                                }
                             }
                             return@launch
                         }
@@ -1481,8 +1495,26 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                             AudioLogger.log("Frame watchdog: step 2 MTK shortcut — swapping straight to libVLC")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_MTK_VLC_SHORTCUT",
                                 "reset=2, hwProven=false, channel=$channelName")
-                            withContext(Dispatchers.Main) {
+                            val swapped = withContext(Dispatchers.Main) {
                                 swapToVlcInPlace()
+                            }
+                            if (swapped) {
+                                return@launch
+                            }
+                            // v3.5.8: libVLC crash guard blocked the swap because this
+                            // specific URL previously crashed libVLC (or a previous swap
+                            // was interrupted by process death). Fall through to the
+                            // software decoder + 720p cap path instead of giving up —
+                            // plain AVC usually decodes fine in c2.android at 720p on
+                            // mt8695, which is much better than a hard error dialog.
+                            AudioLogger.log("Frame watchdog: VLC guard blocked — falling through to software decoder at 720p")
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_MTK_SW_FALLBACK",
+                                "reset=2, reason=vlc_guard_blocked, channel=$channelName")
+                            withContext(Dispatchers.Main) {
+                                trackSelector?.setParameters(
+                                    trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
+                                )
+                                rebuildPlayerWithSoftwareDecoder()
                             }
                             return@launch
                         }
@@ -1560,8 +1592,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_HEVC_SLIDESHOW",
                                 "fps=${actualFps.toInt()}, polls=$consecutiveSlideshowPolls, framesDelta=$framesDelta, channel=${healthMonitor?.channelName ?: "unknown"}")
                             earlyVlcSwapAttempted = true
-                            withContext(Dispatchers.Main) {
+                            val swapped = withContext(Dispatchers.Main) {
                                 swapToVlcInPlace()
+                            }
+                            if (!swapped) {
+                                // HEVC at ~8fps with SW decoder is exactly the slideshow we're
+                                // trying to escape. If VLC is blocked, SW fallback won't save
+                                // us — the hardware physically can't decode this content.
+                                withContext(Dispatchers.Main) {
+                                    showFriendlyError("This content uses a video format not supported on this device.")
+                                }
                             }
                             return@launch
                         }
@@ -1881,6 +1921,62 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         }
     }
 
+    // ── libVLC native crash guard (v3.5.7 + v3.5.8) ─────────────────────────
+    //
+    // v3.5.7 shipped a global "libVLC ever crashed" boolean flag. That was too
+    // aggressive: one crash on one URL permanently locked out libVLC for ALL
+    // future content on the same device, even after updates, and even for
+    // content that had nothing to do with the original crash. See the
+    // v3.5.8 changelog for the regression write-up.
+    //
+    // v3.5.8 scopes the guard to (URL, versionCode):
+    //   - Only the exact URL that crashed is blocked, not "any channel ever".
+    //   - On app update (versionCode bump), the guard resets — the new version
+    //     may well have fixed the crash we were protecting against.
+    //   - MTK watchdog shortcut now falls through to software decoder at 720p
+    //     when the guard blocks, instead of giving up (see call site).
+    //   - Settings → "Reset Playback Recovery" is a manual escape hatch.
+    //
+    // Storage is project-private SharedPreferences "vlc_crash_guard":
+    //   vlc_swap_crashed_url        — the exact URL that crashed (String)
+    //   vlc_swap_crash_channel      — human-readable channel label (log only)
+    //   vlc_swap_crash_version_code — app versionCode at time of crash (Int)
+
+    private fun vlcCrashGuardPrefs() =
+        requireContext().getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
+
+    private fun isVlcCrashGuardActive(currentUrl: String): Boolean {
+        val prefs = vlcCrashGuardPrefs()
+        val storedVersion = prefs.getInt("vlc_swap_crash_version_code", -1)
+        // Flag from an older APK — the new version may have fixed the crash.
+        if (storedVersion != -1 && storedVersion != BuildConfig.VERSION_CODE) {
+            clearVlcCrashGuard()
+            return false
+        }
+        val crashedUrl = prefs.getString("vlc_swap_crashed_url", null) ?: return false
+        return crashedUrl == currentUrl
+    }
+
+    private fun armVlcCrashGuard(url: String, channelLabel: String) {
+        vlcCrashGuardPrefs().edit()
+            .putString("vlc_swap_crashed_url", url)
+            .putString("vlc_swap_crash_channel", channelLabel)
+            .putInt("vlc_swap_crash_version_code", BuildConfig.VERSION_CODE)
+            .apply()
+    }
+
+    private fun clearVlcCrashGuard() {
+        vlcCrashGuardPrefs().edit()
+            .remove("vlc_swap_crashed_url")
+            .remove("vlc_swap_crash_channel")
+            .remove("vlc_swap_crash_version_code")
+            // Also wipe the legacy v3.5.7 keys so a user upgrading from 3.5.7
+            // isn't stuck with stale state the new code doesn't read.
+            .remove("vlc_swap_pending")
+            .remove("vlc_swap_channel")
+            .apply()
+    }
+
     /** Swap from ExoPlayer to libVLC IN-PLACE inside this same fragment.
      *  User keeps exact same UI (controls bar, poster, scrim, focus behavior) —
      *  only the video decode pipeline changes. Used when ExoPlayer can't decode
@@ -1888,36 +1984,39 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
      *
      *  Preserves URL, title, stream type, and position. If ExoPlayer hasn't had
      *  time to seek to the saved position yet (early swap during initial buffer),
-     *  falls back to reading the resume position directly from the DB. */
-    private fun swapToVlcInPlace() {
-        if (!isAdded || isDetached) return
-        if (useVlcBackend) return // already on VLC
+     *  falls back to reading the resume position directly from the DB.
+     *
+     *  Returns true if the swap was attempted, false if the native crash guard
+     *  blocked it (see isVlcCrashGuardActive). Callers should handle the false
+     *  return by falling through to an alternate recovery path instead of
+     *  hitting a dead end. */
+    private fun swapToVlcInPlace(): Boolean {
+        if (!isAdded || isDetached) return false
+        if (useVlcBackend) return false // already on VLC
 
-        // Native crash guard: if a previous VLC swap crashed the app (native SIGSEGV in
-        // libVLC on MTK devices), the "vlc_swap_pending" flag will still be set from last
-        // run. Skip VLC and show a friendly error instead of crashing again.
-        val prefs = requireContext().getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("vlc_swap_pending", false)) {
-            val lastChannel = prefs.getString("vlc_swap_channel", "unknown")
-            AudioLogger.log("VLC swap skipped — previous swap crashed the app (channel=$lastChannel)")
+        val url = viewModel.streamUrl
+
+        // v3.5.8 native crash guard: only skip if the EXACT current URL previously
+        // crashed libVLC on the CURRENT app version. Unrelated content is never
+        // blocked, and version bumps reset the guard automatically.
+        if (isVlcCrashGuardActive(url)) {
+            val lastChannel = vlcCrashGuardPrefs().getString("vlc_swap_crash_channel", "unknown")
+            AudioLogger.log("VLC swap skipped — previous swap on THIS URL crashed (channel=$lastChannel)")
             streamDiagnosticLogger.logAppEvent("VLC_SWAP_CRASH_GUARD",
-                "skipped=true, previousCrashChannel=$lastChannel, channel=${healthMonitor?.channelName ?: "unknown"}")
-            showFriendlyError("This content uses a video format not supported on this device.")
-            return
+                "skipped=true, previousCrashChannel=$lastChannel, channel=${healthMonitor?.channelName ?: "unknown"}, urlMatch=true")
+            return false
         }
-        // Set the pending flag BEFORE starting the swap — cleared after VLC renders first frame.
-        // If the app dies in between, the flag persists and blocks the next attempt.
-        prefs.edit()
-            .putBoolean("vlc_swap_pending", true)
-            .putString("vlc_swap_channel", healthMonitor?.channelName ?: viewModel.streamName)
-            .apply()
+
+        // Set the pending flag BEFORE starting the swap — cleared after VLC renders
+        // first frame. If the app dies in between, the flag persists and blocks the
+        // next attempt ON THIS SPECIFIC URL ONLY. Other content is unaffected.
+        armVlcCrashGuard(url, healthMonitor?.channelName ?: viewModel.streamName)
 
         // Resolve the position to resume at:
         //   1. If ExoPlayer is past the saved position (i.e., successfully seeked + played), use it
         //   2. Otherwise fetch the saved position from the DB (Continue Watching)
         val exoPos = player?.currentPosition ?: 0L
         val forceBeginning = arguments?.getBoolean("force_start_from_beginning", false) == true
-        val url = viewModel.streamUrl
         streamDiagnosticLogger.logAppEvent("VLC_SWAP_IN_PLACE",
             "url=${url.take(50)}, exoPos=${exoPos}ms, forceBeginning=$forceBeginning")
 
@@ -1937,6 +2036,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 doSwapToVlcInPlace(resolvedPos)
             }
         }
+        return true
     }
 
     private fun doSwapToVlcInPlace(positionMs: Long) {
@@ -2074,10 +2174,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 vlcHasRenderedFirstFrame = true
                 // Clear the native crash guard — VLC survived and rendered a frame
                 if (wasFirstFrame) {
-                    try {
-                        requireContext().getSharedPreferences("vlc_crash_guard", Context.MODE_PRIVATE)
-                            .edit().putBoolean("vlc_swap_pending", false).apply()
-                    } catch (_: Exception) {}
+                    try { clearVlcCrashGuard() } catch (_: Exception) {}
                 }
                 val currentTime = vlcMediaPlayer?.time ?: 0L
                 streamDiagnosticLogger.logAppEvent("VLC_VOUT",
