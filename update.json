@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.10",
-  "version_code": 55,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.10/app-release.apk",
-  "changelog": "v3.5.10 — HEVC Main 10 Threshold Fix\n\n• Fixed: v3.5.9 blocked HEVC Main 10 (HDR) content on AFTKRT (mt8696, 1.6GB RAM) and AFTMM (mt8695, 1.3GB RAM) even though those devices have enough RAM for libVLC to decode it. The HEVC Main 10 gate now uses total device RAM (>= 1.2GB) instead of device tier, so only truly low-RAM devices (AFTSS at 900MB) are blocked. Content that played before v3.5.9 plays again.",
+  "version_name": "3.5.11",
+  "version_code": 56,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.11/app-release.apk",
+  "changelog": "v3.5.11 — libVLC ProGuard Fix + HEVC Main 10 Threshold Fix\n\n• ROOT CAUSE FIX: Added missing ProGuard keep rule for libVLC classes (-keep class org.videolan.** { *; }). R8 was stripping JNI-accessed classes (IMedia$Slave etc.) causing UnsatisfiedLinkError on every libVLC init. This was the actual root cause behind ALL 'VLC crash on MTK' reports since v3.5.6 — the crashes were ProGuard stripping, not HEVC decoder failures.\n• Fixed: HEVC Main 10 gate now uses total device RAM (>= 1.2GB) instead of device tier. AFTKRT and AFTMM can play HDR content again via libVLC. Only AFTSS (900MB) is blocked.\n• libVLC fallback now works correctly on all devices with sufficient RAM.",
   "mandatory": false
 }
