@@ -92,31 +92,38 @@ object DeviceTierDetector {
     }
 
     /**
-     * Can this device decode HEVC Main Profile 10 (10-bit HDR) at any
-     * realistic resolution?
+     * Can this device play HEVC Main Profile 10 (10-bit HDR) content via
+     * any available decode path (hardware, libVLC, or software)?
      *
-     * Returns `false` for ULTRA_LOW and LOW tiers:
-     *   - ULTRA_LOW (mt8695-class): hardware decoder has no Main 10 profile
-     *     support. Software decode via c2.android is ~8 fps slideshow.
-     *     libVLC's HEVC decoder native-crashes on mt8695 (the original v3.5.7
-     *     motivation).
-     *   - LOW (AFTMM/AFTKRT, 160-192MB heap): hardware may support Main 10
-     *     in theory, but software fallback at 1080p exceeds the heap budget
-     *     and software decode at 720p is still marginal on Cortex-A53.
+     * v3.5.9 used the device TIER which was too aggressive: the AFTKRT
+     * (mt8696, 1669MB RAM, tier=ULTRA_LOW because mt8696 is in
+     * BAD_MTK_HARDWARE) was blocked from HEVC Main 10 even though it has
+     * plenty of RAM for libVLC to software-decode it. v3.5.10 uses total
+     * device RAM as the gate instead — this correctly differentiates:
      *
-     * Returns `true` for MID and HIGH tiers — hardware decoder path is
-     * expected to work, libVLC fallback is available if it doesn't.
+     *   AFTSS  (mt8695,  900MB) → false — libVLC crashes, SW is slideshow
+     *   AFTKRT (mt8696, 1669MB) → true  — libVLC handles it fine
+     *   AFTMM  (mt8695, 1285MB) → true  — enough RAM for libVLC
      *
-     * The playback fragment checks this at `onTracksChanged` time. If the
-     * stream is HEVC Main 10 (codec string `hvc1.2*` or `hev1.2*`) AND this
-     * returns false, the user sees a friendly "your device can't play this"
-     * dialog instead of an unwatchable slideshow or a native crash.
+     * The existing early VLC swap in onTracksChanged (HEVC Main 10 + MTK →
+     * libVLC) kicks in for devices that return true here. Devices that
+     * return false see the friendly "device can't play HDR" error.
+     *
+     * Threshold: 1.2 GB total RAM. Below this, libVLC's HEVC decode either
+     * SIGSEGV-crashes (mt8695 at 900MB) or OOMs within minutes.
      */
     fun canDecodeHevcMain10(context: Context): Boolean {
-        return when (tier(context)) {
-            DeviceTier.HIGH, DeviceTier.MID -> true
-            DeviceTier.LOW, DeviceTier.ULTRA_LOW -> false
-        }
+        val t = tier(context)
+        if (t == DeviceTier.HIGH || t == DeviceTier.MID) return true
+
+        // LOW / ULTRA_LOW: check total RAM. Devices with >= 1.2GB have
+        // enough headroom for libVLC to software-decode HEVC Main 10 at
+        // 1080p without crashing or OOMing. The libVLC fallback path in
+        // onTracksChanged handles the actual swap.
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val mi = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mi)
+        return mi.totalMem >= 1_200_000_000L  // 1.2 GB
     }
 
     /**

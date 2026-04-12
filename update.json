@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.9",
-  "version_code": 54,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.9/app-release.apk",
-  "changelog": "v3.5.9 — Device-Aware Playback Routing\n\n• New: Unified device tier detection classifies Fire TV Sticks into HIGH/MID/LOW/ULTRA_LOW tiers based on chipset + RAM.\n• New: HEVC Main 10 (HDR) streams on LOW/ULTRA_LOW devices now show a friendly error instead of attempting an unwatchable slideshow or triggering a native crash.\n• New: Diagnostic events logged at playback start for device capability telemetry.\n• Changed: Resolution cap for budget devices raised from 720p to 1080p — plain 1080p AVC works on mt8695.",
+  "version_name": "3.5.10",
+  "version_code": 55,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.10/app-release.apk",
+  "changelog": "v3.5.10 — HEVC Main 10 Threshold Fix\n\n• Fixed: v3.5.9 blocked HEVC Main 10 (HDR) content on AFTKRT (mt8696, 1.6GB RAM) and AFTMM (mt8695, 1.3GB RAM) even though those devices have enough RAM for libVLC to decode it. The HEVC Main 10 gate now uses total device RAM (>= 1.2GB) instead of device tier, so only truly low-RAM devices (AFTSS at 900MB) are blocked. Content that played before v3.5.9 plays again.",
   "mandatory": false
 }
