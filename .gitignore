@@ -13,3 +13,7 @@ local.properties
 *.aab
 *.keystore
 *.jks
+
+# v3.6.0 FFmpeg extension build workspace (regenerable, ~44MB sparse Media3 clone)
+# See tasks/v3.6.0-ffmpeg-video-extension.md for what lives here and how to rebuild.
+/ffmpeg-build/
