@@ -1,7 +1,7 @@
 {
-  "version_name": "3.6.0",
-  "version_code": 57,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.0/app-release.apk",
-  "changelog": "v3.6.0 — Seamless MKV Playback + Media3 1.9.0\n\n• Fixed: .mkv VODs and series episodes now route to libVLC instantly on play. No more silent freeze while ExoPlayer's MKV extractor gave up. Same backend from tap to first frame — no mid-movie surprise.\n• Fixed: libVLC now uses FFmpeg's demuxer (:demux=avformat) — the same demuxer IPTV Smarters uses. Malformed EBML blocks in IPTV-transcoded MKVs no longer stall playback. Files that froze mid-movie now play clean through.\n• Removed 'Optimizing playback for this content' overlay on initial libVLC startup. Clean, immediate playback.\n• Media3 upgraded 1.2.1 → 1.9.0 with full toolchain bump (AGP 8.6.0, Gradle 8.9, compileSdk 35). Added MKV varint-error recovery for Media3 1.9.0's stricter Matroska extractor.\n• MultiView temporarily gated off on known-bad MTK Fire TV Sticks (mt8695/mt8696/mt8167) pending a follow-up fix for simultaneous-decoder playback on those chipsets. 4K Sticks and Shield unaffected.\n• minSdk raised 21 → 23 (drops Fire TV Stick Gen 1/2). All primary test devices (AFTSS, AFTKRT, AFTMM, Ooustick) unaffected.",
+  "version_name": "3.6.1",
+  "version_code": 58,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.1/app-release.apk",
+  "changelog": "v3.6.1 — OTA download size cap raised\n\n• Fixed: v3.6.0 OTA update couldn't download because the APK (199MB, up from ~80MB after Media3 1.9.0 + libVLC native libs) exceeded the 100MB in-app size cap. Cap raised to 400MB to cover future native-library growth.\n• Users already on 3.6.0: no action needed. Users stuck on 3.5.x seeing 'can't download update': sideload v3.6.1 once, after which future OTA updates will self-heal.",
   "mandatory": false
 }

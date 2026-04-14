@@ -27,7 +27,7 @@ class UpdateService @Inject constructor(
         const val DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/oouchie/Ooustreamapp/main/update.json"
         private const val APK_FILE_NAME = "update.apk"
         private const val FILE_PROVIDER_AUTHORITY = "com.ooustream.iptv.fileprovider"
-        private const val MAX_APK_SIZE = 100L * 1024 * 1024 // 100MB
+        private const val MAX_APK_SIZE = 400L * 1024 * 1024 // 400MB
     }
 
     private val gson = Gson()
