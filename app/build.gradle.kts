@@ -12,14 +12,14 @@ plugins {
 
 android {
     namespace = "com.ooustream.iptv"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.ooustream.iptv"
-        minSdk = 21
-        targetSdk = 34
-        versionCode = 56
-        versionName = "3.5.11"
+        minSdk = 23
+        targetSdk = 35
+        versionCode = 57
+        versionName = "3.6.0"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -121,7 +121,7 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
 
     // FFmpeg audio decoder extension (DTS, AC3, EAC3 software decoding via ExoPlayer)
-    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1")
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     // libVLC — secondary player engine for codecs ExoPlayer can't decode
     // (HEVC Main 10 10-bit HDR on older MTK devices, rare container formats, etc.)

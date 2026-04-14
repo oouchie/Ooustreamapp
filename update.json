@@ -1,7 +1,7 @@
 {
-  "version_name": "3.5.11",
-  "version_code": 56,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.5.11/app-release.apk",
-  "changelog": "v3.5.11 — libVLC ProGuard Fix + HEVC Main 10 Threshold Fix\n\n• ROOT CAUSE FIX: Added missing ProGuard keep rule for libVLC classes (-keep class org.videolan.** { *; }). R8 was stripping JNI-accessed classes (IMedia$Slave etc.) causing UnsatisfiedLinkError on every libVLC init. This was the actual root cause behind ALL 'VLC crash on MTK' reports since v3.5.6 — the crashes were ProGuard stripping, not HEVC decoder failures.\n• Fixed: HEVC Main 10 gate now uses total device RAM (>= 1.2GB) instead of device tier. AFTKRT and AFTMM can play HDR content again via libVLC. Only AFTSS (900MB) is blocked.\n• libVLC fallback now works correctly on all devices with sufficient RAM.",
+  "version_name": "3.6.0",
+  "version_code": 57,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.0/app-release.apk",
+  "changelog": "v3.6.0 — Seamless MKV Playback + Media3 1.9.0\n\n• Fixed: .mkv VODs and series episodes now route to libVLC instantly on play. No more silent freeze while ExoPlayer's MKV extractor gave up. Same backend from tap to first frame — no mid-movie surprise.\n• Fixed: libVLC now uses FFmpeg's demuxer (:demux=avformat) — the same demuxer IPTV Smarters uses. Malformed EBML blocks in IPTV-transcoded MKVs no longer stall playback. Files that froze mid-movie now play clean through.\n• Removed 'Optimizing playback for this content' overlay on initial libVLC startup. Clean, immediate playback.\n• Media3 upgraded 1.2.1 → 1.9.0 with full toolchain bump (AGP 8.6.0, Gradle 8.9, compileSdk 35). Added MKV varint-error recovery for Media3 1.9.0's stricter Matroska extractor.\n• MultiView temporarily gated off on known-bad MTK Fire TV Sticks (mt8695/mt8696/mt8167) pending a follow-up fix for simultaneous-decoder playback on those chipsets. 4K Sticks and Shield unaffected.\n• minSdk raised 21 → 23 (drops Fire TV Stick Gen 1/2). All primary test devices (AFTSS, AFTKRT, AFTMM, Ooustick) unaffected.",
   "mandatory": false
 }

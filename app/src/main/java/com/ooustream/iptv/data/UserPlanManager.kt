@@ -53,15 +53,28 @@ class UserPlanManager @Inject constructor(
     }
 
     /**
-     * Checks if device has enough RAM for MultiView (1.5GB+).
-     * Returns false on 1GB Fire TV Sticks, true on 4K Sticks and Shield.
+     * Checks if device can reliably run MultiView.
+     *
+     * Gate combines two signals:
+     *   1. `DeviceTier.tier()` must be MID or HIGH. LOW/ULTRA_LOW devices include
+     *      the known-bad MTK chipsets (mt8695/mt8696/mt8167) where simultaneous
+     *      AVC decoders don't render frames reliably — slots cascade into
+     *      recurring HARD_RESETs, covering the UI with recovery fade masks.
+     *   2. Total RAM must be 1.4GB+. Redundant with tier on most SoCs but cheap
+     *      insurance for non-MTK LOW-tier devices that pass the RAM bar.
+     *
+     * Both must pass. Restoring the RAM-only check is the wrong fix because
+     * AFTKRT (mt8696, 1669MB) would pass the RAM bar but still stutter.
      */
     fun isDeviceCapable(): Boolean {
+        val tier = com.ooustream.iptv.common.DeviceTierDetector.tier(context)
+        if (tier == com.ooustream.iptv.common.DeviceTier.ULTRA_LOW ||
+            tier == com.ooustream.iptv.common.DeviceTier.LOW) return false
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
         am.getMemoryInfo(memInfo)
         val totalGb = memInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
-        return totalGb >= 1.4 // 1.5GB threshold with small margin
+        return totalGb >= 1.4
     }
 
     /**

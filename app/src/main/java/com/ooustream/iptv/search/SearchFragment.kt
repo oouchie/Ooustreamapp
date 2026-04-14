@@ -257,7 +257,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
         chipBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < recentChipAdapter.size()) {
                         val query = recentChipAdapter.get(pos) as String
                         searchEditText.setText(query)
@@ -274,14 +274,14 @@ class SearchFragment : Fragment(), KeyEventHandler {
         trendingBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < trendingAdapter.size()) {
                         val item = trendingAdapter.get(pos) as TrendingRankItem
                         navigateToContent(item.poster)
                     }
                 }
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < trendingAdapter.size()) {
                         val item = trendingAdapter.get(pos) as TrendingRankItem
                         contentInfoHelper?.onLongPress?.invoke(item.poster)
@@ -303,7 +303,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
         liveBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < liveAdapter.size()) {
                         val channel = liveAdapter.get(pos) as LiveStream
                         navigateToLivePlayback(channel)
@@ -322,14 +322,14 @@ class SearchFragment : Fragment(), KeyEventHandler {
         vodBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < vodAdapter.size()) {
                         val poster = vodAdapter.get(pos) as PosterItem
                         navigateToContent(poster)
                     }
                 }
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < vodAdapter.size()) {
                         val poster = vodAdapter.get(pos) as PosterItem
                         contentInfoHelper?.onLongPress?.invoke(poster)
@@ -349,14 +349,14 @@ class SearchFragment : Fragment(), KeyEventHandler {
         seriesBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < seriesAdapter.size()) {
                         val poster = seriesAdapter.get(pos) as PosterItem
                         navigateToContent(poster)
                     }
                 }
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < seriesAdapter.size()) {
                         val poster = seriesAdapter.get(pos) as PosterItem
                         contentInfoHelper?.onLongPress?.invoke(poster)

@@ -124,7 +124,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         posterBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0) return@setOnClickListener
                     if (pos >= filteredSeries.size) return@setOnClickListener
                     val series = filteredSeries[pos]
@@ -135,7 +135,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                         .commit()
                 }
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < filteredSeries.size) {
                         val s = filteredSeries[pos]
                         contentInfoHelper?.onLongPress?.invoke(PosterItem(

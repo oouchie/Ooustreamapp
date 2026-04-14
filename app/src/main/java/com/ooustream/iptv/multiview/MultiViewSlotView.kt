@@ -354,7 +354,9 @@ class MultiViewSlotView @JvmOverloads constructor(
     fun showRecoveryMask(withSpinner: Boolean = false, onVisible: (() -> Unit)? = null) {
         recoveryFadeMask.visibility = VISIBLE
         recoveryFadeMask.animate()
-            .alpha(0.85f)
+            // Lowered from 0.85 → 0.55 so the channel badge + pulsing LIVE dot stay
+            // faintly visible during recovery. 0.85 looked like the slot was wiped.
+            .alpha(0.55f)
             .setDuration(150)
             .withEndAction {
                 if (withSpinner) {

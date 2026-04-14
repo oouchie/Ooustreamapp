@@ -124,6 +124,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
     private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
     private var audioDisabledByFallback = false // Stage 2 disabled audio — don't re-enable in onTracksChanged
+    // Media3 1.9.0 MatroskaExtractor is stricter about EBML varints than 1.2.1.
+    // Some IPTV-transcoded MKVs break mid-stream. On first hit, retry from position 0.
+    private var mkvVarintRecoveryAttempted = false
     private var userTrackOverrideActive = false
     private var subtitlesTemporarilyEnabled = false
     private var channelSwitchJob: Job? = null
@@ -418,10 +421,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             }
         }
 
-        // Start playback
-        player?.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
-        player?.prepare()
-        player?.play()
+        // Proactive libVLC for .mkv VOD/Series: Media3 1.9.0 MatroskaExtractor has a regression
+        // that causes silent freezes (no error, just stops feeding frames) on some IPTV-transcoded
+        // MKVs. libVLC's demuxer handles these cleanly. Routing upfront avoids a ~17s watchdog wait.
+        if (shouldStartWithVlc(viewModel.streamUrl, viewModel.contentType) &&
+            swapToVlcInPlace(silentTransition = true)) {
+            streamDiagnosticLogger.logAppEvent("VLC_START_UPFRONT",
+                "reason=mkv_vod_series, url=${viewModel.streamUrl.take(50)}")
+        } else {
+            player?.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
+            player?.prepare()
+            player?.play()
+        }
 
         // Add channel zap overlay to fragment view hierarchy
         val overlay = ChannelZapOverlay(requireContext())
@@ -1032,6 +1043,25 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                     PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
                         audioStatusOverlay?.showCodecUnsupported()
                 }
+                // Media3 1.9.0 MatroskaExtractor varint regression: the extractor throws
+                // IllegalStateException("No valid varint length mask found") on some IPTV MKVs
+                // when resuming mid-stream. Retrying the same resume position loops forever.
+                // Recovery: play from position 0 (user loses the resume point on this stream only).
+                if (isMkvVarintError(error) && !mkvVarintRecoveryAttempted) {
+                    mkvVarintRecoveryAttempted = true
+                    AudioLogger.log("MKV varint error — restarting from position 0 (losing resume)")
+                    streamDiagnosticLogger.logAppEvent("MKV_VARINT_RECOVERY",
+                        "lost_resume_ms=${player?.currentPosition ?: 0}, channel=${healthMonitor?.channelName ?: "unknown"}")
+                    retryJob?.cancel()
+                    retryJob = viewLifecycleOwner.lifecycleScope.launch {
+                        showBufferingOverlay(true)
+                        val p = player ?: return@launch
+                        p.seekTo(0)
+                        p.prepare()
+                        p.play()
+                    }
+                    return
+                }
                 val maxRetries = maxRetriesForContent(viewModel.contentType)
                 if (retryCount < maxRetries) {
                     val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
@@ -1312,6 +1342,37 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                     msg.contains("mediacodecaudiorenderer")) return true
                 cause = cause.cause
             }
+        }
+        return false
+    }
+
+    /**
+     * Returns true if this URL should bypass ExoPlayer entirely and start on libVLC.
+     * Media3 1.9.0's MatroskaExtractor has a regression that causes silent freezes on
+     * IPTV-transcoded MKVs — libVLC's demuxer handles them cleanly. Routing upfront
+     * avoids the ~17s frame-watchdog wait users would otherwise experience.
+     *
+     * Only applies to VOD/SERIES. Live streams are skipped because they're rarely MKV
+     * and the crash guard + watchdog recovery are already good enough there.
+     */
+    private fun shouldStartWithVlc(url: String, contentType: ContentType): Boolean {
+        if (contentType != ContentType.VOD && contentType != ContentType.SERIES) return false
+        // Strip query string before extension check (some IPTV backends append ?token=...)
+        val path = url.substringBefore('?').lowercase()
+        return path.endsWith(".mkv")
+    }
+
+    /**
+     * Detects the Media3 1.9.0 MatroskaExtractor varint regression.
+     * Symptom: IllegalStateException("No valid varint length mask found") in the cause chain,
+     * thrown from VarintReader.readUnsignedVarint during MKV playback.
+     */
+    private fun isMkvVarintError(error: PlaybackException): Boolean {
+        var cause: Throwable? = error
+        while (cause != null) {
+            val msg = cause.message?.lowercase() ?: ""
+            if (msg.contains("no valid varint length mask")) return true
+            cause = cause.cause
         }
         return false
     }
@@ -2024,7 +2085,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
      *  blocked it (see isVlcCrashGuardActive). Callers should handle the false
      *  return by falling through to an alternate recovery path instead of
      *  hitting a dead end. */
-    private fun swapToVlcInPlace(): Boolean {
+    private fun swapToVlcInPlace(silentTransition: Boolean = false): Boolean {
         if (!isAdded || isDetached) return false
         if (useVlcBackend) return false // already on VLC
 
@@ -2056,10 +2117,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
 
         if (forceBeginning || viewModel.contentType == ContentType.LIVE) {
             // User chose "Play from Beginning" or live TV — start from 0
-            doSwapToVlcInPlace(exoPos.coerceAtLeast(0L))
+            doSwapToVlcInPlace(exoPos.coerceAtLeast(0L), silentTransition)
         } else if (exoPos > 5_000L) {
             // ExoPlayer made it past 5s — it successfully seeked + played, use its position
-            doSwapToVlcInPlace(exoPos)
+            doSwapToVlcInPlace(exoPos, silentTransition)
         } else {
             // ExoPlayer didn't get far enough to seek — fetch saved position from DB
             viewLifecycleOwner.lifecycleScope.launch {
@@ -2067,19 +2128,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 val resolvedPos = if (savedPos > 0) savedPos else exoPos.coerceAtLeast(0L)
                 streamDiagnosticLogger.logAppEvent("VLC_SWAP_RESUME_FROM_DB",
                     "exoPos=${exoPos}ms, savedPos=${savedPos}ms, resolvedPos=${resolvedPos}ms")
-                doSwapToVlcInPlace(resolvedPos)
+                doSwapToVlcInPlace(resolvedPos, silentTransition)
             }
         }
         return true
     }
 
-    private fun doSwapToVlcInPlace(positionMs: Long) {
+    private fun doSwapToVlcInPlace(positionMs: Long, silentTransition: Boolean = false) {
         if (!isAdded || isDetached) return
         if (useVlcBackend) return
         val url = viewModel.streamUrl
 
-        // Show "Optimizing" overlay so user isn't staring at a black screen
-        showVlcTransitionOverlay()
+        // Mid-movie swaps get an explanatory "Optimizing" overlay because the user already
+        // had playback. Upfront swaps are just startup — normal buffering UX is enough.
+        if (!silentTransition) showVlcTransitionOverlay()
 
         // 1. Stop all ExoPlayer monitoring/recovery jobs
         frameWatchdogJob?.cancel()
@@ -2172,6 +2234,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
 
         val media = org.videolan.libvlc.Media(libVlc, android.net.Uri.parse(url)).apply {
             setHWDecoderEnabled(true, false)
+            // Force FFmpeg (libavformat) demuxer for MKV — libVLC's native Matroska demuxer
+            // stalls on malformed EBML blocks that FFmpeg's demuxer handles cleanly. This is
+            // the same demuxer IPTV Smarters uses (via ijkplayer). Applies to all content;
+            // libVLC falls back to its native demuxer if avformat can't open the stream.
+            addOption(":demux=avformat")
             // Set start time as a media option so libVLC seeks to the resume position
             // as part of opening the stream — much more reliable than seeking after Playing event.
             // Uses seconds (libVLC --start-time convention).
@@ -2590,6 +2657,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         retryCount = 0
         audioFallbackAttempted = false
         audioDisabledByFallback = false
+        mkvVarintRecoveryAttempted = false
         userTrackOverrideActive = false
         bufferStormCount = 0
         bufferStormWindowStart = 0L

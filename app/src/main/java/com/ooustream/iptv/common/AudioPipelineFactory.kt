@@ -41,7 +41,7 @@ object AudioPipelineFactory {
         return try {
             DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(enableFloatOutput)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain(downmixer))
                 .build()
         } catch (e: Throwable) {
@@ -128,7 +128,7 @@ object AudioPipelineFactory {
             // Hardware decoders used only if FFmpeg doesn't support the format.
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
-            setEnableAudioTrackPlaybackParams(true)
+            setEnableAudioOutputPlaybackParameters(true)
             forceEnableMediaCodecAsynchronousQueueing()
         }
     }
@@ -258,7 +258,7 @@ object AudioPipelineFactory {
             // Try next decoder in fallback list if first fails to initialize
             setEnableDecoderFallback(true)
             // Enable AudioTrack-level playback speed control
-            setEnableAudioTrackPlaybackParams(true)
+            setEnableAudioOutputPlaybackParameters(true)
             // Force async MediaCodec buffer queueing on API < 31. This matches how IJKPlayer
             // (used by IPTV Smarters) feeds the MTK HEVC decoder — async callbacks instead of
             // synchronous polling. Fixes HEVC Main 10 (10-bit) silent decoder stalls on mt8696

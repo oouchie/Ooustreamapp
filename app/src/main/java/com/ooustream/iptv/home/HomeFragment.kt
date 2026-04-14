@@ -679,7 +679,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(sectionObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = sectionObjectAdapter.get(position)
                     if (item is SectionItem) {
@@ -721,7 +721,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(trendingObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = trendingObjectAdapter.get(position)
                     if (item is PosterItem) {
@@ -772,7 +772,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(trendingSeriesObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = trendingSeriesObjectAdapter.get(position)
                     if (item is PosterItem) {
@@ -842,7 +842,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(top10ObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val top10 = top10ObjectAdapter.get(position) as? Top10Item ?: return@setOnClickListener
                     val item = top10.poster
@@ -970,7 +970,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
             val bridge = ItemBridgeAdapter(objectAdapter)
             bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
                 override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                    val position = viewHolder.adapterPosition
+                    val position = viewHolder.bindingAdapterPosition
                     viewHolder.itemView.setOnClickListener {
                         val item = objectAdapter.get(position) as? com.ooustream.iptv.common.PosterItem ?: return@setOnClickListener
                         val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
@@ -1001,7 +1001,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(cwObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = cwObjectAdapter.get(position)
                     if (item is WatchProgressEntity) {
@@ -1115,7 +1115,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(newEpisodesObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = newEpisodesObjectAdapter.get(position)
                     if (item is SeriesTrackingEntity) {
@@ -1159,7 +1159,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(watchAgainObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = watchAgainObjectAdapter.get(position)
                     if (item is WatchProgressEntity) {
@@ -1207,7 +1207,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(forYouObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = forYouObjectAdapter.get(position)
                     if (item is RecommendedItem) {
@@ -1309,7 +1309,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
             val bridge = ItemBridgeAdapter(objectAdapter)
             bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
                 override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                    val position = viewHolder.adapterPosition
+                    val position = viewHolder.bindingAdapterPosition
                     viewHolder.itemView.setOnClickListener {
                         val item = objectAdapter.get(position)
                         if (item is RecommendedItem) {
@@ -1332,7 +1332,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(forYouLiveObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = forYouLiveObjectAdapter.get(position)
                     if (item is ForYouChannel) {
@@ -1370,7 +1370,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(channelStripObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = channelStripObjectAdapter.get(position)
                     if (item is ChannelStripItem) {

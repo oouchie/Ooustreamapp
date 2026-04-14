@@ -248,7 +248,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         channelBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0 || pos >= filteredChannels.size) return@setOnClickListener
                     val channel = filteredChannels[pos]
                     // On mobile: single tap goes straight to fullscreen
@@ -274,7 +274,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                 }
                 // Long press for favorites
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < filteredChannels.size) {
                         val channel = filteredChannels[pos]
                         viewModel.toggleFavorite(channel)

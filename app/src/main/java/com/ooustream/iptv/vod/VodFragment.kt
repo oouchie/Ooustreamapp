@@ -133,7 +133,7 @@ class VodFragment : Fragment(), KeyEventHandler {
         posterBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 viewHolder.itemView.setOnClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0) return@setOnClickListener
                     if (pos >= filteredMovies.size) return@setOnClickListener
                     val movie = filteredMovies[pos]
@@ -150,7 +150,7 @@ class VodFragment : Fragment(), KeyEventHandler {
                         .commit()
                 }
                 viewHolder.itemView.setOnLongClickListener {
-                    val pos = viewHolder.adapterPosition
+                    val pos = viewHolder.bindingAdapterPosition
                     if (pos >= 0 && pos < filteredMovies.size) {
                         val movie = filteredMovies[pos]
                         contentInfoHelper?.onLongPress?.invoke(PosterItem(

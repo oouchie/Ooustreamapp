@@ -36,7 +36,10 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         private const val DROPS_PER_SEC_CHOPPING = 25
         private const val BUFFER_EMPTY_MS = 500L
         private const val BUFFER_CRITICAL_MS = 1_000L
-        private const val FROZEN_THRESHOLD_MS = 1_000L
+        // Non-audio slots on mt8696 with 4 simultaneous AVC decoders routinely stall for 1-2s
+        // under GPU contention. Raising from 1s → 4s eliminates false-positive HARD_RESETs
+        // that flashed the recovery fade mask over otherwise-healthy channel slots.
+        private const val FROZEN_THRESHOLD_MS = 4_000L
 
         // Detection thresholds — active (audio) slot: much more lenient
         // Recovery kills audio + shows fade mask — far worse UX than riding out a stutter.
