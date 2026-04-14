@@ -18,8 +18,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 58
-        versionName = "3.6.1"
+        versionCode = 59
+        versionName = "3.6.2"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -70,6 +70,18 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    // Ship one APK per ABI for smaller downloads. No universal APK — users
+    // download only the architecture their device runs. update.json picks the
+    // right URL per Build.SUPPORTED_ABIS.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
     }
 }
 

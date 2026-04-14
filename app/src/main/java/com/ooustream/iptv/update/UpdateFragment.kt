@@ -83,7 +83,7 @@ class UpdateFragment : GuidedStepSupportFragment() {
                 viewModel.checkForUpdate()
             }
             is UpdateViewModel.UpdateState.UpdateAvailable -> {
-                viewModel.downloadUpdate(state.manifest.downloadUrl)
+                viewModel.downloadUpdate(state.manifest.resolveDownloadUrl())
             }
             is UpdateViewModel.UpdateState.DownloadComplete -> {
                 viewModel.installUpdate(state.file)

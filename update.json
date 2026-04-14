@@ -1,7 +1,9 @@
 {
-  "version_name": "3.6.1",
-  "version_code": 58,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.1/app-release.apk",
-  "changelog": "v3.6.1 — OTA download size cap raised\n\n• Fixed: v3.6.0 OTA update couldn't download because the APK (199MB, up from ~80MB after Media3 1.9.0 + libVLC native libs) exceeded the 100MB in-app size cap. Cap raised to 400MB to cover future native-library growth.\n• Users already on 3.6.0: no action needed. Users stuck on 3.5.x seeing 'can't download update': sideload v3.6.1 once, after which future OTA updates will self-heal.",
+  "version_name": "3.6.2",
+  "version_code": 59,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-arm64-v8a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-armeabi-v7a-release.apk",
+  "changelog": "v3.6.2 — 71% smaller downloads\n\n• APK size cut from 190MB → 55MB (arm64) / 51MB (armeabi) by shipping per-architecture builds and dropping x86/x86_64 native libs. Every real streaming device (Fire TV, Ooustick, Shield) is ARM — x86 was dead weight from libVLC and FFmpeg.\n• In-app updater now picks the right APK for your device automatically. v3.6.0 users stuck on the old 100MB download cap can finally OTA-update — v3.6.2 fits under the limit.\n• Unchanged: MKV playback, Media3 1.9.0, MultiView MTK gating, all other v3.6.0/v3.6.1 fixes.",
   "mandatory": false
 }
