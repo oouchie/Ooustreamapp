@@ -1,9 +1,9 @@
 {
-  "version_name": "3.6.2",
-  "version_code": 59,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.2/app-armeabi-v7a-release.apk",
-  "changelog": "v3.6.2 — 71% smaller downloads\n\n• APK size cut from 190MB → 55MB (arm64) / 51MB (armeabi) by shipping per-architecture builds and dropping x86/x86_64 native libs. Every real streaming device (Fire TV, Ooustick, Shield) is ARM — x86 was dead weight from libVLC and FFmpeg.\n• In-app updater now picks the right APK for your device automatically. v3.6.0 users stuck on the old 100MB download cap can finally OTA-update — v3.6.2 fits under the limit.\n• Unchanged: MKV playback, Media3 1.9.0, MultiView MTK gating, all other v3.6.0/v3.6.1 fixes.",
+  "version_name": "3.6.3",
+  "version_code": 60,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.3/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.3/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.3/app-armeabi-v7a-release.apk",
+  "changelog": "v3.6.3 — Captions Fix + Faster Startup\n\nSubtitles / CC\n• Fixed: captions stopped working after v3.6.0 upgrade. Cue listener was orphaned on every player rebuild (software decoder fallback, FFmpeg audio rebuild) and killed subtitle delivery mid-playback. Now re-attached on every rebuild path.\n• Fixed: MKV movies played through libVLC had zero subtitle plumbing — subtitle menu returned 'unavailable in compatible mode'. libVLC backend now has a real Audio Track / Subtitle Track picker on the Tracks button. Tapping CC auto-selects English subs where available.\n\nPerformance\n• Live TV first-frame is ~400–800ms faster: tuned LoadControl to prioritize playback-duration over byte thresholds and dropped initial-playback buffer to 500ms.\n• Shield / AFTKRT / capable Android TVs now force the highest HLS variant the server publishes — no more getting stuck at 720p when 1080p is available.\n• VOD / Series resume is instant: resume position is now passed into setMediaItem so the player buffers from the resume offset directly. No more 2–3 seconds of opening logo before jumping to where you left off.\n• Returning from player to Home no longer re-shimmers every poster grid — we stopped nuking the image memory cache on player start.\n• libVLC video options tuned for streaming — removed --no-skip-frames and --no-drop-late-frames which were forcing lipsync drift on MKV movies on slower devices.\n\nInteraction\n• Fixed: OK / Enter on the bottom controls bar was hijacking every button and just toggling play/pause on libVLC-backed playback. Buttons now do what they say.",
   "mandatory": false
 }

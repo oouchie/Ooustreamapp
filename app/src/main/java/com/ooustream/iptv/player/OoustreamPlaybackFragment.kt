@@ -129,6 +129,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
     private var mkvVarintRecoveryAttempted = false
     private var userTrackOverrideActive = false
     private var subtitlesTemporarilyEnabled = false
+    // Cue listener stored as field so we can re-attach it after SW/FFmpeg player rebuilds.
+    // Anonymous listeners created inside configureSubtitleView were orphaned on the old
+    // (released) player instance when the player was rebuilt — killing CC silently.
+    private var cueListener: Player.Listener? = null
     private var channelSwitchJob: Job? = null
     private var diagnosticListener: ExoPlayerDiagnosticListener? = null
     private var healthMonitor: PlaybackHealthMonitor? = null
@@ -177,11 +181,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         // Keep screen on during playback (dynamically toggled by player listener)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Free image cache memory for video decoders — posters can be 20-80MB on heap
-        try {
-            adaptiveImageLoader.imageLoader.memoryCache?.clear()
-            AudioLogger.log("Image cache cleared before player init")
-        } catch (_: Exception) { }
+        // Coil's LRU memory cache evicts under pressure on its own; nuking the whole
+        // cache here made Home re-shimmer every return from playback. Let LRU do its job.
+        // trimForPlayback() below applies tier-aware trimming only if needed.
 
         val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         // AFTMM (mt8695, 1285MB RAM) has memoryClass ~160 but only 164-184MB actual heap.
@@ -240,6 +242,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             AudioLogger.log("$deviceTier tier: capped video to ${maxSize.first}x${maxSize.second}")
             streamDiagnosticLogger.logAppEvent("RESOLUTION_CAP",
                 "maxRes=${maxSize.first}x${maxSize.second}, ${DeviceTierDetector.describe(requireContext())}")
+        }
+
+        // HIGH/MID tier devices (Shield, AFTKRT, good Android TVs) get the highest
+        // HLS variant the server publishes. Without this, DefaultTrackSelector picks
+        // the first qualifying track, so 1080p-capable devices may stall on 720p.
+        // LOW/ULTRA_LOW stay on default adaptive behaviour — forcing top bitrate would
+        // stutter on mt8695-class chips.
+        if (deviceTier == DeviceTier.HIGH || deviceTier == DeviceTier.MID) {
+            trackSelector!!.setParameters(
+                trackSelector!!.buildUponParameters()
+                    .setForceHighestSupportedBitrate(true)
+            )
+            AudioLogger.log("$deviceTier tier: forceHighestSupportedBitrate=true")
         }
 
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
@@ -424,14 +439,30 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         // Proactive libVLC for .mkv VOD/Series: Media3 1.9.0 MatroskaExtractor has a regression
         // that causes silent freezes (no error, just stops feeding frames) on some IPTV-transcoded
         // MKVs. libVLC's demuxer handles these cleanly. Routing upfront avoids a ~17s watchdog wait.
+        val forceBeginningArg = arguments?.getBoolean("force_start_from_beginning", false) == true
+        val needsResume = viewModel.contentType != ContentType.LIVE && !viewModel.hasResumed && !forceBeginningArg
+
         if (shouldStartWithVlc(viewModel.streamUrl, viewModel.contentType) &&
             swapToVlcInPlace(silentTransition = true)) {
             streamDiagnosticLogger.logAppEvent("VLC_START_UPFRONT",
                 "reason=mkv_vod_series, url=${viewModel.streamUrl.take(50)}")
+        } else if (needsResume) {
+            // Resolve resume position before prepare and pass it to setMediaItem so the
+            // player buffers from the resume offset directly — avoids the seek-after-prepare
+            // pattern that forced users to watch 2-3s of opening logo before jumping.
+            viewLifecycleOwner.lifecycleScope.launch {
+                val resumePos = viewModel.getResumePositionSync().coerceAtLeast(0L)
+                val p = player ?: return@launch
+                p.setMediaItem(MediaItem.fromUri(viewModel.streamUrl), resumePos)
+                p.prepare()
+                p.play()
+                if (resumePos > 0) viewModel.hasResumed = true
+            }
         } else {
             player?.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
             player?.prepare()
             player?.play()
+            if (forceBeginningArg) viewModel.hasResumed = true
         }
 
         // Add channel zap overlay to fragment view hierarchy
@@ -894,18 +925,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             }
         }
 
-        // Resume position for VOD/Series (unless user chose "Play from Beginning")
-        val forceBeginning = arguments?.getBoolean("force_start_from_beginning", false) == true
-        if (viewModel.contentType != ContentType.LIVE && !viewModel.hasResumed && !forceBeginning) {
-            viewModel.getResumePosition { position ->
-                if (position > 0) {
-                    player?.seekTo(position)
-                    viewModel.hasResumed = true
-                }
-            }
-        } else if (forceBeginning) {
-            viewModel.hasResumed = true  // Prevent resume on player rebuild
-        }
+        // Resume is handled in the initial setMediaItem(item, positionMs) path above —
+        // no post-prepare seek needed. This block intentionally removed in v3.6.3.
 
         // Auto-save progress every 5s (no upper bound — completed flag handles removal)
         if (viewModel.contentType != ContentType.LIVE) {
@@ -1785,6 +1806,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
 
         // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
         attachPlayerListener()
+        // Re-attach subtitle cue listener so SubtitleView keeps receiving cues on the new player
+        attachCueListener()
 
         // Reconnect to Leanback via new adapter + glue
         val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
@@ -1862,6 +1885,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
 
         // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
         attachPlayerListener()
+        // Re-attach subtitle cue listener so SubtitleView keeps receiving cues on the new player
+        attachCueListener()
 
         // New MediaSession
         mediaSession = MediaSession.Builder(requireContext(), player!!)
@@ -2155,6 +2180,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             if (p != null) {
                 diagnosticListener?.let { p.removeListener(it); p.removeAnalyticsListener(it) }
                 corePlayerListener?.let { p.removeListener(it) }
+                cueListener?.let { p.removeListener(it) }
                 mediaSession?.release()
                 mediaSession = null
                 p.stop()
@@ -2220,8 +2246,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         } catch (_: Exception) {}
 
         val options = arrayListOf(
-            "--no-drop-late-frames",
-            "--no-skip-frames",
+            // --no-skip-frames removed in v3.6.3: forcing libVLC to never drop frames
+            // made decoder fall behind audio on slower devices, causing lipsync drift.
+            // Default behavior (skip late frames) is correct for streaming playback.
             "--rtsp-tcp",
             "--http-reconnect",
             "--network-caching=1500"
@@ -2263,7 +2290,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             org.videolan.libvlc.MediaPlayer.Event.Playing -> {
                 streamDiagnosticLogger.logAppEvent("VLC_PLAYING",
                     "time=${vlcMediaPlayer?.time}ms, length=${vlcMediaPlayer?.length}ms")
+                // Apply subtitle preference (enable English SPU, or disable) now that
+                // libVLC has parsed the media and spuTracks is populated.
+                applyVlcSubtitlePreferences()
                 activity?.runOnUiThread {
+                    controlsBar?.updateCcState(subtitlePreferences.subtitlesEnabled)
                     controlsBar?.updatePlayPauseIcon(true)
                 }
             }
@@ -2337,18 +2368,25 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         if (mgr == null || bar == null || mp == null) return false
 
         return when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
+            // Hardware media key: always toggle play/pause regardless of focus.
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (mp.isPlaying) mp.pause() else mp.play()
+                bar.updatePlayPauseIcon(mp.isPlaying)
+                if (mgr.isVisible) mgr.resetAutoHideTimer()
+                true
+            }
+            // DPAD OK: if controls aren't showing, intercept to show them. If they are
+            // showing, return false so the focused button (Play, CC, Tracks, Aspect…)
+            // gets its click dispatched — otherwise every button would play/pause.
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER -> {
                 if (!mgr.isVisible) {
                     mgr.show()
+                    true
                 } else {
-                    // Toggle play/pause
-                    if (mp.isPlaying) mp.pause() else mp.play()
-                    bar.updatePlayPauseIcon(mp.isPlaying)
                     mgr.resetAutoHideTimer()
+                    false
                 }
-                true
             }
             KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_DPAD_DOWN,
@@ -2425,17 +2463,94 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 bar.updatePosition(newPos, dur)
             }
         }
-        // Disable ExoPlayer-specific actions that don't work with libVLC
+        // libVLC track picker: enumerate audio + SPU tracks from the active MediaPlayer
+        // and let user switch. libVLC renders SPU natively — we just call setAudioTrack /
+        // setSpuTrack with the picked id. Uses plain AlertDialog (Leanback theme isn't
+        // AppCompat — see v2.3.1 hotfix notes for the reasoning).
         bar.onTracksClicked = {
-            Toast.makeText(requireContext(),
-                "Track selection unavailable in compatible mode",
-                Toast.LENGTH_SHORT).show()
+            showVlcTrackPicker()
         }
         bar.onStatsToggle = {
             Toast.makeText(requireContext(),
                 "Stats overlay unavailable in compatible mode",
                 Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** Minimal audio/subtitle picker for libVLC backend. Sequential dialogs: Audio → Subtitles. */
+    private fun showVlcTrackPicker() {
+        val mp = vlcMediaPlayer ?: return
+        showVlcAudioPicker(mp) {
+            // After audio picker dismisses (pick or cancel), open subtitle picker.
+            showVlcSpuPicker(mp)
+        }
+    }
+
+    private fun showVlcAudioPicker(
+        mp: org.videolan.libvlc.MediaPlayer,
+        onDone: () -> Unit
+    ) {
+        val tracks = try { mp.audioTracks?.toList() } catch (_: Exception) { null }.orEmpty()
+        if (tracks.isEmpty()) {
+            onDone()
+            return
+        }
+        val currentId = try { mp.audioTrack } catch (_: Exception) { -1 }
+        val labels = tracks.map { it.name ?: "Track ${it.id}" }.toTypedArray()
+        val selectedIndex = tracks.indexOfFirst { it.id == currentId }.coerceAtLeast(0)
+
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle("Audio Track")
+            .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
+                val pick = tracks.getOrNull(which) ?: return@setSingleChoiceItems
+                try { mp.setAudioTrack(pick.id) } catch (_: Exception) {}
+                dialog.dismiss()
+                onDone()
+            }
+            .setNegativeButton("Cancel") { _, _ -> onDone() }
+            .setOnCancelListener { onDone() }
+            .show()
+    }
+
+    private fun showVlcSpuPicker(mp: org.videolan.libvlc.MediaPlayer) {
+        val tracks = try { mp.spuTracks?.toList() } catch (_: Exception) { null }.orEmpty()
+        if (tracks.isEmpty()) {
+            Toast.makeText(requireContext(),
+                "No subtitle tracks in this stream", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // libVLC SPU arrays usually include a "Disable" entry at id=-1; if they don't,
+        // we prepend a synthetic "Off" row. Internally we track ids in a parallel list so
+        // we never have to instantiate the library's private TrackDescription class.
+        val hasDisable = tracks.any { it.id == -1 }
+        val ids: List<Int>
+        val labels: List<String>
+        if (hasDisable) {
+            ids = tracks.map { it.id }
+            labels = tracks.map { it.name ?: "Track ${it.id}" }
+        } else {
+            ids = listOf(-1) + tracks.map { it.id }
+            labels = listOf("Off") + tracks.map { it.name ?: "Track ${it.id}" }
+        }
+        if (ids.size <= 1) {
+            Toast.makeText(requireContext(),
+                "No subtitle tracks in this stream", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val currentId = try { mp.spuTrack } catch (_: Exception) { -1 }
+        val selectedIndex = ids.indexOf(currentId).coerceAtLeast(0)
+
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle("Subtitles")
+            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { dialog, which ->
+                val pickedId = ids.getOrNull(which) ?: return@setSingleChoiceItems
+                try { mp.setSpuTrack(pickedId) } catch (_: Exception) {}
+                subtitlePreferences.subtitlesEnabled = pickedId != -1
+                controlsBar?.updateCcState(pickedId != -1)
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /** Periodic position update loop for libVLC — drives controlsBar.updatePosition()
@@ -2828,16 +2943,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         val screenHeight = resources.displayMetrics.heightPixels
         sv.setPadding(0, 0, 0, (screenHeight * 0.08f).toInt())
 
-        // Forward subtitle cues from player to our SubtitleView
-        player?.addListener(object : Player.Listener {
+        // Forward subtitle cues from player to our SubtitleView.
+        // Stored as a field so we can re-attach after any player rebuild
+        // (SW decoder, FFmpeg-preferred audio). Otherwise captions silently die.
+        cueListener = object : Player.Listener {
             override fun onCues(cueGroup: CueGroup) {
                 sv.setCues(cueGroup.cues)
             }
-        })
+        }
+        attachCueListener()
+    }
+
+    /** Re-attach the subtitle cue listener to the current player. Idempotent. */
+    private fun attachCueListener() {
+        val listener = cueListener ?: return
+        val p = player ?: return
+        p.removeListener(listener)
+        p.addListener(listener)
     }
 
     /** Toggle closed captions on/off. CC button + KEYCODE_CAPTIONS remote key. */
     private fun toggleClosedCaptions() {
+        if (useVlcBackend) {
+            toggleVlcClosedCaptions()
+            return
+        }
         val p = player ?: return
         val isCurrentlyDisabled = p.trackSelectionParameters
             .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
@@ -2856,6 +2986,60 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
 
         // Show controls briefly so user sees CC button state change
+        if (controlsManager?.isVisible != true) {
+            controlsManager?.show()
+        }
+    }
+
+    /**
+     * Apply the user's subtitle preference to libVLC's SPU (subpicture) track.
+     * Called after VLC_PLAYING when spuTracks is populated. libVLC renders
+     * subtitles natively into its own video surface — we just pick the track.
+     *
+     * Track name matching: libVLC TrackDescription exposes only (id, name).
+     * IPTV sidecar SPU tracks are typically named like "English", "English [en]",
+     * "Track 1 - English", "[Eng] English SDH", so we match case-insensitively.
+     */
+    private fun applyVlcSubtitlePreferences() {
+        val mp = vlcMediaPlayer ?: return
+        if (!subtitlePreferences.subtitlesEnabled) {
+            try { mp.setSpuTrack(-1) } catch (_: Exception) {}
+            return
+        }
+        val tracks = try { mp.spuTracks } catch (_: Exception) { null } ?: return
+        if (tracks.isEmpty()) return
+
+        val preferredLang = subtitlePreferences.preferredLanguage.ifBlank { "en" }
+        // Match order: exact language code → "english" label → first non-disabled track.
+        val chosen = tracks.firstOrNull { td ->
+            val n = td.name?.lowercase().orEmpty()
+            n.contains("[$preferredLang]") || n.contains(" $preferredLang ") || n.endsWith(" $preferredLang")
+        } ?: tracks.firstOrNull { td ->
+            val n = td.name?.lowercase().orEmpty()
+            n.contains("english") || n.contains("eng")
+        } ?: tracks.firstOrNull { it.id != -1 }
+
+        chosen?.let {
+            try { mp.setSpuTrack(it.id) } catch (_: Exception) {}
+        }
+    }
+
+    /** Toggle SPU track on libVLC backend. Mirrors toggleClosedCaptions for Media3. */
+    private fun toggleVlcClosedCaptions() {
+        val mp = vlcMediaPlayer ?: return
+        val currentId = try { mp.spuTrack } catch (_: Exception) { -1 }
+        val newEnabled = currentId == -1
+
+        subtitlePreferences.subtitlesEnabled = newEnabled
+        if (newEnabled) {
+            applyVlcSubtitlePreferences()
+        } else {
+            try { mp.setSpuTrack(-1) } catch (_: Exception) {}
+        }
+        controlsBar?.updateCcState(newEnabled)
+
+        val msg = if (newEnabled) "Subtitles On" else "Subtitles Off"
+        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
         if (controlsManager?.isVisible != true) {
             controlsManager?.show()
         }
