@@ -267,8 +267,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         previewPlayerView.visibility = View.VISIBLE
                         previewPlaceholder.visibility = View.GONE
                         previewManager?.startPreview(previewPlayerView, url)
-                        // Enable D-pad focus on preview panel now that content is playing
-                        previewContainer.isFocusable = true
+                        // Preview is not D-pad focusable — second OK on the same channel
+                        // goes fullscreen. Making it focusable stole focus from the channel
+                        // item on the same frame as the click, causing the cursor to disappear.
                         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     }
                 }
@@ -665,7 +666,6 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         previewPlayerView.visibility = View.VISIBLE
         previewPlaceholder?.visibility = View.GONE
         previewManager?.startPreview(previewPlayerView, url)
-        previewContainer?.isFocusable = true
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Scroll channel list to the resumed channel and load its EPG
