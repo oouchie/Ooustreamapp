@@ -2,10 +2,13 @@ package com.ooustream.iptv.player
 
 import android.os.SystemClock
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.DecoderCounters
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.ooustream.iptv.common.StreamDiagnosticLogger
 
@@ -103,6 +106,51 @@ class ExoPlayerDiagnosticListener(
     ) {
         val isHardware = !decoderName.contains("sw", ignoreCase = true)
         logger.logDecoderInfo("audio", isHardware, decoderName)
+    }
+
+    // Audio renderer starved the AudioTrack — actual silent dropout.
+    // Classic Reelz ad-break symptom when the elementary stream swaps mid-play.
+    override fun onAudioUnderrun(
+        eventTime: AnalyticsListener.EventTime,
+        bufferSize: Int,
+        bufferSizeMs: Long,
+        elapsedSinceLastFeedMs: Long
+    ) {
+        logger.logAppEvent("AUDIO_UNDERRUN",
+            "bufSize=${bufferSize}B, bufMs=$bufferSizeMs, " +
+            "gap=${elapsedSinceLastFeedMs}ms, channel=$channelName")
+    }
+
+    // Mid-stream audio format change. Reelz-style channel-count / codec swaps trip this;
+    // reuse=0 means decoder had to be fully re-initialized.
+    override fun onAudioInputFormatChanged(
+        eventTime: AnalyticsListener.EventTime,
+        format: Format,
+        decoderReuseEvaluation: DecoderReuseEvaluation?
+    ) {
+        logger.logAppEvent("AUDIO_FORMAT_CHANGED",
+            "mime=${format.sampleMimeType}, ch=${format.channelCount}, " +
+            "rate=${format.sampleRate}, lang=${format.language ?: "und"}, " +
+            "reuse=${decoderReuseEvaluation?.result ?: "null"}, channel=$channelName")
+    }
+
+    // Non-fatal audio sink error. Doesn't fire onPlayerError but user hears silence.
+    override fun onAudioSinkError(
+        eventTime: AnalyticsListener.EventTime,
+        audioSinkError: Exception
+    ) {
+        logger.logAppEvent("AUDIO_SINK_ERROR",
+            "type=${audioSinkError.javaClass.simpleName}, " +
+            "msg=${audioSinkError.message}, channel=$channelName")
+    }
+
+    // Audio renderer was disabled — usually from our own fallback path.
+    // Without this log we can't tell disabled-by-code from disabled-by-decoder-crash.
+    override fun onAudioDisabled(
+        eventTime: AnalyticsListener.EventTime,
+        decoderCounters: DecoderCounters
+    ) {
+        logger.logAppEvent("AUDIO_DISABLED", "channel=$channelName")
     }
 
     override fun onVideoSizeChanged(

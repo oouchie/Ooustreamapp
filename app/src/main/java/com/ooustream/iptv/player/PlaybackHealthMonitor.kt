@@ -31,6 +31,11 @@ class PlaybackHealthMonitor(
     private var blackSince: Long = 0L
     private var blackScreenLogged: Boolean = false
 
+    // Audio stall detection (catches silent dropouts that don't trip onPlayerError)
+    private var lastAudioRenderedCount: Int = 0
+    private var audioStalledSince: Long = 0L
+    private var audioStallLogged: Boolean = false
+
     // FPS calculation
     private var prevFrameCount: Int = 0
     private var prevFrameTime: Long = 0L
@@ -39,6 +44,7 @@ class PlaybackHealthMonitor(
         private const val HEALTH_INTERVAL_MS = 15_000L  // 15 seconds
         private const val BLACK_CHECK_INTERVAL_MS = 3_000L // 3 seconds
         private const val BLACK_SCREEN_THRESHOLD_MS = 3_000L // 3 seconds no frames
+        private const val AUDIO_STALL_THRESHOLD_MS = 10_000L // 10 seconds of silence
         private const val MEMORY_INTERVAL_TICKS = 4 // every 4th health tick = 60s
     }
 
@@ -48,6 +54,9 @@ class PlaybackHealthMonitor(
         lastRenderedFrameCount = 0
         blackSince = 0L
         blackScreenLogged = false
+        lastAudioRenderedCount = 0
+        audioStalledSince = 0L
+        audioStallLogged = false
         logger.logAppEvent("HEALTH_MONITOR", "action=START, channel=$channelName")
 
         monitorJob = scope.launch {
@@ -94,6 +103,9 @@ class PlaybackHealthMonitor(
 
                     // Black screen detection
                     checkBlackScreen(p)
+
+                    // Audio stall detection
+                    checkAudioStall(p)
 
                     tick++
                 }
@@ -165,6 +177,47 @@ class PlaybackHealthMonitor(
             blackSince = 0L
             blackScreenLogged = false
             lastRenderedFrameCount = currentFrames
+        }
+    }
+
+    private fun checkAudioStall(p: ExoPlayer) {
+        val counters = p.audioDecoderCounters ?: return
+
+        // Only watch when audio is actually meant to be playing
+        val hasSelectedAudio = p.currentTracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_AUDIO &&
+                (0 until group.length).any { group.isTrackSelected(it) }
+        }
+        if (!hasSelectedAudio || p.volume <= 0f) {
+            audioStalledSince = 0L
+            audioStallLogged = false
+            lastAudioRenderedCount = counters.renderedOutputBufferCount
+            return
+        }
+
+        val currentAudio = counters.renderedOutputBufferCount
+        if (currentAudio == lastAudioRenderedCount && currentAudio > 0) {
+            if (audioStalledSince == 0L) {
+                audioStalledSince = SystemClock.elapsedRealtime()
+            }
+            val stalledMs = SystemClock.elapsedRealtime() - audioStalledSince
+            if (stalledMs > AUDIO_STALL_THRESHOLD_MS && !audioStallLogged) {
+                audioStallLogged = true
+                val fmt = p.audioFormat
+                logger.logAppEvent("AUDIO_STALL",
+                    "silent=${stalledMs}ms, mime=${fmt?.sampleMimeType}, " +
+                    "ch=${fmt?.channelCount}, rate=${fmt?.sampleRate}, " +
+                    "channel=$channelName")
+            }
+        } else {
+            if (audioStallLogged) {
+                val duration = SystemClock.elapsedRealtime() - audioStalledSince
+                logger.logAppEvent("AUDIO_STALL_RECOVERED",
+                    "was_silent=${duration}ms, channel=$channelName")
+            }
+            audioStalledSince = 0L
+            audioStallLogged = false
+            lastAudioRenderedCount = currentAudio
         }
     }
 
