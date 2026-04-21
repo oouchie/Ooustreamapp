@@ -2255,7 +2255,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         )
         libVlc = org.videolan.libvlc.LibVLC(requireContext(), options)
         vlcMediaPlayer = org.videolan.libvlc.MediaPlayer(libVlc).apply {
-            attachViews(vlcVideoLayout!!, null, false, false)
+            // 3rd param = enableSubtitles. Must be true or libVLC refuses to allocate
+            // the subtitle surface — SPU tracks still appear in spuTracks but can never
+            // be rendered. The "can't get Subtitles Surface" vout warning in logcat was
+            // the symptom. Flipped in v3.6.7 after TrackPickerOverlay unification made
+            // the missing subs visible to users.
+            attachViews(vlcVideoLayout!!, null, true, false)
             setEventListener { event -> handleVlcEvent(event, startPositionMs) }
         }
 

@@ -1,9 +1,9 @@
 {
-  "version_name": "3.6.6",
-  "version_code": 63,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-armeabi-v7a-release.apk",
-  "changelog": "v3.6.6 — Unified Track Picker\n\nAudio & Subtitles\n• The Tracks button now opens the same slide-in panel on both playback engines. Previously, some movies (ones running through the compatible-mode engine) popped up two plain system dialogs back-to-back — audio, then subtitles. Now you get one clean panel with D-pad navigation, gold highlights, and radio buttons no matter which engine is running the stream.\n• Off switch for subtitles is always present in both engines.\n• Your current audio and subtitle selections are shown up-front.\n\nNo other changes.",
+  "version_name": "3.6.7",
+  "version_code": 64,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-armeabi-v7a-release.apk",
+  "changelog": "v3.6.7 — Subtitles Actually Show Now (Compatible Mode)\n\nSubtitles\n• Fixed: on the compatible-mode engine, picking a subtitle track would show the track in the Tracks panel but nothing would appear on screen. The engine was never given a subtitle surface to draw into, so subs decoded but had nowhere to paint. Subs now render correctly for MKVs and any other content routed through the compatible engine.",
   "mandatory": false
 }
