@@ -1,9 +1,9 @@
 {
-  "version_name": "3.6.5",
-  "version_code": 62,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.5/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.5/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.5/app-armeabi-v7a-release.apk",
-  "changelog": "v3.6.5 — Audio Dropout Diagnostics\n\nUnder the hood\n• New: audio-loss detection. We now catch silent audio dropouts that used to slip past without a trace — the kind you get on Reelz and other channels where the ad breaks swap the audio stream mid-play. When it happens, the debug log now records exactly what changed (codec, channel count, sample rate) and how long the silence lasted.\n• New: audio stall watchdog — if the AudioTrack stops advancing for more than 10 seconds while the stream is otherwise playing, we log it instead of failing silently.\n• Better debug reports: any mid-stream audio format change, underrun, sink error, or renderer disable is now captured. Makes it possible to diagnose Reelz-style audio issues from a Send Debug Log.\n\nNo user-facing changes. Pure instrumentation.",
+  "version_name": "3.6.6",
+  "version_code": 63,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.6/app-armeabi-v7a-release.apk",
+  "changelog": "v3.6.6 — Unified Track Picker\n\nAudio & Subtitles\n• The Tracks button now opens the same slide-in panel on both playback engines. Previously, some movies (ones running through the compatible-mode engine) popped up two plain system dialogs back-to-back — audio, then subtitles. Now you get one clean panel with D-pad navigation, gold highlights, and radio buttons no matter which engine is running the stream.\n• Off switch for subtitles is always present in both engines.\n• Your current audio and subtitle selections are shown up-front.\n\nNo other changes.",
   "mandatory": false
 }

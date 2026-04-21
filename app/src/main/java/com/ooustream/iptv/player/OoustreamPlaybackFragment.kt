@@ -2477,80 +2477,77 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         }
     }
 
-    /** Minimal audio/subtitle picker for libVLC backend. Sequential dialogs: Audio → Subtitles. */
+    /**
+     * libVLC track picker using the shared TrackPickerOverlay — same slide-in panel,
+     * D-pad focus, gold highlights, radio buttons as the ExoPlayer path. We build
+     * TrackInfo lists from MediaPlayer.audioTracks / spuTracks and route selections
+     * to setAudioTrack / setSpuTrack via the overlay's custom callbacks.
+     */
     private fun showVlcTrackPicker() {
         val mp = vlcMediaPlayer ?: return
-        showVlcAudioPicker(mp) {
-            // After audio picker dismisses (pick or cancel), open subtitle picker.
-            showVlcSpuPicker(mp)
-        }
-    }
+        val overlay = trackPickerOverlay ?: return
 
-    private fun showVlcAudioPicker(
-        mp: org.videolan.libvlc.MediaPlayer,
-        onDone: () -> Unit
-    ) {
-        val tracks = try { mp.audioTracks?.toList() } catch (_: Exception) { null }.orEmpty()
-        if (tracks.isEmpty()) {
-            onDone()
-            return
-        }
-        val currentId = try { mp.audioTrack } catch (_: Exception) { -1 }
-        val labels = tracks.map { it.name ?: "Track ${it.id}" }.toTypedArray()
-        val selectedIndex = tracks.indexOfFirst { it.id == currentId }.coerceAtLeast(0)
+        val vlcAudio = try { mp.audioTracks?.toList() } catch (_: Exception) { null }.orEmpty()
+        val vlcSpu = try { mp.spuTracks?.toList() } catch (_: Exception) { null }.orEmpty()
+        val currentAudioId = try { mp.audioTrack } catch (_: Exception) { -1 }
+        val currentSpuId = try { mp.spuTrack } catch (_: Exception) { -1 }
 
-        android.app.AlertDialog.Builder(requireContext())
-            .setTitle("Audio Track")
-            .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
-                val pick = tracks.getOrNull(which) ?: return@setSingleChoiceItems
-                try { mp.setAudioTrack(pick.id) } catch (_: Exception) {}
-                dialog.dismiss()
-                onDone()
+        val audioItems = vlcAudio.map { td ->
+            TrackPickerOverlay.TrackInfo(
+                name = td.name ?: "Track ${td.id}",
+                groupIndex = -1,
+                trackIndex = -1,
+                isSelected = td.id == currentAudioId,
+                type = C.TRACK_TYPE_AUDIO,
+                customId = td.id
+            )
+        }
+
+        // libVLC's spuTracks sometimes includes a "Disable" row at id=-1; strip it and
+        // always prepend our own "Off" so the selection-state rendering is consistent.
+        val spuRealTracks = vlcSpu.filter { it.id != -1 }
+        val offSelected = currentSpuId == -1
+        val subtitleItems = buildList {
+            add(TrackPickerOverlay.TrackInfo(
+                name = "Off",
+                groupIndex = -1,
+                trackIndex = -1,
+                isSelected = offSelected,
+                type = C.TRACK_TYPE_TEXT,
+                customId = -1
+            ))
+            spuRealTracks.forEach { td ->
+                add(TrackPickerOverlay.TrackInfo(
+                    name = td.name ?: "Track ${td.id}",
+                    groupIndex = -1,
+                    trackIndex = -1,
+                    isSelected = td.id == currentSpuId,
+                    type = C.TRACK_TYPE_TEXT,
+                    customId = td.id
+                ))
             }
-            .setNegativeButton("Cancel") { _, _ -> onDone() }
-            .setOnCancelListener { onDone() }
-            .show()
-    }
+        }
 
-    private fun showVlcSpuPicker(mp: org.videolan.libvlc.MediaPlayer) {
-        val tracks = try { mp.spuTracks?.toList() } catch (_: Exception) { null }.orEmpty()
-        if (tracks.isEmpty()) {
+        if (audioItems.isEmpty() && spuRealTracks.isEmpty()) {
             Toast.makeText(requireContext(),
-                "No subtitle tracks in this stream", Toast.LENGTH_SHORT).show()
+                "No selectable tracks in this stream", Toast.LENGTH_SHORT).show()
             return
         }
-        // libVLC SPU arrays usually include a "Disable" entry at id=-1; if they don't,
-        // we prepend a synthetic "Off" row. Internally we track ids in a parallel list so
-        // we never have to instantiate the library's private TrackDescription class.
-        val hasDisable = tracks.any { it.id == -1 }
-        val ids: List<Int>
-        val labels: List<String>
-        if (hasDisable) {
-            ids = tracks.map { it.id }
-            labels = tracks.map { it.name ?: "Track ${it.id}" }
-        } else {
-            ids = listOf(-1) + tracks.map { it.id }
-            labels = listOf("Off") + tracks.map { it.name ?: "Track ${it.id}" }
-        }
-        if (ids.size <= 1) {
-            Toast.makeText(requireContext(),
-                "No subtitle tracks in this stream", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val currentId = try { mp.spuTrack } catch (_: Exception) { -1 }
-        val selectedIndex = ids.indexOf(currentId).coerceAtLeast(0)
 
-        android.app.AlertDialog.Builder(requireContext())
-            .setTitle("Subtitles")
-            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { dialog, which ->
-                val pickedId = ids.getOrNull(which) ?: return@setSingleChoiceItems
-                try { mp.setSpuTrack(pickedId) } catch (_: Exception) {}
-                subtitlePreferences.subtitlesEnabled = pickedId != -1
-                controlsBar?.updateCcState(pickedId != -1)
-                dialog.dismiss()
+        overlay.showCustom(
+            audioTracks = audioItems,
+            subtitleTracks = subtitleItems,
+            onAudioSelect = { info ->
+                val p = vlcMediaPlayer ?: return@showCustom
+                try { p.setAudioTrack(info.customId) } catch (_: Exception) {}
+            },
+            onSubtitleSelect = { info ->
+                val p = vlcMediaPlayer ?: return@showCustom
+                try { p.setSpuTrack(info.customId) } catch (_: Exception) {}
+                subtitlePreferences.subtitlesEnabled = info.customId != -1
+                controlsBar?.updateCcState(info.customId != -1)
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        )
     }
 
     /** Periodic position update loop for libVLC — drives controlsBar.updatePosition()

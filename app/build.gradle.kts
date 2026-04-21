@@ -18,8 +18,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 62
-        versionName = "3.6.5"
+        versionCode = 63
+        versionName = "3.6.6"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")

@@ -46,6 +46,9 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     val isShowing: Boolean get() = visibility == VISIBLE
 
     private var activePlayer: Player? = null
+    // Callbacks for the custom (backend-agnostic) show path. Null when driven by a Player.
+    private var customAudioSelect: ((TrackInfo) -> Unit)? = null
+    private var customSubtitleSelect: ((TrackInfo) -> Unit)? = null
     private val trackChangeListener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
             val p = activePlayer ?: return
@@ -73,6 +76,10 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     }
 
     fun show(player: Player) {
+        // Clear any custom-mode state from a prior libVLC session
+        customAudioSelect = null
+        customSubtitleSelect = null
+
         // Register listener for track changes (handles late-arriving metadata)
         activePlayer?.removeListener(trackChangeListener)
         activePlayer = player
@@ -108,43 +115,36 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun refreshTracks(player: Player) {
-        audioContainer.removeAllViews()
-        subtitleContainer.removeAllViews()
-
-        val audioTracks = getTracksOfType(player, C.TRACK_TYPE_AUDIO)
+        val audioTracks = getTracksOfType(player, C.TRACK_TYPE_AUDIO).ifEmpty {
+            listOf(TrackInfo("Default", -1, -1, true, C.TRACK_TYPE_AUDIO))
+        }
         val subtitleTracks = getTracksOfType(player, C.TRACK_TYPE_TEXT)
         val subtitlesDisabled = player.trackSelectionParameters
             .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val offSelected = subtitlesDisabled || subtitleTracks.none { it.isSelected }
+        val subsWithOff = listOf(
+            TrackInfo("Off", -1, -1, offSelected, C.TRACK_TYPE_TEXT)
+        ) + subtitleTracks
 
-        // Audio section — always show; fallback to "Default" if player reports no tracks
+        renderTracks(audioTracks, subsWithOff)
+    }
+
+    /** Shared row-builder used by both the Player-driven and custom entry points. */
+    private fun renderTracks(
+        audioTracks: List<TrackInfo>,
+        subtitleTracks: List<TrackInfo>
+    ) {
+        audioContainer.removeAllViews()
+        subtitleContainer.removeAllViews()
+
         audioHeader.visibility = VISIBLE
         audioContainer.visibility = VISIBLE
-        if (audioTracks.isEmpty()) {
-            addTrackItem(
-                audioContainer,
-                TrackInfo("Default", -1, -1, true, C.TRACK_TYPE_AUDIO),
-                player
-            )
-        } else {
-            audioTracks.forEach { track ->
-                addTrackItem(audioContainer, track, player)
-            }
-        }
+        audioTracks.forEach { addTrackItem(audioContainer, it) }
 
-        // Subtitle section — always show with "Off" option
         subtitleHeader.visibility = VISIBLE
         subtitleContainer.visibility = VISIBLE
         divider.visibility = VISIBLE
-
-        val offSelected = subtitlesDisabled || subtitleTracks.none { it.isSelected }
-        addTrackItem(
-            subtitleContainer,
-            TrackInfo("Off", -1, -1, offSelected, C.TRACK_TYPE_TEXT),
-            player
-        )
-        subtitleTracks.forEach { track ->
-            addTrackItem(subtitleContainer, track, player)
-        }
+        subtitleTracks.forEach { addTrackItem(subtitleContainer, it) }
     }
 
     fun dismiss() {
@@ -152,6 +152,8 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
         activePlayer?.removeListener(trackChangeListener)
         activePlayer = null
+        customAudioSelect = null
+        customSubtitleSelect = null
 
         panel.animate()
             .translationX(resources.getDimension(R.dimen.track_picker_width))
@@ -169,6 +171,55 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
             .alpha(0f)
             .setDuration(200)
             .start()
+    }
+
+    /**
+     * Backend-agnostic entry point. Used by libVLC (or any future player that isn't
+     * an ExoPlayer `Player`). Caller builds the TrackInfo lists and handles selection
+     * in the callbacks — this overlay only handles layout, focus, and dismissal.
+     *
+     * `audioTracks` / `subtitleTracks` should have `isSelected=true` on the currently
+     * active track. Pass an "Off" entry (groupIndex=-1) in `subtitleTracks` if you
+     * want users to be able to disable subs.
+     */
+    fun showCustom(
+        audioTracks: List<TrackInfo>,
+        subtitleTracks: List<TrackInfo>,
+        onAudioSelect: (TrackInfo) -> Unit,
+        onSubtitleSelect: (TrackInfo) -> Unit
+    ) {
+        // Detach any Player-driven state from a prior ExoPlayer session
+        activePlayer?.removeListener(trackChangeListener)
+        activePlayer = null
+
+        customAudioSelect = onAudioSelect
+        customSubtitleSelect = onSubtitleSelect
+
+        renderTracks(audioTracks, subtitleTracks)
+
+        bringToFront()
+        visibility = VISIBLE
+        panel.translationX = resources.getDimension(R.dimen.track_picker_width)
+        panel.animate()
+            .translationX(0f)
+            .setDuration(250)
+            .setListener(null)
+            .start()
+
+        scrim.alpha = 0f
+        scrim.animate()
+            .alpha(1f)
+            .setDuration(250)
+            .start()
+
+        post {
+            val firstItem = if (audioContainer.childCount > 0) {
+                audioContainer.getChildAt(0)
+            } else if (subtitleContainer.childCount > 0) {
+                subtitleContainer.getChildAt(0)
+            } else null
+            firstItem?.requestFocus()
+        }
     }
 
     /** Returns true if the player has multiple audio tracks or any subtitle tracks. */
@@ -197,14 +248,20 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
     // ─── Track Parsing ────────────────────────────────────────────────
 
-    private data class TrackInfo(
+    /**
+     * Backend-agnostic track descriptor. ExoPlayer paths set groupIndex/trackIndex;
+     * libVLC (and any other custom backend) sets customId to the native track id
+     * and leaves groupIndex/trackIndex at -1.
+     */
+    data class TrackInfo(
         val name: String,
         val groupIndex: Int,
         val trackIndex: Int,
         val isSelected: Boolean,
         val type: Int,
         val language: String? = null,
-        val mimeType: String? = null
+        val mimeType: String? = null,
+        val customId: Int = Int.MIN_VALUE
     )
 
     private fun getTracksOfType(player: Player, trackType: Int): List<TrackInfo> {
@@ -323,7 +380,7 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
     // ─── UI Building ──────────────────────────────────────────────────
 
-    private fun addTrackItem(container: LinearLayout, track: TrackInfo, player: Player) {
+    private fun addTrackItem(container: LinearLayout, track: TrackInfo) {
         val item = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -364,8 +421,17 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
             setOnClickListener {
                 try {
-                    applyTrackSelection(player, track)
-                    onTrackSelected?.invoke(track.type)
+                    val player = activePlayer
+                    when {
+                        player != null -> {
+                            applyTrackSelection(player, track)
+                            onTrackSelected?.invoke(track.type)
+                        }
+                        track.type == C.TRACK_TYPE_AUDIO ->
+                            customAudioSelect?.invoke(track)
+                        track.type == C.TRACK_TYPE_TEXT ->
+                            customSubtitleSelect?.invoke(track)
+                    }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Unable to switch track", Toast.LENGTH_SHORT).show()
                 }
