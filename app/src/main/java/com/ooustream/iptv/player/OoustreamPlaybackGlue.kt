@@ -111,6 +111,16 @@ class OoustreamPlaybackGlue(
     override fun onKey(v: View?, keyCode: Int, event: KeyEvent?): Boolean {
         val controlsHidden = customControlsManager?.isVisible != true
 
+        // When the track picker is showing, let ALL keys flow through to it —
+        // otherwise the glue swallows OK/D-pad thinking "controls are hidden, I
+        // should show them" and the focused subtitle/audio row never receives
+        // its click. BACK is handled below (dismisses picker via callback).
+        // This was the root cause of the "subtitles never displaying on ExoPlayer"
+        // bug — OK presses on picker items were being consumed by the glue.
+        if (isTrackPickerShowing?.invoke() == true && keyCode != KeyEvent.KEYCODE_BACK) {
+            return false
+        }
+
         // BACK key: dismiss controls if visible (edge case: focus still in BrowseFrameLayout).
         // Primary Back handling is via OnBackPressedCallback in the fragment, which works
         // regardless of focus location. This is defense-in-depth for the rare case where

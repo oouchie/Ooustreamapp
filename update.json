@@ -1,9 +1,9 @@
 {
-  "version_name": "3.6.7",
-  "version_code": 64,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.7/app-armeabi-v7a-release.apk",
-  "changelog": "v3.6.7 — Subtitles Actually Show Now (Compatible Mode)\n\nSubtitles\n• Fixed: on the compatible-mode engine, picking a subtitle track would show the track in the Tracks panel but nothing would appear on screen. The engine was never given a subtitle surface to draw into, so subs decoded but had nowhere to paint. Subs now render correctly for MKVs and any other content routed through the compatible engine.",
+  "version_name": "3.6.8",
+  "version_code": 65,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-armeabi-v7a-release.apk",
+  "changelog": "v3.6.8 — Subtitles Fully Working + Input Fix\n\nSubtitles\n• Fixed: picking a subtitle track on the compatible-mode engine did nothing. The decoder couldn't identify the codec because of an internal demuxer option we used to work around a different issue. Reverted so subs decode normally. Flight-class edge cases are covered by the upcoming v3.7.0 architecture change.\n• Fixed: pressing OK on a track in the Tracks panel sometimes did nothing on videos running through the compatible-mode engine. The control layer was swallowing the OK press before it reached the selected track. OK and D-pad now pass through cleanly when the Tracks panel is showing.\n\nDiagnostics\n• Subtitle pipeline now self-tests at playback start. Any structural break (missing caption surface, unattached view, etc.) is logged immediately in the debug log so future subtitle regressions surface automatically.",
   "mandatory": false
 }

@@ -153,6 +153,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
     private var useVlcBackend = false
     private var vlcPositionJob: Job? = null
     private var vlcHasRenderedFirstFrame = false
+    // Subtitle pipeline self-test — flipped true once per play session so we don't spam logs
+    private var subtitleSelfTestRan = false
     private var vlcTransitionOverlay: View? = null
     private var corePlayerListener: Player.Listener? = null
     // Buffer storm detection: rapid BUFFERING→READY cycling on amlogic HEVC+EAC3
@@ -638,6 +640,29 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 // Save selected language for future sessions
                 if (!textDisabled) {
                     saveSelectedSubtitleLanguage()
+                }
+                // Diagnostic: log post-pick state so we can tell whether the override
+                // actually landed vs being silently rejected by the track selector.
+                val p = player
+                if (p != null) {
+                    val params = p.trackSelectionParameters
+                    val selectedText = p.currentTracks.groups
+                        .filter { it.type == C.TRACK_TYPE_TEXT }
+                        .flatMap { g ->
+                            (0 until g.length).mapNotNull { i ->
+                                if (g.isTrackSelected(i)) {
+                                    val f = g.getTrackFormat(i)
+                                    "${f.language ?: "und"}/${f.sampleMimeType}"
+                                } else null
+                            }
+                        }
+                    streamDiagnosticLogger.logAppEvent("SUBTITLE_PICKED",
+                        "textDisabled=$textDisabled, " +
+                        "prefLang=${params.preferredTextLanguages}, " +
+                        "overrides=${params.overrides.size}, " +
+                        "selectedTextTracks=$selectedText, " +
+                        "svAttached=${subtitleView?.parent != null}, " +
+                        "svVisibility=${subtitleView?.visibility}")
                 }
             }
         }
@@ -1137,6 +1162,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                         if (frameWatchdogJob?.isActive != true) {
                             startFrameWatchdog()
                         }
+                        runSubtitlePipelineSelfTest()
                     }
                     Player.STATE_ENDED -> {
                         showBufferingOverlay(false)
@@ -2193,6 +2219,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         player = null
         useVlcBackend = true
         vlcHasRenderedFirstFrame = false
+        subtitleSelfTestRan = false
 
         // 3. Initialize libVLC in the SAME fragment
         try {
@@ -2266,11 +2293,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
 
         val media = org.videolan.libvlc.Media(libVlc, android.net.Uri.parse(url)).apply {
             setHWDecoderEnabled(true, false)
-            // Force FFmpeg (libavformat) demuxer for MKV — libVLC's native Matroska demuxer
-            // stalls on malformed EBML blocks that FFmpeg's demuxer handles cleanly. This is
-            // the same demuxer IPTV Smarters uses (via ijkplayer). Applies to all content;
-            // libVLC falls back to its native demuxer if avformat can't open the stream.
-            addOption(":demux=avformat")
+            // v3.6.8: removed `:demux=avformat`. It was added in v3.6.0 to work around a
+            // malformed-EBML stall in a single 5.3GB MKV (Flight 2012) but remapped
+            // subtitle codec IDs through libavformat in a way libVLC's SPU decoder
+            // modules could no longer identify — every embedded MKV subtitle track
+            // silently failed with "could not identify codec", so setSpuTrack succeeded
+            // but no decoder ever initialized. Reverting to libVLC's native Matroska
+            // demuxer so SPU tracks decode normally. Flight-class EBML regressions
+            // will be eliminated entirely by v3.7.0 (FFmpeg video extension — drops
+            // libVLC). If any customer reports a mid-MKV freeze before then, we can
+            // add a stall-watchdog rebuild path as v3.6.9.
             // Set start time as a media option so libVLC seeks to the resume position
             // as part of opening the stream — much more reliable than seeking after Playing event.
             // Uses seconds (libVLC --start-time convention).
@@ -2301,6 +2333,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
                 activity?.runOnUiThread {
                     controlsBar?.updateCcState(subtitlePreferences.subtitlesEnabled)
                     controlsBar?.updatePlayPauseIcon(true)
+                    runSubtitlePipelineSelfTest()
                 }
             }
             org.videolan.libvlc.MediaPlayer.Event.Paused -> {
@@ -2366,6 +2399,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
     override fun onKeyEvent(keyCode: Int): Boolean {
         // Only intercept when we're on the libVLC backend — let Leanback handle ExoPlayer mode
         if (!useVlcBackend) return false
+
+        // Track picker active → pass every key through to the overlay (same rule as
+        // OoustreamPlaybackGlue — otherwise picker item clicks get swallowed). BACK
+        // stays unrestricted so it can dismiss the picker.
+        if (trackPickerOverlay?.isShowing == true && keyCode != KeyEvent.KEYCODE_BACK) {
+            return false
+        }
 
         val mgr = controlsManager
         val bar = controlsBar
@@ -2548,7 +2588,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
             },
             onSubtitleSelect = { info ->
                 val p = vlcMediaPlayer ?: return@showCustom
-                try { p.setSpuTrack(info.customId) } catch (_: Exception) {}
+                val before = try { p.spuTrack } catch (_: Exception) { -999 }
+                var setResult: Boolean? = null
+                var setError: String? = null
+                try {
+                    setResult = p.setSpuTrack(info.customId)
+                } catch (e: Exception) {
+                    setError = "${e.javaClass.simpleName}: ${e.message}"
+                }
+                val after = try { p.spuTrack } catch (_: Exception) { -999 }
+                streamDiagnosticLogger.logAppEvent("VLC_SET_SPU",
+                    "id=${info.customId} name='${info.name}' " +
+                    "result=$setResult err=$setError before=$before after=$after")
                 subtitlePreferences.subtitlesEnabled = info.customId != -1
                 controlsBar?.updateCcState(info.customId != -1)
             }
@@ -2776,6 +2827,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         audioDisabledByFallback = false
         mkvVarintRecoveryAttempted = false
         userTrackOverrideActive = false
+        subtitleSelfTestRan = false
         bufferStormCount = 0
         bufferStormWindowStart = 0L
         ffmpegRebuildAttemptedForBufferStorm = false
@@ -2949,11 +3001,70 @@ class OoustreamPlaybackFragment : VideoSupportFragment(), com.ooustream.iptv.Key
         // Stored as a field so we can re-attach after any player rebuild
         // (SW decoder, FFmpeg-preferred audio). Otherwise captions silently die.
         cueListener = object : Player.Listener {
+            private var firstCueLogged = false
             override fun onCues(cueGroup: CueGroup) {
                 sv.setCues(cueGroup.cues)
+                // Log first cue delivery per session so future "subs never displayed"
+                // reports can be triaged from the diagnostic log without a debug build.
+                if (!firstCueLogged && cueGroup.cues.isNotEmpty()) {
+                    firstCueLogged = true
+                    streamDiagnosticLogger.logAppEvent("SUBTITLE_FIRST_CUE",
+                        "n=${cueGroup.cues.size}, svVisible=${sv.isShown}, " +
+                        "svW=${sv.width}, svH=${sv.height}")
+                }
             }
         }
         attachCueListener()
+    }
+
+    /**
+     * Runs once per play session (guarded via [subtitleSelfTestRan]) and logs the
+     * structural health of the subtitle pipeline for whichever backend is active.
+     * Catches regressions like v3.6.7's "enableSubtitles=false" or this session's
+     * "onKey swallows OK before picker click" BEFORE a customer notices.
+     *
+     * Expected healthy shape:
+     *   ExoPlayer: SubtitleView attached, cueListener non-null, TEXT track type not
+     *              permanently disabled (subtitlesEnabled pref respected), at least
+     *              one TEXT track group present if the content has subs.
+     *   libVLC:    VLCVideoLayout attached, MediaPlayer non-null, spuTracks callable
+     *              without throwing, and enableSubtitles was true at attachViews time
+     *              (we can't re-check attachViews parameters retroactively, but the
+     *              absence of "can't get Subtitles Surface" in logcat is the signal).
+     *
+     * Any failed invariant logs a SUBTITLE_PIPELINE_BROKEN event — customers can
+     * Send Debug Log and the next session will surface the break.
+     */
+    private fun runSubtitlePipelineSelfTest() {
+        if (subtitleSelfTestRan) return
+        subtitleSelfTestRan = true
+
+        if (useVlcBackend) {
+            val mp = vlcMediaPlayer
+            val layoutAttached = vlcVideoLayout?.parent != null
+            val spuCount = try { mp?.spuTracks?.size ?: -1 } catch (_: Exception) { -1 }
+            val broken = mp == null || !layoutAttached
+            streamDiagnosticLogger.logAppEvent(
+                if (broken) "SUBTITLE_PIPELINE_BROKEN" else "SUBTITLE_PIPELINE_OK",
+                "backend=libVLC, mp=${mp != null}, layoutAttached=$layoutAttached, " +
+                "spuCount=$spuCount, prefEnabled=${subtitlePreferences.subtitlesEnabled}"
+            )
+        } else {
+            val p = player
+            val sv = subtitleView
+            val listener = cueListener
+            val textGroups = p?.currentTracks?.groups?.count { it.type == C.TRACK_TYPE_TEXT } ?: 0
+            val textDisabled = p?.trackSelectionParameters?.disabledTrackTypes
+                ?.contains(C.TRACK_TYPE_TEXT) == true
+            val broken = p == null || sv == null || listener == null ||
+                sv.parent == null
+            streamDiagnosticLogger.logAppEvent(
+                if (broken) "SUBTITLE_PIPELINE_BROKEN" else "SUBTITLE_PIPELINE_OK",
+                "backend=ExoPlayer, player=${p != null}, svAttached=${sv?.parent != null}, " +
+                "cueListener=${listener != null}, textGroups=$textGroups, " +
+                "textDisabled=$textDisabled, prefEnabled=${subtitlePreferences.subtitlesEnabled}"
+            )
+        }
     }
 
     /** Re-attach the subtitle cue listener to the current player. Idempotent. */
