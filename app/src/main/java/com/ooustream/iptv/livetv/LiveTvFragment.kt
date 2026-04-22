@@ -362,9 +362,24 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.epgPrograms.collect { programs ->
+                viewModel.epgState.collect { epgState ->
+                    val programs = epgState.programs
                     if (programs.isEmpty()) {
-                        epgList.adapter = EpgAdapter(emptyList())
+                        // No server EPG — ask SmartEpgFiller for an inferred "now on" blurb
+                        // for the currently focused channel so the panel isn't just empty.
+                        val focusedChannel = filteredChannels.getOrNull(channelsList.selectedPosition)
+                        val emptyText = if (focusedChannel != null) {
+                            val categoryName = viewModel.categories.value
+                                .find { it.categoryId == viewModel.selectedCategoryId.value }
+                                ?.categoryName
+                            val inferred = smartEpgFiller.getSmartEpg(
+                                null, focusedChannel.streamId, focusedChannel.name, categoryName
+                            )
+                            "Now: ${inferred.title}\n(schedule unavailable from provider)"
+                        } else {
+                            "No schedule available"
+                        }
+                        epgList.adapter = EpgAdapter(emptyList(), emptyText)
                     } else {
                         epgList.adapter = EpgAdapter(programs)
                         // Auto-scroll to the currently airing program so user sees "now", not past programs
@@ -481,7 +496,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     // ---- EPG Adapter ----
 
     private class EpgAdapter(
-        private val programs: List<EpgProgram>
+        private val programs: List<EpgProgram>,
+        private val emptyStateText: String = "No schedule available for this channel"
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         private val VIEW_TYPE_PROGRAM = 0
@@ -499,11 +515,12 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
-                    text = "No EPG data available"
-                    setTextColor(Color.parseColor("#6B7280"))
+                    text = emptyStateText
+                    setTextColor(Color.parseColor("#9CA3AF"))
                     gravity = android.view.Gravity.CENTER
                     textSize = 13f
                     setPadding(16, 24, 16, 24)
+                    setTypeface(typeface, android.graphics.Typeface.ITALIC)
                 }
                 object : RecyclerView.ViewHolder(tv) {}
             } else {

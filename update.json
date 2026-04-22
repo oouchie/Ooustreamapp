@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.1",
-  "version_code": 67,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.1/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.1 — Clearer Error Messages\n\nWhen playback fails, the app now tells you what actually happened and what to do, instead of a generic \"Playback error.\"\n\n• Access denied (HTTP 401/403) — says to contact your provider about your subscription\n• Too many connections (HTTP 409/429) — says to close Ooustream on your other devices\n• Title not found (404) — specific, not generic\n• Server is having issues (5xx) — distinguishes server problems from your connection\n• SSL/TLS failures — suggests checking your device's date and time (usually the actual fix)\n• DNS failures — suggests checking your WiFi or DNS settings\n• Connection refused, socket timeout — each gets its own message\n\nDebug logs now capture the HTTP status code, response message, and server hostname on every failed stream, so customer reports are actionable without needing a debug build.",
+  "version_name": "3.7.2",
+  "version_code": 68,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.2/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.2/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.2/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.2 — EPG Fallback Fix\n\nWhen your provider's EPG feed is down or empty, the app now gracefully falls back to inferred program info instead of showing blank cards and a \"No EPG data available\" panel.\n\n• Channel cards show italicized rule-based text under each focused channel — e.g. \"Prime Time News\", \"Live Sports\", \"Morning Cartoons\" based on the channel's name and time of day\n• Preview schedule panel now shows \"Now: <inferred program> — (schedule unavailable from provider)\" instead of a blank empty-state\n• Pattern cache kicks in if you've watched that channel at that time before\n\nUnder the hood\n• Fixed a latent StateFlow dedup bug that silently swallowed empty-to-empty EPG emissions, which prevented the fallback from ever firing on providers returning empty listings for every channel\n• EPG fetch failures and empty responses now log to the diagnostic file. Next time someone reports \"no EPG\", Send Debug Log will show a timestamped EPG_EMPTY event with the stream ID — no guessing required.",
   "mandatory": false
 }

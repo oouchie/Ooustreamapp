@@ -2,6 +2,7 @@ package com.ooustream.iptv.data.repository
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.ooustream.iptv.common.StreamDiagnosticLogger
 import com.ooustream.iptv.data.local.dao.EpgCacheDao
 import com.ooustream.iptv.data.local.entity.EpgCacheEntity
 import com.ooustream.iptv.data.model.EpgProgram
@@ -12,7 +13,8 @@ import javax.inject.Singleton
 @Singleton
 class EpgCacheRepository @Inject constructor(
     private val epgCacheDao: EpgCacheDao,
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    private val streamDiagnosticLogger: StreamDiagnosticLogger
 ) {
     private val gson = Gson()
     private val epgListType = object : TypeToken<List<EpgProgram>>() {}.type
@@ -37,6 +39,7 @@ class EpgCacheRepository @Inject constructor(
 
     private suspend fun fetchAndCache(streamId: Int): List<EpgProgram> {
         // Fetch from network and decode Base64 title/description
+        val startMs = System.currentTimeMillis()
         val programs = try {
             (contentRepository.getShortEpg(streamId).epgListings ?: emptyList()).map { p ->
                 p.copy(
@@ -45,7 +48,22 @@ class EpgCacheRepository @Inject constructor(
                 )
             }
         } catch (e: Exception) {
+            streamDiagnosticLogger.logApiError(
+                "get_short_epg",
+                "streamId=$streamId, cls=${e.javaClass.simpleName}, msg=${e.message}, " +
+                    "cause=${e.cause?.javaClass?.simpleName}:${e.cause?.message}"
+            )
             emptyList()
+        }
+        val durationMs = System.currentTimeMillis() - startMs
+
+        if (programs.isEmpty()) {
+            // 200 OK but empty listings — almost always provider's XMLTV ingestion is broken.
+            // Silent failure until v3.7.2; log so Send Debug Log captures it.
+            streamDiagnosticLogger.logAppEvent(
+                "EPG_EMPTY",
+                "streamId=$streamId, took=${durationMs}ms"
+            )
         }
 
         // Cache the result

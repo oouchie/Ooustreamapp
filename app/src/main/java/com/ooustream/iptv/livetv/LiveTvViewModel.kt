@@ -33,8 +33,16 @@ class LiveTvViewModel @Inject constructor(
     private val _channels = MutableStateFlow<List<LiveStream>>(emptyList())
     val channels: StateFlow<List<LiveStream>> = _channels.asStateFlow()
 
-    private val _epgPrograms = MutableStateFlow<List<EpgProgram>>(emptyList())
-    val epgPrograms: StateFlow<List<EpgProgram>> = _epgPrograms.asStateFlow()
+    /**
+     * EPG state wrapper keyed by streamId so StateFlow dedup treats
+     * different-channel-but-both-empty emissions as distinct. Without this
+     * wrapper, `emptyList() == emptyList()` silently swallows the emission
+     * on empty-EPG providers and the SmartEpgFiller fallback never fires.
+     */
+    data class EpgState(val streamId: Int, val programs: List<EpgProgram>)
+
+    private val _epgState = MutableStateFlow(EpgState(-1, emptyList()))
+    val epgState: StateFlow<EpgState> = _epgState.asStateFlow()
 
     private val _selectedCategoryId = MutableStateFlow<String?>(FAVORITES_ID)
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
@@ -116,11 +124,12 @@ class LiveTvViewModel @Inject constructor(
 
     fun loadEpg(streamId: Int) {
         viewModelScope.launch {
-            try {
-                _epgPrograms.value = epgCacheRepository.getEpg(streamId)
+            val programs = try {
+                epgCacheRepository.getEpg(streamId)
             } catch (e: Exception) {
-                _epgPrograms.value = emptyList()
+                emptyList()
             }
+            _epgState.value = EpgState(streamId, programs)
         }
     }
 
