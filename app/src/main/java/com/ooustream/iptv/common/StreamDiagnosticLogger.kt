@@ -91,8 +91,61 @@ class StreamDiagnosticLogger @Inject constructor(
         write("PLAYER", "ERROR",
             "channel=$channelName, error=${exception.message}, " +
             "type=${exception.javaClass.simpleName}")
-        exception.stackTrace.take(5).forEach { frame ->
+
+        // Walk the cause chain. ExoPlayer wraps the real IO failure inside
+        // ExoPlaybackException -> HttpDataSource$... -> java.net.* — the layers
+        // below the top are the ones that actually tell us what went wrong.
+        var cause: Throwable? = exception.cause
+        var depth = 1
+        var root: Throwable = exception
+        while (cause != null && depth <= 5) {
+            write("PLAYER", "CAUSE",
+                "depth=$depth, type=${cause.javaClass.simpleName}, " +
+                "msg=${cause.message}")
+
+            // Special-case HTTP errors — surface responseCode in its own line
+            // so customers and us can grep for STREAM/HTTP.
+            val cls = cause.javaClass.name
+            if (cls == "androidx.media3.datasource.HttpDataSource\$InvalidResponseCodeException") {
+                extractHttpErrorDetails(cause, channelName)
+            }
+
+            root = cause
+            cause = cause.cause
+            depth++
+        }
+
+        // Stack frames from the ROOT cause are the useful ones — the top-level
+        // ExoPlaybackException frames are just internal dispatch.
+        root.stackTrace.take(5).forEach { frame ->
             write("PLAYER", "STACK", "  at $frame")
+        }
+    }
+
+    private fun extractHttpErrorDetails(httpError: Throwable, channelName: String?) {
+        // Reflection to avoid compile-time dependency shape on a specific media3 version.
+        try {
+            val codeField = httpError.javaClass.getField("responseCode")
+            val msgField = runCatching { httpError.javaClass.getField("responseMessage") }.getOrNull()
+            val dataSpecField = runCatching { httpError.javaClass.getField("dataSpec") }.getOrNull()
+
+            val code = codeField.getInt(httpError)
+            val msg = msgField?.get(httpError) as? String ?: ""
+            val dataSpec = dataSpecField?.get(httpError)
+            val host = dataSpec?.let {
+                runCatching {
+                    val uri = it.javaClass.getField("uri").get(it) as? android.net.Uri
+                    uri?.host
+                }.getOrNull()
+            } ?: "unknown"
+
+            write("STREAM", "HTTP",
+                "status=$code, statusMsg=$msg, host=$host, channel=$channelName")
+        } catch (t: Throwable) {
+            // Reflection failed — log the fallback so we still know this was an HTTP error.
+            write("STREAM", "HTTP",
+                "status=unknown, reflection_failed=${t.javaClass.simpleName}, " +
+                "channel=$channelName")
         }
     }
 

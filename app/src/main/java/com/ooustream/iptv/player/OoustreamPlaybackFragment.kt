@@ -60,7 +60,11 @@ import com.ooustream.iptv.epg.SmartEpgFiller
 import com.ooustream.iptv.recommendation.WatchSessionLogger
 import dagger.hilt.android.AndroidEntryPoint
 import okhttp3.OkHttpClient
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import javax.inject.Inject
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1894,29 +1898,88 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .show()
     }
 
-    private fun friendlyErrorMessage(error: PlaybackException): String = when (error.errorCode) {
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
-            "Unable to connect to the stream. Check your internet connection and try again."
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-            "This stream is currently unavailable. It may be temporarily offline."
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
-            "Stream not found. The content may have been removed."
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED ->
-            if (isAudioDecoderError(error))
-                "Audio format not supported on this device. Try a different stream."
-            else
-                "Video format not supported on this device."
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
-            "Audio format not supported on this device."
-        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
-            "Live stream fell behind. Reconnecting..."
-        PlaybackException.ERROR_CODE_TIMEOUT ->
-            "Stream timed out. The server may be slow or overloaded."
-        else ->
-            "Playback error. Please try again or choose a different stream."
+    private fun friendlyErrorMessage(error: PlaybackException): String {
+        // First, inspect the cause chain for concrete network/HTTP failures.
+        // These are far more actionable than ExoPlayer's generic errorCode buckets.
+        causeChainMessage(error)?.let { return it }
+
+        // Fall back to errorCode-based bucketing for cases where the cause chain
+        // doesn't clearly tell us what happened (decoder, codec, live window).
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                "Unable to connect to the stream. Check your internet connection and try again."
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                "This stream is currently unavailable. It may be temporarily offline."
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+                "Stream not found. The content may have been removed."
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED ->
+                if (isAudioDecoderError(error))
+                    "Audio format not supported on this device. Try a different stream."
+                else
+                    "Video format not supported on this device."
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
+                "Audio format not supported on this device."
+            PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
+                "Live stream fell behind. Reconnecting..."
+            PlaybackException.ERROR_CODE_TIMEOUT ->
+                "Stream timed out. The server may be slow or overloaded."
+            else ->
+                "Playback error. Please try again or choose a different stream."
+        }
+    }
+
+    /**
+     * Walks error.cause to find concrete IO failures and returns a targeted message.
+     * Returns null if nothing specific is detected — caller falls back to errorCode bucketing.
+     */
+    private fun causeChainMessage(error: Throwable): String? {
+        var cause: Throwable? = error.cause
+        var depth = 0
+        while (cause != null && depth < 6) {
+            // HTTP response codes — most actionable signal we have.
+            // Use reflection to avoid hard dependency on nested class shape.
+            val cls = cause.javaClass.name
+            if (cls == "androidx.media3.datasource.HttpDataSource\$InvalidResponseCodeException") {
+                val code = runCatching {
+                    cause!!.javaClass.getField("responseCode").getInt(cause)
+                }.getOrNull()
+                when (code) {
+                    401, 403 -> return "Access denied. Your subscription may not include this title — contact your provider."
+                    404 -> return "This title isn't available on the server. Contact your provider."
+                    408 -> return "Request timed out. Check your connection and try again."
+                    409, 429 -> return "Too many connections on your account. Close Ooustream on your other devices and try again."
+                    in 500..599 -> return "The server is having issues. Try again in a minute."
+                    else -> if (code != null) return "Server returned error $code. Try again or contact your provider."
+                }
+            }
+
+            // TLS / certificate problems — usually wrong device clock.
+            if (cause is SSLException) {
+                return "Secure connection failed. Check your device's date and time, then try again."
+            }
+
+            // DNS failure — couldn't resolve the hostname.
+            if (cause is UnknownHostException) {
+                return "Can't reach the server. Check your WiFi or DNS settings."
+            }
+
+            // TCP refused / unreachable.
+            if (cause is ConnectException) {
+                return "Couldn't connect to the server. It may be offline — try again in a moment."
+            }
+
+            // Socket read/connect timeout.
+            if (cause is SocketTimeoutException) {
+                return "Server is too slow to respond. Check your connection or try a different stream."
+            }
+
+            cause = cause.cause
+            depth++
+        }
+        return null
     }
 
     /** Show a user-friendly error dialog with Retry and Exit options.
