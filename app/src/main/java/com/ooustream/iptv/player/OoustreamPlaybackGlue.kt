@@ -30,7 +30,13 @@ class OoustreamPlaybackGlue(
     var onStatsToggle: (() -> Unit)? = null
     private var backConsumedOnDown = false
     var onAudioOnlyToggled: (() -> Unit)? = null
-    var isTrackPickerShowing: (() -> Boolean)? = null
+    // v3.7.0: renamed from isTrackPickerShowing. Returns true when ANY modal
+    // overlay (track picker, binge countdown, watch-next, series-complete) is
+    // showing. Glue passes every non-BACK key through when true, so overlay
+    // buttons can receive focus and clicks instead of the glue stealing them
+    // to show the controls bar. Without this, e.g. pressing OK on "Watch Next"
+    // in the binge overlay just showed controls and never advanced episodes.
+    var isModalOverlayShowing: (() -> Boolean)? = null
     var onDismissTrackPicker: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
 
@@ -117,7 +123,7 @@ class OoustreamPlaybackGlue(
         // its click. BACK is handled below (dismisses picker via callback).
         // This was the root cause of the "subtitles never displaying on ExoPlayer"
         // bug — OK presses on picker items were being consumed by the glue.
-        if (isTrackPickerShowing?.invoke() == true && keyCode != KeyEvent.KEYCODE_BACK) {
+        if (isModalOverlayShowing?.invoke() == true && keyCode != KeyEvent.KEYCODE_BACK) {
             return false
         }
 
@@ -127,7 +133,7 @@ class OoustreamPlaybackGlue(
         // focus remains inside Leanback's BrowseFrameLayout when controls are showing.
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (event?.action == KeyEvent.ACTION_DOWN) {
-                if (isTrackPickerShowing?.invoke() == true) {
+                if (isModalOverlayShowing?.invoke() == true) {
                     onDismissTrackPicker?.invoke()
                     backConsumedOnDown = true
                     return true
@@ -246,9 +252,14 @@ class OoustreamPlaybackGlue(
                     return false
                 }
                 if (contentType == ContentType.SERIES && controlsHidden) {
+                    android.util.Log.w("OOUSTREAM_NAV",
+                        "DPAD_UP SERIES controlsHidden=true → onNextEpisode " +
+                        "(wired=${onNextEpisode != null})")
                     onNextEpisode?.invoke()
                     return true
                 }
+                android.util.Log.w("OOUSTREAM_NAV",
+                    "DPAD_UP content=$contentType controlsHidden=$controlsHidden — no action")
                 if (!controlsHidden) {
                     customControlsManager?.resetAutoHideTimer()
                     return false

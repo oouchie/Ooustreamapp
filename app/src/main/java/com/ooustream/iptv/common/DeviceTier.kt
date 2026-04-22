@@ -57,9 +57,27 @@ object DeviceTierDetector {
      * playback path (resolution cap, HEVC Main 10 refusal, MTK shortcut).
      */
     private val BAD_MTK_HARDWARE = listOf(
-        "mt8695",   // Fire TV Stick 3rd gen AFTSS — the one andresi has
-        "mt8696",   // Fire TV Stick AFTMM variants
+        "mt8695",   // Fire TV Stick 3rd gen AFTSS (2020, no HW 4K HEVC)
+        // v3.7.0: mt8696 removed. mt8696 is Fire TV Stick 4K Max 2nd gen
+        // (AFTKRT, 2023) — it has full hardware 4K HEVC and was incorrectly
+        // grouped with mt8695 based on a comment that claimed "AFTMM variants".
+        // AFTKRT now re-tiers normally via memoryClass (falls into MID/HIGH)
+        // which removes the 1080p resolution cap and the ULTRA_LOW routing.
         "mt8167",   // Older Fire TV family, same HEVC Main 10 gap
+    )
+
+    /**
+     * Known-good MTK SoCs that must be elevated past `memoryClass`-based
+     * ULTRA_LOW/LOW tiering. These have full hardware 4K HEVC and their
+     * per-app heap (often 192MB) doesn't reflect the actual capability.
+     *
+     * Without this override, `memoryClass <= 192` pins them to LOW tier and
+     * forces a 1080p video cap, which makes the track selector reject 4K
+     * HEVC tracks and fall back to c2.android.hevc software decode — the
+     * 4K-glitching path on AFTKRT that led to v3.7.0's tier rework.
+     */
+    private val GOOD_MTK_HARDWARE = listOf(
+        "mt8696",   // Fire TV Stick 4K Max 2nd gen (AFTKRT, 2023) — HW 4K HEVC
     )
 
     /**
@@ -78,9 +96,15 @@ object DeviceTierDetector {
         val hardware = Build.HARDWARE.lowercase()
 
         val isBadMtk = BAD_MTK_HARDWARE.any { hardware.contains(it) }
+        val isGoodMtk = GOOD_MTK_HARDWARE.any { hardware.contains(it) }
 
         val tier = when {
             isBadMtk -> DeviceTier.ULTRA_LOW
+            // Known-good 4K-capable MTK SoCs bypass the memoryClass ladder — their
+            // per-app heap underreports the real hardware capability (see comment
+            // on GOOD_MTK_HARDWARE). Land on MID rather than HIGH so we keep
+            // conservative buffer sizing, but remove the resolution cap.
+            isGoodMtk -> DeviceTier.MID
             memoryClass <= 128 -> DeviceTier.ULTRA_LOW
             memoryClass <= 192 -> DeviceTier.LOW
             memoryClass <= 256 -> DeviceTier.MID
@@ -157,8 +181,9 @@ object DeviceTierDetector {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val hardware = Build.HARDWARE.lowercase()
         val badMtk = BAD_MTK_HARDWARE.any { hardware.contains(it) }
+        val goodMtk = GOOD_MTK_HARDWARE.any { hardware.contains(it) }
         return "tier=${tier(context)}, hw=${Build.HARDWARE}, model=${Build.MODEL}, " +
-            "memoryClass=${am.memoryClass}MB, badMtk=$badMtk"
+            "memoryClass=${am.memoryClass}MB, badMtk=$badMtk, goodMtk=$goodMtk"
     }
 
     /**

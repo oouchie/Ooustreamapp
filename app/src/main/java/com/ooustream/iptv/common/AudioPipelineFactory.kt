@@ -155,35 +155,43 @@ object AudioPipelineFactory {
 
     /**
      * Creates a [DefaultRenderersFactory] optimized for MediaTek devices:
-     * - Custom [MediaCodecSelector] that deprioritizes OMX.MTK video decoders
-     *   (prefers c2.mtk > c2.android > OMX.google > OMX.MTK)
+     * - Custom [MediaCodecSelector] that deprioritizes OMX.MTK HEVC decoders on
+     *   KNOWN-BAD MTK chipsets (mt8695 black screen bug — render 1 frame then stop)
      * - Same audio pipeline as [createRenderersFactory]
      *
-     * On non-MTK devices, falls back to [createRenderersFactory].
+     * On good-MTK chipsets (mt8696 / AFTKRT) and non-MTK devices, returns the
+     * default factory so hardware 4K HEVC is preferred naturally. The prior
+     * version of this method deprioritized OMX.MTK HEVC on ALL MediaTek devices,
+     * which meant AFTKRT's hardware HEVC was skipped in favor of c2.android
+     * software HEVC — 4K content ran at ~9fps as a slideshow. The black-screen
+     * bug the deprioritization targets is mt8695-specific.
      */
     fun createMtkAwareRenderersFactory(context: Context): DefaultRenderersFactory {
         if (!isMtkDevice()) return createRenderersFactory(context)
 
+        val hardware = Build.HARDWARE.lowercase()
+        // Only the truly bad MTK chipsets need the HEVC deprioritization. Good
+        // MTK chipsets (mt8696) have working HW HEVC including 4K and should
+        // get normal decoder priority.
+        val needsHevcWorkaround = hardware.contains("mt8695") ||
+            hardware.contains("mt8167")
+        if (!needsHevcWorkaround) return createRenderersFactory(context)
+
         return createRenderersFactory(context).apply {
-            // Custom codec selector: deprioritize OMX.MTK for HEVC only
-            // The black screen bug (render 1 frame then stop) is HEVC-specific on mt8695.
-            // H.264/AVC works fine on OMX.MTK hardware and is too demanding for software decode
-            // on these low-power SoCs — deprioritizing it caused choppy live TV.
             setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
                 val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
                 if (mimeType == "video/hevc") {
-                    // HEVC only: prefer C2/SW decoders over OMX.MTK (black screen bug)
                     allDecoders.sortedWith(compareBy { info ->
                         when {
-                            info.name.startsWith("c2.mtk", ignoreCase = true) -> 0      // C2 MTK: newer, fewer bugs
-                            info.name.startsWith("c2.android", ignoreCase = true) -> 1   // C2 generic SW
-                            info.name.contains("google", ignoreCase = true) -> 2          // OMX.google SW
-                            info.name.startsWith("OMX.MTK", ignoreCase = true) -> 3      // OMX MTK: problematic
+                            info.name.startsWith("c2.mtk", ignoreCase = true) -> 0
+                            info.name.startsWith("c2.android", ignoreCase = true) -> 1
+                            info.name.contains("google", ignoreCase = true) -> 2
+                            info.name.startsWith("OMX.MTK", ignoreCase = true) -> 3
                             else -> 4
                         }
                     }).toMutableList()
                 } else {
-                    allDecoders // H.264, audio, etc: keep default decoder priority
+                    allDecoders
                 }
             })
         }

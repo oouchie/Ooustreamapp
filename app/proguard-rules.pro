@@ -45,12 +45,8 @@
 -keep class org.jellyfin.** { *; }
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
 
-# libVLC (native libvlcjni.so calls FindClass on these during JNI_OnLoad)
-# Without this, R8 strips IMedia$Slave and other inner interfaces that have
-# no static references in Kotlin code, causing UnsatisfiedLinkError: JNI_ERR
-# and System.exit(1) on every libVLC init attempt. This was the root cause
-# of the v3.5.7 "VLC crash on MTK" that led to the crash guard.
--keep class org.videolan.** { *; }
+# v3.7.0: libVLC removed entirely. FFmpeg video extension inside ExoPlayer
+# now handles HEVC Main 10 / edge-case software decode. See tasks/v3.6.0-ffmpeg-video-extension.md.
 
 # Hilt
 -keep class dagger.hilt.** { *; }

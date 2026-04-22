@@ -1,9 +1,9 @@
 {
-  "version_name": "3.6.8",
-  "version_code": 65,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.6.8/app-armeabi-v7a-release.apk",
-  "changelog": "v3.6.8 — Subtitles Fully Working + Input Fix\n\nSubtitles\n• Fixed: picking a subtitle track on the compatible-mode engine did nothing. The decoder couldn't identify the codec because of an internal demuxer option we used to work around a different issue. Reverted so subs decode normally. Flight-class edge cases are covered by the upcoming v3.7.0 architecture change.\n• Fixed: pressing OK on a track in the Tracks panel sometimes did nothing on videos running through the compatible-mode engine. The control layer was swallowing the OK press before it reached the selected track. OK and D-pad now pass through cleanly when the Tracks panel is showing.\n\nDiagnostics\n• Subtitle pipeline now self-tests at playback start. Any structural break (missing caption surface, unattached view, etc.) is logged immediately in the debug log so future subtitle regressions surface automatically.",
+  "version_name": "3.7.0",
+  "version_code": 66,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.0/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.0/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.0/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.0 — Single-Engine Playback (libVLC Removed)\n\nUnder the hood\n• The app now runs entirely on a single playback engine. The compatible-mode backup engine is gone — its software video decoder is replaced by an FFmpeg-powered fallback built into the main player. Everything from live TV to MKVs to HEVC content plays through one pipeline now, with one set of controls and one caption path.\n• Smaller, faster, simpler. APK size drops from ~55MB to ~19MB. No more engine-swap wait when a codec is tricky. No more dual-backend caption quirks.\n• 4K hardware HEVC now used on Fire TV Stick 4K Max. A legacy setting was forcing these devices to use software HEVC — turns out your device can handle 4K natively. Fixed.\n\nUX fixes\n• Buttons on the binge countdown, end-of-movie, and end-of-series overlays are now actually clickable. Previously the OK press would just show controls without hitting the button.\n• Subtitle system unchanged — everything from v3.6.8 carries over and now runs on the simpler single-engine path.\n• Frame-rate reporting in diagnostics no longer shows impossible negative values after stream format changes.\n\nDependencies\n• Media3 1.9.0 → 1.10.0\n• Jellyfin FFmpeg audio extension → our own combined FFmpeg audio+video extension (h264, hevc, vp9, mpeg2video, vc1, mpeg4 + all audio codecs)\n• libVLC removed",
   "mandatory": false
 }

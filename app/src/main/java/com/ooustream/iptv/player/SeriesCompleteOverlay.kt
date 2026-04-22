@@ -55,6 +55,8 @@ class SeriesCompleteOverlay @JvmOverloads constructor(
         }
     }
 
+    val isShowing: Boolean get() = visibility == VISIBLE
+
     fun show(name: String) {
         seriesName.text = name
         visibility = VISIBLE
@@ -68,6 +70,4 @@ class SeriesCompleteOverlay @JvmOverloads constructor(
             visibility = GONE
         }.start()
     }
-
-    val isShowing: Boolean get() = visibility == VISIBLE
 }

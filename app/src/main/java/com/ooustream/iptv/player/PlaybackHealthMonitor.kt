@@ -74,13 +74,20 @@ class PlaybackHealthMonitor(
                         bandwidthMeter?.bitrateEstimate ?: 0L
                     } catch (_: Exception) { 0L }
 
-                    // FPS: frames rendered since last check / elapsed time
+                    // FPS: frames rendered since last check / elapsed time.
+                    // renderedOutputBufferCount is reset by ExoPlayer on renderer re-init
+                    // (e.g. BUFFERING→READY after a format change, channel switch, or
+                    // SW decoder fallback) — currentFrames can be lower than prevFrameCount,
+                    // producing a nonsensical negative fps like -2515.5. Treat any frame
+                    // count drop as a reset and report 0 for this interval; normal
+                    // reporting resumes on the next tick.
                     val currentFrames = counters?.renderedOutputBufferCount ?: 0
                     val now = SystemClock.elapsedRealtime()
-                    val fps = if (prevFrameTime > 0 && now > prevFrameTime) {
+                    val fps = if (prevFrameTime > 0 && now > prevFrameTime &&
+                        currentFrames >= prevFrameCount) {
                         val frameDelta = currentFrames - prevFrameCount
                         val timeDelta = (now - prevFrameTime) / 1000f
-                        if (timeDelta > 0) frameDelta / timeDelta else 0f
+                        if (timeDelta > 0) (frameDelta / timeDelta).coerceAtLeast(0f) else 0f
                     } else 0f
                     prevFrameCount = currentFrames
                     prevFrameTime = now
