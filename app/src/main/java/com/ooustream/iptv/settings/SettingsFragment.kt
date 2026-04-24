@@ -49,6 +49,7 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_CLEAR_HISTORY = 12L
         private const val ACTION_SUBTITLE_SETTINGS = 13L
         private const val ACTION_SEND_DEBUG_LOG = 14L
+        private const val ACTION_ALLOW_SELF_SIGNED_CERTS = 15L
     }
 
     @Inject lateinit var parentalControlManager: ParentalControlManager
@@ -181,6 +182,20 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Advanced: Allow Self-Signed Certificates
+        val selfSignedOn = com.ooustream.iptv.settings.NetworkSettings
+            .allowSelfSignedCerts(requireContext())
+        actions.add(
+            GuidedAction.Builder(requireContext())
+                .id(ACTION_ALLOW_SELF_SIGNED_CERTS)
+                .title("Allow Self-Signed Certificates")
+                .description(
+                    if (selfSignedOn) "ON — weakens TLS (restart required)"
+                    else "OFF — standard TLS verification"
+                )
+                .build()
+        )
+
         // v3.7.0: "Reset Playback Recovery" action removed — libVLC and its crash
         // guard are both gone.
 
@@ -232,8 +247,46 @@ class SettingsFragment : GuidedStepSupportFragment() {
             ACTION_CRASH_LOG -> showCrashLog()
             ACTION_CLEAR_CACHE -> showClearCacheConfirmation()
             ACTION_CLEAR_HISTORY -> showClearHistoryConfirmation()
+            ACTION_ALLOW_SELF_SIGNED_CERTS -> showSelfSignedCertsConfirmation()
             ACTION_LOGOUT -> showLogoutConfirmation()
         }
+    }
+
+    private fun showSelfSignedCertsConfirmation() {
+        val currentlyOn = com.ooustream.iptv.settings.NetworkSettings
+            .allowSelfSignedCerts(requireContext())
+        val targetState = !currentlyOn
+        val title = if (targetState) "Allow Self-Signed Certificates?" else "Disable Self-Signed Certificates?"
+        val message = if (targetState) {
+            "This weakens TLS verification so Ooustream will connect to IPTV " +
+                "servers with self-signed or invalid SSL certificates.\n\n" +
+                "Only turn this on if your provider uses a self-signed cert and " +
+                "streams fail to load. App restart required."
+        } else {
+            "Restore standard TLS certificate verification. App restart required."
+        }
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(if (targetState) "Allow" else "Disable") { _, _ ->
+                com.ooustream.iptv.settings.NetworkSettings
+                    .setAllowSelfSignedCerts(requireContext(), targetState)
+                android.widget.Toast.makeText(
+                    requireContext(),
+                    "Setting saved. Restart the app to apply.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                // Re-render the action so the ON/OFF description updates on return.
+                val newDesc = if (targetState) "ON — weakens TLS (restart required)"
+                    else "OFF — standard TLS verification"
+                val idx = findActionPositionById(ACTION_ALLOW_SELF_SIGNED_CERTS)
+                if (idx >= 0) {
+                    actions[idx].description = newDesc
+                    notifyActionChanged(idx)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // endregion

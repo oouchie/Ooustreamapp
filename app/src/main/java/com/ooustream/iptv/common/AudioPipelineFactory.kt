@@ -10,6 +10,9 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.video.VideoRendererEventListener
+import android.os.Handler
 
 /**
  * Single source of truth for the ExoPlayer audio rendering pipeline.
@@ -92,15 +95,51 @@ object AudioPipelineFactory {
     }
 
     /**
-     * Creates a [DefaultRenderersFactory] with EXTENSION_RENDERER_MODE_PREFER for audio.
-     * FFmpeg extension decoders are tried FIRST, before hardware MediaCodec decoders.
+     * Creates a [DefaultRenderersFactory] with EXTENSION_RENDERER_MODE_PREFER for audio
+     * only — video renderers still prefer hardware MediaCodec.
      *
-     * Used as a fallback when hardware audio decoders falsely report support for AC3/EAC3
-     * but crash at runtime (e.g. mt8695-based Fire TV Sticks). FFmpeg correctly decodes
-     * these codecs via software and the ChannelMixingAudioProcessor downmixes to stereo.
+     * Pre-v3.7.0 the bundled FFmpeg extension was Jellyfin's audio-only build, so setting
+     * MODE_PREFER only affected audio. v3.7.0 replaced it with our custom AAR that has
+     * video decoders too (h264/hevc/mpeg4/vp9/mpeg2video/vc1). Globally setting MODE_PREFER
+     * caused ExoPlayer to pick `ffmpegLavc60.3.100-hevc` over `OMX.MTK.VIDEO.DECODER.HEVC`
+     * on mt8696 devices — FFmpeg software HEVC at 1080p60 tops out at ~20fps on Cortex-A53,
+     * so video went into a frame-drop spiral. Discovered via customer wash1220's v3.7.3
+     * debug log: 102 FRAMES_DROPPED events right after the factory was applied.
+     *
+     * This override forces [EXTENSION_RENDERER_MODE_OFF] for video, keeping hardware first
+     * and [setEnableDecoderFallback] handling HW failures via c2.android software decoders.
+     * Audio still gets MODE_PREFER so FFmpeg wins for AC3/EAC3/DTS decode + downmix.
+     *
+     * Used by:
+     *  - v3.3.3 reactive AC3/EAC3 audio error recovery (rebuildPlayerWithFfmpegPreferred)
+     *  - v3.7.3 proactive MTK 5.1 audio preemptive rebuild (mtkMultichannelFfmpegApplied)
      */
     fun createFfmpegPreferredRenderersFactory(context: Context): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
+            override fun buildVideoRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                eventHandler: Handler,
+                eventListener: VideoRendererEventListener,
+                allowedVideoJoiningTimeMs: Long,
+                out: ArrayList<Renderer>
+            ) {
+                // Force MODE_OFF for video — FFmpeg must never outrank MediaCodec here.
+                // Audio chain still sees MODE_PREFER via setExtensionRendererMode below.
+                super.buildVideoRenderers(
+                    context,
+                    DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    eventHandler,
+                    eventListener,
+                    allowedVideoJoiningTimeMs,
+                    out
+                )
+            }
+
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,

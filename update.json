@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.3",
-  "version_code": 69,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.3/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.3/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.3/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.3 — Smooth 5.1 Audio on Fire TV Stick 4K Max\n\nFixes repeating buffering on Fire TV Sticks when streams use 5.1 surround audio (EAC3/AC3/DTS, 6 channels).\n\nThe hardware AC3/EAC3/DTS decoder on MediaTek Fire TV Sticks (mt8695, mt8696, mt8167) works fine on its own, but the 6-channel → stereo downmix happening after the decoder was too slow to keep up with playback. Audio would starve every 10-15 seconds, the player would stall, our watchdog would try to recover — and the whole thing would loop.\n\nFix: on the first track selection, if the device is a MediaTek Fire TV Stick AND the stream has 5.1 surround audio, we now preemptively rebuild the player with the FFmpeg-preferred audio pipeline. FFmpeg handles decode + downmix in a single pass and doesn't fall behind.\n\nAffects: live NBA / NFL / sports feeds in 5.1 surround, movies with 5.1 tracks on mt8695/mt8696/mt8167 devices. AAC and 2-channel streams unaffected — they continue using hardware decode as before.",
+  "version_name": "3.7.4",
+  "version_code": 70,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.4 — 5.1 Audio Fix (Part 2) + Live TV Captions\n\nCritical follow-up to v3.7.3. The 5.1 audio rebuild was routing video through FFmpeg software HEVC at the same time, which dropped to ~20 fps on Fire TV Sticks. Video now stays on hardware while audio goes through FFmpeg — the way it was supposed to.\n\n• MediaTek Fire TV Sticks (mt8695 / mt8696 / mt8167) playing 5.1 surround streams no longer lose video performance during the audio pipeline rebuild\n• Closed captions now work on US live TV channels — CEA-608 subtitles embedded in the video feed are finally surfaced as a selectable subtitle track\n• Poorly-muxed IPTV streams get a 3× larger PTS search window and now play when they previously gave up\n• Stream fetches announce a proper User-Agent so aggressive anti-bot providers stop blocking the default okhttp UA\n• New Settings → Advanced toggle \"Allow Self-Signed Certificates\" for users whose IPTV provider uses a self-signed TLS cert (off by default, requires app restart to apply)\n• Constant-bitrate seeking enabled for non-standard containers",
   "mandatory": false
 }

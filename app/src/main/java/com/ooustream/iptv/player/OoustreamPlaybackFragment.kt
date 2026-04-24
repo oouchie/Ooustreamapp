@@ -195,7 +195,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         } else {
             BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
         }
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
         // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
         val ffmpegAvailable = AudioLogger.isFfmpegAvailable
@@ -274,7 +274,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
             .build()
 
         // Audio focus: ExoPlayer handles pause/duck/resume automatically
@@ -1742,7 +1742,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         safeReleasePlayer(p)
 
         val softwareRenderersFactory = AudioPipelineFactory.createSoftwareVideoRenderersFactory(requireContext())
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
         // Use low-memory buffers on constrained devices (SW decode needs all available RAM for frames)
@@ -1757,7 +1757,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(swLoadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
             .build()
 
         player!!.setAudioAttributes(
@@ -1827,7 +1827,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
         // Rebuild with FFmpeg-preferred audio pipeline
         val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(requireContext())
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
         val ffmpegLoadControl = run {
@@ -1841,7 +1841,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DefaultExtractorsFactory()))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
             .build()
 
         player!!.setAudioAttributes(

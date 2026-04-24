@@ -107,7 +107,7 @@ class MultiViewPlayerManager(
                 .build()
         }
 
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = com.ooustream.iptv.player.StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
         // Renderers factory with stereo downmix + decoder fallback
         val renderersFactory = createRenderersFactory()
@@ -446,7 +446,7 @@ class MultiViewPlayerManager(
             .setBufferDurationsMs(2_000, 5_000, 500, 800)
             .build()
 
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = com.ooustream.iptv.player.StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val renderersFactory = createRenderersFactory()
 
         val player = ExoPlayer.Builder(context)

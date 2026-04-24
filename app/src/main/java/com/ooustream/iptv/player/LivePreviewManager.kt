@@ -31,7 +31,7 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
 
     fun startPreview(playerView: PlayerView, streamUrl: String) {
         release()
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
         trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
