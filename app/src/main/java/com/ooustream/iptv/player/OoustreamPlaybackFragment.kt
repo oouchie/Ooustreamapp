@@ -152,6 +152,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var corePlayerListener: Player.Listener? = null
     // Buffer storm detection: rapid BUFFERING→READY cycling on amlogic HEVC+EAC3
     private var bufferStormCount = 0
+    // v3.7.3: MTK (mt8695/mt8696/mt8167) can hardware-decode AC3/EAC3/DTS fine, but the
+    // 6→2 channel downmix through ChannelMixingAudioProcessor is too heavy — audio
+    // buffer underruns every 10-15s and the stall-recovery loop kicks in (15s IDLE →
+    // full restart). FFmpeg-preferred factory lets FFmpeg handle both decode AND downmix
+    // in one pass, which keeps up. Applied once per channel on the first onTracksChanged.
+    private var mtkMultichannelFfmpegApplied = false
     private var bufferStormWindowStart = 0L
     private var ffmpegRebuildAttemptedForBufferStorm = false
 
@@ -1225,6 +1231,51 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                     return
                 }
+
+                // v3.7.3: MTK 5.1 audio preemptive FFmpeg rebuild.
+                // Hardware AC3/EAC3/DTS decode + ChannelMixingAudioProcessor 6→2 downmix
+                // on mt8695/mt8696/mt8167 underruns the audio sink every 10-15s, which
+                // trips the player's stall recovery (15s IDLE → full restart) in a loop.
+                // FFmpeg handles decode + downmix in one pass and keeps up. Catch it on
+                // first onTracksChanged so the rebuild happens inside the initial buffer
+                // window instead of after users have seen the stall pattern.
+                if (!mtkMultichannelFfmpegApplied && AudioLogger.isFfmpegAvailable) {
+                    val hw = android.os.Build.HARDWARE.lowercase()
+                    val isMtk = hw.startsWith("mt8")
+                    if (isMtk) {
+                        val selectedAudioFormat = tracks.groups
+                            .filter { it.type == C.TRACK_TYPE_AUDIO }
+                            .flatMap { group ->
+                                (0 until group.length).mapNotNull { i ->
+                                    if (group.isTrackSelected(i)) group.getTrackFormat(i) else null
+                                }
+                            }
+                            .firstOrNull()
+                        val needsFfmpeg = selectedAudioFormat?.let { fmt ->
+                            val mime = fmt.sampleMimeType
+                            (mime == androidx.media3.common.MimeTypes.AUDIO_E_AC3 ||
+                                mime == androidx.media3.common.MimeTypes.AUDIO_AC3 ||
+                                mime == androidx.media3.common.MimeTypes.AUDIO_DTS) &&
+                                fmt.channelCount >= 6
+                        } ?: false
+                        if (needsFfmpeg) {
+                            mtkMultichannelFfmpegApplied = true
+                            val mime = selectedAudioFormat?.sampleMimeType
+                            val ch = selectedAudioFormat?.channelCount
+                            val channelName = healthMonitor?.channelName ?: "unknown"
+                            AudioLogger.log(
+                                "MTK $hw + $mime ${ch}ch — preemptive FFmpeg-preferred rebuild"
+                            )
+                            streamDiagnosticLogger.logAppEvent(
+                                "MTK_MULTICHANNEL_FFMPEG_REBUILD",
+                                "hw=$hw, mime=$mime, ch=$ch, channel=$channelName"
+                            )
+                            rebuildPlayerWithFfmpegPreferred()
+                            return
+                        }
+                    }
+                }
+
                 // Don't override user's manual track selection from TrackPickerOverlay
                 if (userTrackOverrideActive) return
                 // Don't re-enable audio if Stage 2 fallback intentionally disabled it
@@ -2150,6 +2201,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         bufferStormCount = 0
         bufferStormWindowStart = 0L
         ffmpegRebuildAttemptedForBufferStorm = false
+        mtkMultichannelFfmpegApplied = false
         // Force-restart watchdog so the new channel gets a fresh escalation ladder
         frameWatchdogJob?.cancel()
         frameWatchdogJob = null
