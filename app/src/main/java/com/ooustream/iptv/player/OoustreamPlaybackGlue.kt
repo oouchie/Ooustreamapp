@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.view.KeyEvent
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.leanback.media.PlaybackGlueHost
 import androidx.leanback.media.PlaybackTransportControlGlue
 import androidx.leanback.widget.Action
 import androidx.leanback.widget.ArrayObjectAdapter
@@ -20,6 +21,24 @@ class OoustreamPlaybackGlue(
 
     var contentType: ContentType = ContentType.LIVE
     var customControlsManager: PlayerControlsManager? = null
+
+    /**
+     * v3.7.6 (round 2): the customer's report on v3.7.5 confirmed the duplicate Leanback
+     * overlay only appears AFTER an automatic decoder switch (rebuildPlayerWithFfmpegPreferred
+     * for MTK 5.1 audio). The first round of fix tried to detach the old glue and post a
+     * hideControlsOverlay AFTER the new host attached — but the host's "auto-show on
+     * attach" runs internally during attach, and our posted hide was either too early
+     * or competing with another show.
+     *
+     * Override onAttachedToHost so EVERY attach (initial + rebuilds) immediately hides
+     * the default Leanback overlay before it gets a chance to render. Combined with the
+     * fragment's showControlsOverlay() no-op override, this keeps the default UI invisible
+     * for the lifetime of the glue.
+     */
+    override fun onAttachedToHost(host: PlaybackGlueHost) {
+        super.onAttachedToHost(host)
+        host.hideControlsOverlay(false)
+    }
     var onChannelSwitch: ((Int) -> Unit)? = null
     var onZapConfirm: (() -> Unit)? = null
     var isZapOverlayShowing: (() -> Boolean)? = null

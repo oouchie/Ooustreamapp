@@ -108,6 +108,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var seekFeedback: SeekFeedbackOverlay? = null
     private val chapterManager = ChapterManager()
     private var trackPickerOverlay: TrackPickerOverlay? = null
+    /**
+     * View that had focus right before the track picker opened. Stashed so we can
+     * restore focus to the same bar button (Audio/Tracks/CC) when the picker dismisses.
+     * Without this, focus is left on the (now-hidden) picker view and the cursor
+     * disappears until the user blindly hits a DPAD direction.
+     */
+    private var focusedBeforeTrackPicker: View? = null
     private var subtitleView: SubtitleView? = null
     private var audioStatusOverlay: AudioStatusOverlay? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -615,6 +622,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         trackPicker.onDismissed = {
             controlsManager?.resumeAutoHide()
+            // Restore focus to the bar button (Audio / Tracks / CC) that opened the picker.
+            // Without this the cursor is left on the (now-hidden) picker and the user can't
+            // see what's focused on the bottom action row. Fall back to play/pause if the
+            // saved view is gone (rebuild between open and close).
+            val target = focusedBeforeTrackPicker
+            focusedBeforeTrackPicker = null
+            if (target != null && target.isAttachedToWindow && target.isShown) {
+                target.requestFocus()
+            } else {
+                controlsBar?.requestFocusOnPlayPause()
+            }
             // Re-disable subtitles if picker was dismissed without selecting one
             if (subtitlesTemporarilyEnabled) {
                 subtitlesTemporarilyEnabled = false
@@ -734,8 +752,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Configure SubtitleView with TV-optimized defaults
         configureSubtitleView(view)
 
-        // Hide Leanback default controls permanently — we use custom PlayerControlsBar
+        // Hide Leanback default controls permanently — we use custom PlayerControlsBar.
+        // hideControlsOverlay() animates alpha but Leanback re-shows the dock on every row
+        // update (which fires constantly during playback), so we also nuke the dock view's
+        // visibility directly. Without this, after an automatic decoder switch
+        // (rebuildPlayerWithFfmpegPreferred), the default Leanback overlay reappears
+        // alongside our custom PlayerControlsBar (the duplicate-overlay customer report).
         hideControlsOverlay(false)
+        forceHideLeanbackPlaybackDock()
 
         // ─── Custom Controls Bar ────────────────────────────────────────────
         controlsBar = PlayerControlsBar(requireContext()).also { bar ->
@@ -749,6 +773,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             controlsManager = PlayerControlsManager(bar, viewModel.contentType)
             controlsManager?.onVisibilityChanged = { visible ->
                 if (visible) bar.requestFocusOnPlayPause()
+                // Toggle whether the (invisible alpha=0) Leanback dock children can
+                // receive focus. When our bar is showing, block them — otherwise
+                // DPAD navigation from a bar button finds the invisible Pause/Audio/etc.
+                // buttons inside the dock and the cursor disappears. When our bar is
+                // hidden, allow focus back into the dock so the SeekBar can capture
+                // OK presses for OoustreamPlaybackGlue.onKey to summon the bar.
+                view?.findViewById<android.view.ViewGroup>(
+                    androidx.leanback.R.id.playback_controls_dock
+                )?.descendantFocusability =
+                    if (visible) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                    else android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             }
 
             // Wire glue to our controls manager
@@ -1731,6 +1766,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val currentPosition = p.currentPosition
         usingSoftwareVideoDecoder = true
 
+        // v3.7.6: detach the OLD glue from its host BEFORE the rebuild. Without this
+        // the old transport row stays in the fragment's row adapter and the default
+        // Leanback overlay renders behind our PlayerControlsBar (the "old format
+        // still stuck" customer report on v3.7.5).
+        glue?.host = null
+
         // Stop current player to free decoder resources
         p.stop()
 
@@ -1801,7 +1842,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // ("controls stay on screen").
             customControlsManager = controlsManager
         }
-        try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+        // hideControlsOverlay must run AFTER the host's attach sequence completes,
+        // otherwise the host's auto-show on attach overrides our hide and the default
+        // Leanback transport overlay stays visible behind our custom PlayerControlsBar.
+        view?.post {
+            try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+            forceHideLeanbackPlaybackDock()
+        }
 
         // Restore playback from saved position
         player!!.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
@@ -1822,6 +1869,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val p = player ?: return
         val currentPosition = p.currentPosition
         val currentUrl = viewModel.streamUrl
+
+        // v3.7.6: detach old glue from host first — see SW rebuild for full reasoning.
+        glue?.host = null
 
         // Stop and release current player
         p.stop()
@@ -1888,7 +1938,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // v3.7.5: re-attach our custom controls — see SW rebuild for full explanation.
             customControlsManager = controlsManager
         }
-        try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+        // hideControlsOverlay must run AFTER the host's attach sequence completes,
+        // otherwise the host's auto-show on attach overrides our hide and the default
+        // Leanback transport overlay stays visible behind our custom PlayerControlsBar.
+        view?.post {
+            try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+            forceHideLeanbackPlaybackDock()
+        }
 
         // Restore playback from saved position
         player!!.setMediaItem(MediaItem.fromUri(currentUrl))
@@ -2321,6 +2377,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private fun showTrackPicker() {
         val p = player ?: return
         controlsManager?.pauseAutoHide()
+        // Capture which bar button has focus so we can restore it on dismiss.
+        focusedBeforeTrackPicker = view?.findFocus()
         // Temporarily enable TEXT track type so ExoPlayer exposes subtitle tracks
         // for enumeration. If user picks "Off", TrackPickerOverlay re-disables it.
         val wasTextDisabled = p.trackSelectionParameters
@@ -2549,6 +2607,26 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // ─── Suppress Leanback default controls ────────────────────────────
     override fun showControlsOverlay(runAnimation: Boolean) {
         // No-op: suppress Leanback default controls — using custom PlayerControlsBar
+        forceHideLeanbackPlaybackDock()
+    }
+
+    /**
+     * Hide the Leanback `playback_controls_dock` view in the fragment hierarchy.
+     *
+     * The dock hosts the default transport row + secondary actions, and the SeekBar
+     * inside it is where Leanback registers the glue's key listener. We can't set
+     * visibility=GONE because that pulls the SeekBar out of the focus tree — OK presses
+     * then have no focused target, so `OoustreamPlaybackGlue.onKey` never fires and
+     * `customControlsManager?.show()` is never called (the "controls don't pop up"
+     * customer report immediately after the visibility=GONE attempt).
+     *
+     * Setting alpha = 0 keeps the SeekBar focusable + receiving key events while making
+     * the duplicate UI invisible. Leanback's own `hideControlsOverlay` only animates
+     * alpha temporarily and gets re-asserted to 1f on every row update — so we pin
+     * alpha to 0 directly here, called after every show attempt.
+     */
+    private fun forceHideLeanbackPlaybackDock() {
+        view?.findViewById<View>(androidx.leanback.R.id.playback_controls_dock)?.alpha = 0f
     }
 
     // ─── Aspect Ratio Cycling ────────────────────────────────────────────

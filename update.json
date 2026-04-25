@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.5",
-  "version_code": 71,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.5 — Player Controls Stay Consistent After Audio Pipeline Switch\n\nAfter v3.7.3/3.7.4's audio pipeline rebuild for 5.1 surround streams, the player's custom controls bar lost its auto-hide and the default Leanback transport overlay started bleeding through (\"old format\"). Both glitches are gone now — the rebuild reconnects to the same controls bar with its full auto-hide and styling intact.\n\n• After the audio rebuild fires (5.1 surround on Fire TV Sticks), the polished player controls stay polished — same gold pause button, channel logo, EPG progress, action row\n• Controls auto-hide normally after rebuild instead of getting stuck on screen\n• Send Debug Log support email updated to oouchie@ooustream.com",
+  "version_name": "3.7.6",
+  "version_code": 72,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.6/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.6/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.6/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.6 — Player UI Cleanup After 5.1 Audio Switch\n\nFinishes the v3.7.3–3.7.5 surround audio fix. After the player automatically switches to the FFmpeg audio pipeline for 5.1 streams, the UI now stays clean instead of fighting with leftover Leanback default controls.\n\n• The duplicate Leanback transport overlay that lingered behind the Ooustream controls bar after the audio rebuild is gone — the underlying default controls dock is suppressed at the view level\n• D-pad navigation no longer wanders into invisible Leanback buttons when the controls bar is showing — focus stays inside the visible Ooustream action row\n• After picking an audio or subtitle track and closing the picker, the cursor returns to whichever bar button you opened it from instead of disappearing\n• Send Debug Log support email updated to oouchie@ooustream.com",
   "mandatory": false
 }
