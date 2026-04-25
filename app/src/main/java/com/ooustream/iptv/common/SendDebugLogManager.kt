@@ -40,7 +40,7 @@ class SendDebugLogManager @Inject constructor(
     private val credentialStore: CredentialStore
 ) {
     companion object {
-        private const val SUPPORT_EMAIL = "info@ooustick.com"
+        private const val SUPPORT_EMAIL = "oouchie@ooustream.com"
     }
 
     fun sendDebugLog(activityContext: Context, description: String = "") {

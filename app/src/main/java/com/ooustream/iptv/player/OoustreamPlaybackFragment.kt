@@ -1795,7 +1795,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             isControlsOverlayAutoHideEnabled = false
             contentType = viewModel.contentType
             title = viewModel.streamName
+            // v3.7.5: re-attach our custom controls. Without these two lines the new glue
+            // falls back to default Leanback PlaybackTransportControlGlue UI ("old format
+            // bleeds through") and our PlayerControlsBar loses its auto-hide driver
+            // ("controls stay on screen").
+            customControlsManager = controlsManager
         }
+        try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
 
         // Restore playback from saved position
         player!!.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
@@ -1879,7 +1885,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             isControlsOverlayAutoHideEnabled = false
             contentType = viewModel.contentType
             title = viewModel.streamName
+            // v3.7.5: re-attach our custom controls — see SW rebuild for full explanation.
+            customControlsManager = controlsManager
         }
+        try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
 
         // Restore playback from saved position
         player!!.setMediaItem(MediaItem.fromUri(currentUrl))

@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.4",
-  "version_code": 70,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.4/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.4 — 5.1 Audio Fix (Part 2) + Live TV Captions\n\nCritical follow-up to v3.7.3. The 5.1 audio rebuild was routing video through FFmpeg software HEVC at the same time, which dropped to ~20 fps on Fire TV Sticks. Video now stays on hardware while audio goes through FFmpeg — the way it was supposed to.\n\n• MediaTek Fire TV Sticks (mt8695 / mt8696 / mt8167) playing 5.1 surround streams no longer lose video performance during the audio pipeline rebuild\n• Closed captions now work on US live TV channels — CEA-608 subtitles embedded in the video feed are finally surfaced as a selectable subtitle track\n• Poorly-muxed IPTV streams get a 3× larger PTS search window and now play when they previously gave up\n• Stream fetches announce a proper User-Agent so aggressive anti-bot providers stop blocking the default okhttp UA\n• New Settings → Advanced toggle \"Allow Self-Signed Certificates\" for users whose IPTV provider uses a self-signed TLS cert (off by default, requires app restart to apply)\n• Constant-bitrate seeking enabled for non-standard containers",
+  "version_name": "3.7.5",
+  "version_code": 71,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.5/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.5 — Player Controls Stay Consistent After Audio Pipeline Switch\n\nAfter v3.7.3/3.7.4's audio pipeline rebuild for 5.1 surround streams, the player's custom controls bar lost its auto-hide and the default Leanback transport overlay started bleeding through (\"old format\"). Both glitches are gone now — the rebuild reconnects to the same controls bar with its full auto-hide and styling intact.\n\n• After the audio rebuild fires (5.1 surround on Fire TV Sticks), the polished player controls stay polished — same gold pause button, channel logo, EPG progress, action row\n• Controls auto-hide normally after rebuild instead of getting stuck on screen\n• Send Debug Log support email updated to oouchie@ooustream.com",
   "mandatory": false
 }
