@@ -2691,12 +2691,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     // [Fix 1.1] Correct lifecycle order: clean up everything BEFORE super tears down view hierarchy
     override fun onDestroyView() {
-        // Write back final channel index for LiveTvFragment to pick up on resume
+        // Write back final channel index for LiveTvFragment to pick up on resume.
+        // viewModel.streamId is the authoritative signal — it's whatever the player
+        // is actually playing right now, even if PlayerViewModel.channels[idx] resolves
+        // to something else after channel switches in fullscreen.
         if (viewModel.contentType == ContentType.LIVE) {
             val channels = viewModel.channels.value
             val idx = viewModel.currentChannelIndex.value
             ChannelListHolder.lastPlayedIndex = idx
             ChannelListHolder.lastPlayedChannel = channels.getOrNull(idx)
+            ChannelListHolder.lastPlayedStreamId = viewModel.streamId.toIntOrNull() ?: -1
         }
         // Safety net: ensure screen can sleep after player exits
         activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

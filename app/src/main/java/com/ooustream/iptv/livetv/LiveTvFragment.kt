@@ -122,7 +122,17 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         }
         navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
 
-        // Preview container — click to go fullscreen (focusable only when previewing)
+        // Preview container — DPAD-Right from channels list focuses it, OK launches fullscreen.
+        // v3.7.8: previewContainer is now focusable from boot, NOT toggled on channel click.
+        // The v3.6.4 fix removed isFocusable=true at click time because Android's focus
+        // framework re-evaluated focus on the same frame as the OK and the cursor jumped
+        // off the channel item. Setting it once at view creation has no such side effect —
+        // the focus tree is established before any clicks happen and never changes during
+        // playback. Trade-off: when no preview is running, DPAD-Right still focuses the
+        // empty preview area and shows the "Select a channel to preview" placeholder,
+        // which doubles as the hint.
+        previewContainer.isFocusable = true
+        previewContainer.isFocusableInTouchMode = true
         previewContainer.setOnClickListener {
             previewingChannel?.let { goFullscreen(it) }
         }
@@ -315,6 +325,14 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                                 channelsList.safeSetSelectedPosition(viewModel.savedChannelPosition, channelAdapter.size())
                                 viewModel.savedChannelPosition = -1
                             }
+                        }
+                    } else if (skeletonSwapped && channels.isNotEmpty()) {
+                        // v3.7.8: subsequent emissions = category switch. Reset the channel
+                        // list to the top so the user sees the new category from the
+                        // beginning instead of whatever scroll position the prior category
+                        // happened to be at.
+                        channelsList.post {
+                            channelsList.safeSetSelectedPosition(0, channelAdapter.size())
                         }
                     }
                 }
@@ -629,11 +647,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         previewJob = null
         previewManager?.release()
         previewingChannel = null
-        // Disable focus on preview panel when nothing is playing
-        view?.findViewById<FrameLayout>(R.id.preview_container)?.let {
-            it.isFocusable = false
-            it.overlay.clear()
-        }
+        // v3.7.8: keep preview focusable even when nothing is playing — see onViewCreated
+        // for why. Just clear the focus overlay.
+        view?.findViewById<FrameLayout>(R.id.preview_container)?.overlay?.clear()
         view?.findViewById<TextView>(R.id.preview_focus_hint)?.visibility = View.GONE
     }
 
@@ -650,23 +666,50 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     }
 
     private fun resumePreviewIfReturning() {
-        // Priority: player's last channel (user may have switched channels in fullscreen)
+        // Resolve the channel that was actually playing. Three signals, in priority:
+        //  1. ChannelListHolder.lastPlayedStreamId — authoritative from PlayerVM.streamId.
+        //     Look it up against our current channel list (or full live channel list).
+        //  2. ChannelListHolder.lastPlayedChannel — the channel object PlayerVM thought
+        //     it was playing (may be stale or null after rebuild edge cases).
+        //  3. viewModel.lastPreviewedChannel — the original previewed channel, only
+        //     correct if user never switched channels in fullscreen.
+        val returnedStreamId = ChannelListHolder.lastPlayedStreamId
         val returnedChannel = ChannelListHolder.lastPlayedChannel
-        val returnedIndex = ChannelListHolder.lastPlayedIndex
 
         val channel: LiveStream
         val url: String
 
-        if (returnedChannel != null && returnedIndex >= 0) {
-            channel = returnedChannel
-            url = viewModel.buildStreamUrl(channel.streamId)
-            ChannelListHolder.lastPlayedChannel = null
-            ChannelListHolder.lastPlayedIndex = -1
-        } else if (viewModel.lastPreviewedChannel != null) {
-            channel = viewModel.lastPreviewedChannel!!
-            url = viewModel.lastPreviewedUrl ?: viewModel.buildStreamUrl(channel.streamId)
-        } else {
-            return // No channel to resume — normal fresh open
+        when {
+            returnedStreamId > 0 -> {
+                // Try filteredChannels first (the visible list); fall back to the
+                // full channels list from the ViewModel.
+                val resolved = filteredChannels.firstOrNull { it.streamId == returnedStreamId }
+                    ?: viewModel.channels.value.firstOrNull { it.streamId == returnedStreamId }
+                    ?: returnedChannel
+                if (resolved == null) {
+                    // Couldn't resolve — clear holders and bail out.
+                    ChannelListHolder.lastPlayedStreamId = -1
+                    ChannelListHolder.lastPlayedChannel = null
+                    ChannelListHolder.lastPlayedIndex = -1
+                    return
+                }
+                channel = resolved
+                url = viewModel.buildStreamUrl(channel.streamId)
+                ChannelListHolder.lastPlayedStreamId = -1
+                ChannelListHolder.lastPlayedChannel = null
+                ChannelListHolder.lastPlayedIndex = -1
+            }
+            returnedChannel != null -> {
+                channel = returnedChannel
+                url = viewModel.buildStreamUrl(channel.streamId)
+                ChannelListHolder.lastPlayedChannel = null
+                ChannelListHolder.lastPlayedIndex = -1
+            }
+            viewModel.lastPreviewedChannel != null -> {
+                channel = viewModel.lastPreviewedChannel!!
+                url = viewModel.lastPreviewedUrl ?: viewModel.buildStreamUrl(channel.streamId)
+            }
+            else -> return // No channel to resume — normal fresh open
         }
 
         // Clear saved state so we don't re-resume on next onResume (e.g. app background→foreground)

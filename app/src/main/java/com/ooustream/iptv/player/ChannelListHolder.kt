@@ -17,6 +17,14 @@ object ChannelListHolder {
     var lastPlayedIndex: Int = -1
     var lastPlayedChannel: LiveStream? = null
 
+    /**
+     * Authoritative "actually playing" stream ID from PlayerViewModel.streamId, written
+     * on player teardown. More reliable than `lastPlayedChannel` because it doesn't
+     * depend on PlayerViewModel.channels being intact at teardown time. LiveTvFragment
+     * uses this to look up the channel from its own list as a fallback.
+     */
+    var lastPlayedStreamId: Int = -1
+
     fun consume(): Pair<List<LiveStream>, Int> {
         val result = channels to currentIndex
         channels = emptyList()

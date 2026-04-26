@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.7",
-  "version_code": 73,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.7/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.7/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.7/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.7 — Channel Switching, HEVC HDR, No-Audio Flash\n\nThree customer-facing fixes plus better debug visibility:\n\n• Channel up/down works again after the player switches to the FFmpeg pipeline for 5.1 surround. The internal player rebuild was dropping every key-handler callback (channel switch, audio button, sleep timer, etc.) — now they all stay wired through any rebuild.\n\n• On devices that can't decode HDR (HEVC 10-bit), the player no longer wastes a hardware decoder slot before showing the \"can't play HDR\" message. The friendly error appears instantly with no decoder churn.\n\n• The \"No Audio Track\" badge in the top-right no longer flashes briefly on every channel change. Now it only appears if the channel genuinely has no audio after a short wait.\n\nUnder the hood\n• New GLUE_CALLBACKS_WIRED + KEY_NO_HANDLER events in the debug log so we can spot \"silent\" handler-not-wired bugs without needing to reproduce on a debug build.",
+  "version_name": "3.7.8",
+  "version_code": 74,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.8/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.8/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.8/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.8 — Live TV Navigation Cleanups\n\nThree small Live TV polish fixes:\n\n• You can now D-pad right from the channel list into the preview pane and press OK to go fullscreen — without losing the channel cursor when you click. Also works after switching categories: D-pad right twice (categories → channels → preview).\n\n• Switching to a new category now starts the channel list at the top instead of keeping the previous category's scroll position.\n\n• After watching a channel in fullscreen and pressing back, the preview pane now reliably restores to the channel you were actually watching — even if you switched channels mid-fullscreen. Backed by the player's stream ID instead of relying on the channel list staying intact.",
   "mandatory": false
 }
