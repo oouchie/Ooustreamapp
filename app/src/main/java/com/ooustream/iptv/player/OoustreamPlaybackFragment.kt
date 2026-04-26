@@ -117,6 +117,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var focusedBeforeTrackPicker: View? = null
     private var subtitleView: SubtitleView? = null
     private var audioStatusOverlay: AudioStatusOverlay? = null
+    /**
+     * Pending show of the "No Audio" overlay, debounced 1500ms. onTracksChanged
+     * fires with empty audio groups during every channel-switch transition for
+     * a few hundred ms before the new stream's tracks arrive — without this debounce
+     * the overlay flashes on every channel change.
+     */
+    private var noAudioOverlayJob: Job? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var isAudioOnly = false
     private var bingeShown = false
@@ -360,82 +367,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             isControlsOverlayAutoHideEnabled = false
             contentType = viewModel.contentType
             title = viewModel.streamName
-
-            onChannelSwitch = { direction ->
-                // [Fix 2.4] Debounced channel switch — zap overlay updates instantly, stream loads after 300ms
-                val newChannel = viewModel.switchChannel(direction)
-                if (newChannel != null) {
-                    zapOverlay?.show(viewModel.channels.value, viewModel.currentChannelIndex.value)
-                    debouncedTune(newChannel)
-                }
-            }
-
-            onZapConfirm = {
-                zapOverlay?.dismiss()
-            }
-
-            isZapOverlayShowing = {
-                zapOverlay?.isShowing == true
-            }
-
-            onAudioTrackClicked = { showTrackPicker() }
-            onSubtitleTrackClicked = { showTrackPicker() }
-
-            onExternalPlayerClicked = {
-                showExternalPlayerDialog()
-            }
-
-            onSleepTimerClicked = {
-                sleepTimerManager?.showTimerDialog()
-            }
-
-            onStatsToggle = {
-                statsOverlay?.toggle()
-            }
-
-            onAudioOnlyToggled = toggleAudioOnly@{
-                isAudioOnly = !isAudioOnly
-                val p = player ?: return@toggleAudioOnly
-                if (isAudioOnly) {
-                    p.trackSelectionParameters = p.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
-                        .build()
-                    audioOnlyOverlay?.show(viewModel.streamName)
-                } else {
-                    p.trackSelectionParameters = p.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
-                        .build()
-                    audioOnlyOverlay?.dismiss()
-                }
-            }
-
-            // Seek/navigation callbacks — glue handles all key events in onKey()
-            onSeekForward = { deltaMs ->
-                seekFeedback?.showSeek(deltaMs)
-                player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
-            }
-            onSeekBackward = { deltaMs ->
-                seekFeedback?.showSeek(-deltaMs)
-                player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
-            }
-            onNextEpisode = { skipToNextEpisode() }
-            // v3.7.0: any modal overlay should make the glue pass keys through
-            // (was only track picker before). Otherwise OK on binge "Watch Next"
-            // etc. just shows controls instead of clicking the button.
-            isModalOverlayShowing = {
-                trackPickerOverlay?.isShowing == true
-                    || bingeOverlay?.isShowing == true
-                    || watchNextOverlay?.isShowing == true
-                    || seriesCompleteOverlay?.isShowing == true
-            }
-            onDismissTrackPicker = { trackPickerOverlay?.dismiss() }
-            onCcToggle = { toggleClosedCaptions() }
-            // Back handling moved to OnBackPressedCallback below (glue's onKey
-            // only intercepts when focus is inside Leanback's BrowseFrameLayout,
-            // which is bypassed when our custom controls bar has focus)
         }
+        wireGlueCallbacks(glue!!)
 
         // Trim image cache to free memory for video playback
         adaptiveImageLoader.trimForPlayback()
@@ -1254,6 +1187,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 if (cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
                     && (cachedVideoCodecs.startsWith("hvc1.2") || cachedVideoCodecs.startsWith("hev1.2"))
                     && !DeviceTierDetector.canDecodeHevcMain10(requireContext())) {
+                    // v3.7.7: stop the player synchronously RIGHT NOW so the OMX HEVC
+                    // decoder doesn't get initialized in the ~700ms gap between this
+                    // return and the async showFriendlyError dispatch (customer
+                    // 'allinone' debug log on Bones S01E06 showed DECODER_INIT firing
+                    // 770ms after STREAM_CAPABILITY_CHECK because the friendly-error
+                    // coroutine called player.stop() too late).
+                    player?.stop()
                     AudioLogger.log("HEVC Main 10 on ${DeviceTierDetector.tier(requireContext())} tier — refusing playback")
                     streamDiagnosticLogger.logAppEvent("STREAM_CAPABILITY_CHECK",
                         "result=unsupported, reason=hevc_main10_low_tier, codecs=$cachedVideoCodecs, " +
@@ -1318,12 +1258,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 try {
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
 
-                    // Show status overlay if stream has no audio tracks
+                    // Show "No Audio" overlay if stream has no audio tracks — but
+                    // debounced 1.5s so the empty-tracks emission during channel-switch
+                    // transitions doesn't flash it on every change.
                     if (audioGroups.isEmpty()) {
                         AudioLogger.logNoAudioTracks()
-                        audioStatusOverlay?.showNoAudio()
+                        noAudioOverlayJob?.cancel()
+                        noAudioOverlayJob = viewLifecycleOwner.lifecycleScope.launch {
+                            delay(1500)
+                            // Re-check tracks before showing — if they've populated since,
+                            // bail out silently.
+                            val current = player?.currentTracks?.groups
+                                ?.filter { it.type == C.TRACK_TYPE_AUDIO } ?: emptyList()
+                            if (current.isEmpty()) {
+                                audioStatusOverlay?.showNoAudio()
+                            }
+                        }
                         return
                     }
+                    // Tracks now have audio — kill any pending show and dismiss any
+                    // currently-visible overlay.
+                    noAudioOverlayJob?.cancel()
                     audioStatusOverlay?.dismiss()
 
                     val hasSelectedAudio = audioGroups.any { group ->
@@ -1842,6 +1797,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // ("controls stay on screen").
             customControlsManager = controlsManager
         }
+        // v3.7.7: re-attach all the channel-switch / action-button / overlay-passthrough
+        // callbacks that the original glue had. Without this, the customer can't change
+        // channels, trigger the audio picker, sleep timer, etc. after the rebuild.
+        wireGlueCallbacks(glue!!)
         // hideControlsOverlay must run AFTER the host's attach sequence completes,
         // otherwise the host's auto-show on attach overrides our hide and the default
         // Leanback transport overlay stays visible behind our custom PlayerControlsBar.
@@ -1938,6 +1897,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // v3.7.5: re-attach our custom controls — see SW rebuild for full explanation.
             customControlsManager = controlsManager
         }
+        // v3.7.7: re-attach all the channel-switch / action-button / overlay-passthrough
+        // callbacks that the original glue had. Without this, the customer can't change
+        // channels, trigger the audio picker, sleep timer, etc. after the rebuild.
+        wireGlueCallbacks(glue!!)
         // hideControlsOverlay must run AFTER the host's attach sequence completes,
         // otherwise the host's auto-show on attach overrides our hide and the default
         // Leanback transport overlay stays visible behind our custom PlayerControlsBar.
@@ -2608,6 +2571,89 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     override fun showControlsOverlay(runAnimation: Boolean) {
         // No-op: suppress Leanback default controls — using custom PlayerControlsBar
         forceHideLeanbackPlaybackDock()
+    }
+
+    /**
+     * Wire all glue callbacks (channel switch, audio/subtitle/external/sleep buttons,
+     * seek feedback, modal-overlay key passthrough, etc.) onto the given glue instance.
+     *
+     * This used to live inline in the initial onViewCreated `.apply { }` block, but the
+     * v3.7.3 / v3.7.4 player rebuilds construct a new OoustreamPlaybackGlue and were
+     * silently dropping every one of these callbacks — most visibly, channel-up/down
+     * stopped working after the automatic 5.1 audio FFmpeg rebuild because
+     * `onChannelSwitch` was null on the new glue (customer Bigd66 report on v3.7.6).
+     *
+     * Centralizing here so every future rebuild path picks all callbacks up by simply
+     * calling `wireGlueCallbacks(newGlue)`.
+     */
+    private fun wireGlueCallbacks(g: OoustreamPlaybackGlue) {
+        g.onChannelSwitch = { direction ->
+            // [Fix 2.4] Debounced channel switch — zap overlay updates instantly,
+            // stream loads after 300ms
+            val newChannel = viewModel.switchChannel(direction)
+            if (newChannel != null) {
+                zapOverlay?.show(viewModel.channels.value, viewModel.currentChannelIndex.value)
+                debouncedTune(newChannel)
+            }
+        }
+        g.onZapConfirm = { zapOverlay?.dismiss() }
+        g.isZapOverlayShowing = { zapOverlay?.isShowing == true }
+        g.onAudioTrackClicked = { showTrackPicker() }
+        g.onSubtitleTrackClicked = { showTrackPicker() }
+        g.onExternalPlayerClicked = { showExternalPlayerDialog() }
+        g.onSleepTimerClicked = { sleepTimerManager?.showTimerDialog() }
+        g.onStatsToggle = { statsOverlay?.toggle() }
+        g.onAudioOnlyToggled = toggleAudioOnly@{
+            isAudioOnly = !isAudioOnly
+            val p = player ?: return@toggleAudioOnly
+            if (isAudioOnly) {
+                p.trackSelectionParameters = p.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                    .build()
+                audioOnlyOverlay?.show(viewModel.streamName)
+            } else {
+                p.trackSelectionParameters = p.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                    .build()
+                audioOnlyOverlay?.dismiss()
+            }
+        }
+        g.onSeekForward = { deltaMs ->
+            seekFeedback?.showSeek(deltaMs)
+            player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
+        }
+        g.onSeekBackward = { deltaMs ->
+            seekFeedback?.showSeek(-deltaMs)
+            player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
+        }
+        g.onNextEpisode = { skipToNextEpisode() }
+        // v3.7.0: any modal overlay should make the glue pass keys through (was only
+        // track picker before). Otherwise OK on binge "Watch Next" etc. just shows
+        // controls instead of clicking the button.
+        g.isModalOverlayShowing = {
+            trackPickerOverlay?.isShowing == true
+                || bingeOverlay?.isShowing == true
+                || watchNextOverlay?.isShowing == true
+                || seriesCompleteOverlay?.isShowing == true
+        }
+        g.onDismissTrackPicker = { trackPickerOverlay?.dismiss() }
+        g.onCcToggle = { toggleClosedCaptions() }
+        // Route the glue's "key fired but callback was null" warnings into the
+        // customer-visible diagnostic file. Lets us spot future "channel switch
+        // doesn't work after rebuild" -class bugs from a debug log without needing
+        // to repro on a debug build.
+        g.onDiagnosticEvent = { event, details ->
+            streamDiagnosticLogger.logAppEvent(event, details)
+        }
+        // Positive marker so future debug logs prove the glue was wired after each
+        // rebuild. If a customer report shows PLAYER_REBUILD without a matching
+        // GLUE_CALLBACKS_WIRED line right after, a rebuild path skipped this helper.
+        streamDiagnosticLogger.logAppEvent(
+            "GLUE_CALLBACKS_WIRED",
+            "glue=${System.identityHashCode(g)}, contentType=${g.contentType}"
+        )
     }
 
     /**

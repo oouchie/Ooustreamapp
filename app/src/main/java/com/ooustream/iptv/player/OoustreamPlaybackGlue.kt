@@ -46,6 +46,19 @@ class OoustreamPlaybackGlue(
     var onSubtitleTrackClicked: (() -> Unit)? = null
     var onExternalPlayerClicked: (() -> Unit)? = null
     var onSleepTimerClicked: (() -> Unit)? = null
+    /**
+     * Diagnostic hook for the fragment to wire StreamDiagnosticLogger into the glue.
+     * Used to emit KEY_NO_HANDLER events when a key fires but its callback is null —
+     * the fingerprint of "rebuild path forgot to re-attach a callback" bugs.
+     */
+    var onDiagnosticEvent: ((event: String, details: String) -> Unit)? = null
+
+    private fun emitNoHandler(callback: String, key: String) {
+        onDiagnosticEvent?.invoke(
+            "KEY_NO_HANDLER",
+            "key=$key, callback=$callback, glue=${System.identityHashCode(this)}"
+        )
+    }
     var onStatsToggle: (() -> Unit)? = null
     private var backConsumedOnDown = false
     var onAudioOnlyToggled: (() -> Unit)? = null
@@ -117,9 +130,13 @@ class OoustreamPlaybackGlue(
                 }
             }
             audioTrackAction -> onAudioTrackClicked?.invoke()
+                ?: emitNoHandler("onAudioTrackClicked", "audio_action")
             subtitleTrackAction -> onSubtitleTrackClicked?.invoke()
+                ?: emitNoHandler("onSubtitleTrackClicked", "subtitle_action")
             externalPlayerAction -> onExternalPlayerClicked?.invoke()
+                ?: emitNoHandler("onExternalPlayerClicked", "external_action")
             sleepTimerAction -> onSleepTimerClicked?.invoke()
+                ?: emitNoHandler("onSleepTimerClicked", "sleep_action")
             audioOnlyAction -> onAudioOnlyToggled?.invoke()
             else -> super.onActionClicked(action)
         }
@@ -264,7 +281,11 @@ class OoustreamPlaybackGlue(
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
                 if (contentType == ContentType.LIVE) {
                     if (controlsHidden) {
-                        onChannelSwitch?.invoke(-1)
+                        if (onChannelSwitch != null) {
+                            onChannelSwitch?.invoke(-1)
+                        } else {
+                            emitNoHandler("onChannelSwitch", "channel_up")
+                        }
                         return true
                     }
                     customControlsManager?.resetAutoHideTimer()
@@ -287,7 +308,11 @@ class OoustreamPlaybackGlue(
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                 if (contentType == ContentType.LIVE) {
                     if (controlsHidden) {
-                        onChannelSwitch?.invoke(+1)
+                        if (onChannelSwitch != null) {
+                            onChannelSwitch?.invoke(+1)
+                        } else {
+                            emitNoHandler("onChannelSwitch", "channel_down")
+                        }
                         return true
                     }
                     customControlsManager?.resetAutoHideTimer()
