@@ -1167,44 +1167,31 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         cachedVideoCodecs = videoFormat.codecs ?: ""
                     }
                 }
-                // v3.5.9: Device-aware HEVC Main 10 routing.
+                // v3.7.9: removed the upfront HEVC Main 10 refusal that previously
+                // blocked playback on mt8695-class devices. The original assumption —
+                // "hardware doesn't support profile 2" — is provably wrong: customer
+                // 'allinone' debug log shows OMX.MTK.VIDEO.DECODER.HEVC successfully
+                // initializing in 804ms and rendering a first frame on mt8695 with
+                // hvc1.2.4.L120.90 (Main 10) content, AND the same content plays in
+                // IPTV Smarters on the same device. The hardware DOES accept Main 10.
                 //
-                // On ULTRA_LOW/LOW tier (mt8695-class), HEVC Main 10 is not playable
-                // by any path — hardware doesn't support profile 2, software HEVC is
-                // ~8fps on Cortex-A53, and libVLC's HEVC decoder native-crashes on
-                // mt8695 (the v3.5.7 regression). Show a graceful error immediately
-                // instead of attempting an unwatchable swap.
+                // We now let ExoPlayer's normal decoder selection run. Hardware MediaCodec
+                // gets first crack (per v3.7.4 createFfmpegPreferredRenderersFactory video
+                // override + the default createRenderersFactory MODE_ON ordering). If a
+                // genuinely-incapable device rejects the format, setEnableDecoderFallback(true)
+                // chains through c2.android.hevc.decoder (software). If THAT slideshows
+                // we'd want a FPS-based detector — but adding one preemptively isn't
+                // worth it until a real customer report shows the failure mode.
                 //
-                // On MID/HIGH tier, the existing early VLC swap continues to work: the
-                // libVLC backend can handle HEVC Main 10 on capable hardware.
-                // v3.7.0: HEVC Main 10 on ULTRA_LOW/LOW tier devices still gets the
-                // friendly "can't play HDR" error — FFmpeg software HEVC Main 10
-                // is too CPU-intensive on Cortex-A53 1GB devices (AFTSS etc.) to
-                // produce a watchable stream, so failing fast beats a slideshow.
-                // MID/HIGH tier devices no longer need any preemptive action:
-                // ExoPlayer's renderer chain automatically falls back to the
-                // FFmpeg video renderer when MediaCodec declines HEVC Main 10.
+                // Diagnostic kept for visibility — emit the capability "would-have-blocked"
+                // event so we can correlate logs across customers if the relaxation
+                // produces fallout.
                 if (cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265
                     && (cachedVideoCodecs.startsWith("hvc1.2") || cachedVideoCodecs.startsWith("hev1.2"))
                     && !DeviceTierDetector.canDecodeHevcMain10(requireContext())) {
-                    // v3.7.7: stop the player synchronously RIGHT NOW so the OMX HEVC
-                    // decoder doesn't get initialized in the ~700ms gap between this
-                    // return and the async showFriendlyError dispatch (customer
-                    // 'allinone' debug log on Bones S01E06 showed DECODER_INIT firing
-                    // 770ms after STREAM_CAPABILITY_CHECK because the friendly-error
-                    // coroutine called player.stop() too late).
-                    player?.stop()
-                    AudioLogger.log("HEVC Main 10 on ${DeviceTierDetector.tier(requireContext())} tier — refusing playback")
-                    streamDiagnosticLogger.logAppEvent("STREAM_CAPABILITY_CHECK",
-                        "result=unsupported, reason=hevc_main10_low_tier, codecs=$cachedVideoCodecs, " +
+                    streamDiagnosticLogger.logAppEvent("HEVC_MAIN10_ATTEMPT",
+                        "tier_says_blocked=true, letting_hw_try, codecs=$cachedVideoCodecs, " +
                         "${DeviceTierDetector.describe(requireContext())}, channel=${healthMonitor?.channelName ?: "unknown"}")
-                    viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
-                        showFriendlyError(
-                            "This channel is streaming in HDR (HEVC 10-bit) which your device can't play. " +
-                            "Try a different channel or contact support."
-                        )
-                    }
-                    return
                 }
 
                 // v3.7.3: MTK 5.1 audio preemptive FFmpeg rebuild.
