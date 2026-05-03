@@ -72,6 +72,121 @@ object AudioPipelineFactory {
      * - AudioTrack playback params enabled (supports speed adjustment)
      */
     /**
+     * Reports whether the bundled FFmpeg JNI exposes a software h264 decoder.
+     * Returns false on devices where the AAR's native libs failed to load
+     * (e.g. ABI mismatch) or on builds where h264 was not enabled at compile time.
+     *
+     * Calling this is cheap (one reflection-cached static call) but we still gate
+     * the FFmpeg video rebuild behind it so we don't tear down a working player
+     * just to land on a renderer whose decoder will instantly throw at supportsFormat.
+     */
+    fun isFfmpegVideoAvailable(mimeType: String): Boolean {
+        return try {
+            androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
+                androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(mimeType)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Creates a [DefaultRenderersFactory] that prefers FFmpeg software video over
+     * MediaCodec for video decode. Used as the final escalation step in the watchdog
+     * ladder when both the hardware decoder (e.g. OMX.MTK.VIDEO.DECODER.AVC on mt8695)
+     * AND the platform software decoder (OMX.google.h264.decoder) fail to render frames.
+     *
+     * Why this exists: OMX.google.h264.decoder is single-threaded Stagefright reference
+     * code. On 4× Cortex-A53 @ 1.5GHz mt8695, it can't keep up with 1080p H.264 High
+     * Profile — frames arrive late, A/V sync drops them silently, fps stays at 0. IPTV
+     * Smarters / TiviMate work around this by using libavcodec via IJKPlayer, which has
+     * frame-level multithreading (FF_THREAD_FRAME). Our [ExperimentalFfmpegVideoRenderer]
+     * (from PR #1591 in our locally-built AAR) wraps the same libavcodec.
+     *
+     * Note: [ExperimentalFfmpegVideoRenderer] is not auto-registered by
+     * [DefaultRenderersFactory.buildVideoRenderers] — the standard reflection probe in
+     * Media3 only knows about [androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer].
+     * We instantiate it manually and prepend it to the renderer list so the track
+     * selector picks it before the MediaCodec video renderer.
+     *
+     * Audio chain identical to [createRenderersFactory] (full downmix matrices).
+     */
+    fun createFfmpegVideoSoftwareRenderersFactory(context: Context): DefaultRenderersFactory {
+        return object : DefaultRenderersFactory(context) {
+            override fun buildVideoRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                eventHandler: Handler,
+                eventListener: VideoRendererEventListener,
+                allowedVideoJoiningTimeMs: Long,
+                out: ArrayList<Renderer>
+            ) {
+                // Insert FFmpeg software video renderer FIRST so the track selector
+                // prefers it over MediaCodec. Catches the case where MediaCodec's HW
+                // decoder silently stalls (mt8695 OMX.MTK.VIDEO.DECODER.AVC bug) and
+                // OMX.google.h264.decoder's single-threaded SW decode is too slow.
+                try {
+                    val ffmpegRenderer = androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer(
+                        allowedVideoJoiningTimeMs,
+                        eventHandler,
+                        eventListener,
+                        50 // maxDroppedFramesToNotify
+                    )
+                    out.add(ffmpegRenderer)
+                    AudioLogger.log("ExperimentalFfmpegVideoRenderer registered (preferred for video)")
+                } catch (e: Throwable) {
+                    AudioLogger.log("ExperimentalFfmpegVideoRenderer load failed: ${e.javaClass.simpleName}: ${e.message}")
+                }
+
+                // Fall through to default MediaCodec video renderers as belt-and-suspenders.
+                // If the FFmpeg renderer fails supportsFormat for some reason (e.g. unenabled
+                // codec in libavcodec), we still get a chance via MediaCodec.
+                super.buildVideoRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    eventHandler,
+                    eventListener,
+                    allowedVideoJoiningTimeMs,
+                    out
+                )
+            }
+
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                // Same downmix pipeline as createRenderersFactory
+                val downmixer = ChannelMixingAudioProcessor()
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(3, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 1f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(4, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0f, 1f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(5, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(6, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0f, 0.707f)))
+                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(8, 2, floatArrayOf(
+                    1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
+                    0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
+                return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
+            }
+        }.apply {
+            // ON = FFmpeg audio extension is fallback for AC3/DTS/EAC3 (hardware first for AAC/MP3).
+            // Video is steered via our custom buildVideoRenderers override above, not this mode.
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            setEnableDecoderFallback(true)
+            setEnableAudioOutputPlaybackParameters(true)
+            forceEnableMediaCodecAsynchronousQueueing()
+        }
+    }
+
+    /**
      * Creates a [DefaultRenderersFactory] identical to [createRenderersFactory] but with
      * a software-only [MediaCodecSelector] for video. Hardware audio decoders are kept.
      * Used as a fallback when the hardware video decoder inits but fails to render frames.

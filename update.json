@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.9",
-  "version_code": 75,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.9/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.9/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.9/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.9 — HEVC HDR Now Plays on Older Fire TV Sticks\n\nIf you've ever seen \"This channel is streaming in HDR which your device can't play\" on a Fire TV Stick 4K Lite (AFTSS) — that error is gone. The hardware on those devices actually does decode 10-bit HEVC, the app was just refusing to try.\n\nVerified head-to-head against IPTV Smarters on the same Fire TV Stick 4K Lite hardware: both apps now use the same OMX.MTK hardware HEVC decoder for Bones S01E03 (4-7 Mbps HEVC Main 10 + EAC3 5.1) at full 1.0x playback speed.\n\n• HDR titles like Bones, Cinemax movies in HEVC 10-bit, sports streams in 10-bit HDR, etc., now play on AFTSS / mt8695-class Fire TV Sticks\n• No code change for AFTKRT / mt8696 / Shield / 4K Max — those were already working\n• If a stream genuinely can't be hardware-decoded on a given device, ExoPlayer's existing decoder fallback chain handles it — no upfront error",
+  "version_name": "3.7.10",
+  "version_code": 76,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.10/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.10/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.10/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.10 — Series & Movies That Used to Black-Screen Now Play\n\nIf you've ever started a series episode or movie and seen the screen go black after a few seconds while audio kept playing — followed eventually by \"This content uses a video format not supported on this device\" — that's fixed.\n\nWhat was happening: on some Fire TV Stick Lite / older Fire TV Stick hardware, the built-in video decoder would render one frame and then quietly stall. The app would try a couple of fallbacks, but they were the same single-threaded decoder under the hood, so it'd fail again and give up.\n\nWhat's new: the app now falls back to a multi-threaded software video decoder (the same one IPTV Smarters and TiviMate use under the hood) — content that used to give up now keeps playing.\n\n• Verified against the customer report on Fire TV Stick Lite (AFTSS) where Beyond the Gates and similar series episodes were silently failing\n• No change for devices that were already working — the new path only activates when the normal decoders can't keep up\n• If a stream really can't be played on your hardware, you'll still see a friendly error — but only after we've actually exhausted every option",
   "mandatory": false
 }

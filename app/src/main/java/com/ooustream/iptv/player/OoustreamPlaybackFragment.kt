@@ -3,6 +3,7 @@ package com.ooustream.iptv.player
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.Gravity
@@ -157,6 +158,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var diagnosticListener: ExoPlayerDiagnosticListener? = null
     private var healthMonitor: PlaybackHealthMonitor? = null
     private var usingSoftwareVideoDecoder = false
+    // v3.7.10: tracks whether the active player is rebuilt around our FFmpeg software
+    // video decoder (ExperimentalFfmpegVideoRenderer from PR #1591). Stays orthogonal to
+    // usingSoftwareVideoDecoder — the latter is true for both OMX.google.h264.decoder
+    // AND FFmpeg, but only this flag tells the watchdog "we already escalated to FFmpeg,
+    // don't loop on the give-up path".
+    private var usingFfmpegVideoDecoder = false
     // Cache video codec string from first TRACKS_CHANGED so we can identify the format
     // (e.g. HEVC Main 10) even after a SW rebuild where videoFormat becomes null
     private var cachedVideoCodecs: String = ""
@@ -1544,20 +1551,36 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         val swDecoderFailedToInit = usingSoftwareVideoDecoder && p.videoDecoderCounters == null
 
                         if (watchdogResetCount > MAX_WATCHDOG_RESETS || swDecoderFailedToInit) {
-                            // ExoPlayer gave up — either HW decoder silently died (HEVC Main 10
-                            // on mt8696 MTK) or SW fallback couldn't init. Either way, this codec
-                            // can't be decoded natively by ExoPlayer on this device.
                             val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
                             val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
                             val decoderNull = p.videoDecoderCounters == null
+
+                            // v3.7.10: Final escalation before giving up — if we haven't yet tried
+                            // the FFmpeg software video decoder (libavcodec via PR #1591), do that
+                            // now. OMX.google.h264.decoder is single-threaded and routinely fails on
+                            // 1080p H.264 High Profile + low-RAM devices (mt8695 / Fire TV Stick Lite,
+                            // customer andresi's report). FFmpeg's frame-threaded decoder can keep up
+                            // where the platform SW decoder can't. supportsFormat guards the rebuild
+                            // for codecs the FFmpeg AAR doesn't have enabled.
+                            if (!usingFfmpegVideoDecoder
+                                && mime.isNotEmpty()
+                                && AudioPipelineFactory.isFfmpegVideoAvailable(mime)) {
+                                AudioLogger.log("Frame watchdog: pre-give-up FFmpeg video escalation — codec=$codecs mime=$mime")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_FFMPEG_VIDEO",
+                                    "trigger=pre_give_up, resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, codecs=$codecs, mime=$mime, channel=$channelName")
+                                withContext(Dispatchers.Main) {
+                                    rebuildPlayerWithFfmpegVideoDecoder()
+                                }
+                                return@launch
+                            }
+
+                            // ExoPlayer gave up — HW decoder silently died, the platform SW decoder
+                            // couldn't keep up, AND (if reachable) FFmpeg software video also failed.
+                            // No more recovery paths.
                             val reason = if (swDecoderFailedToInit) "sw_decoder_init_failed" else "max_resets"
                             AudioLogger.log("Frame watchdog: giving up ($reason) — no more recovery paths")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
-                                "reason=$reason, resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, decoderNull=$decoderNull, codecs=$codecs, mime=$mime, channel=$channelName")
-                            // v3.7.0: libVLC swap removed — FFmpeg video extension handles
-                            // the software-decoder fallback path now. If we've exhausted
-                            // the recovery ladder (HW → SW → FFmpeg → capped resolution),
-                            // the content is fundamentally incompatible with this device.
+                                "reason=$reason, resets=$watchdogResetCount, sw=$usingSoftwareVideoDecoder, ff=$usingFfmpegVideoDecoder, decoderNull=$decoderNull, codecs=$codecs, mime=$mime, channel=$channelName")
                             withContext(Dispatchers.Main) {
                                 showFriendlyError("This content uses a video format not supported on this device.")
                             }
@@ -1593,18 +1616,44 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             continue
                         }
 
-                        // v3.7.0: MTK libVLC shortcut removed. On MTK devices without
-                        // hwDecoderProvenGood, we now drop straight to software decoder +
-                        // 720p cap — FFmpeg video extension inside rebuildPlayerWithSoftwareDecoder
-                        // gives us a real shot at software decode that wasn't available when
-                        // this path relied only on c2.android.
+                        // v3.7.10: On known-bad MTK chipsets (mt8695, mt8167), skip the
+                        // OMX.google.h264.decoder path entirely. We have customer evidence
+                        // (andresi report, May 2026) that this single-threaded Stagefright
+                        // decoder routinely stalls at fps=0 on 1080p H.264 High Profile
+                        // because the 4× Cortex-A53 cores can't keep up single-threaded.
+                        // Go straight to FFmpeg software video (libavcodec, frame-threaded)
+                        // which is the same decoder IPTV Smarters uses on this hardware.
+                        // mt8696 (AFTKRT) has working HW HEVC and a faster CPU, so it
+                        // continues to use the platform SW decoder path.
+                        val mtkHardware = Build.HARDWARE.lowercase()
+                        val isKnownBadMtk = mtkHardware.contains("mt8695") || mtkHardware.contains("mt8167")
+                        if (watchdogResetCount == 2
+                            && isKnownBadMtk
+                            && !hwDecoderProvenGood
+                            && !usingSoftwareVideoDecoder) {
+                            val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "video/avc" }
+                            if (AudioPipelineFactory.isFfmpegVideoAvailable(mime)) {
+                                AudioLogger.log("Frame watchdog: step 2 known-bad MTK — FFmpeg video decoder")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_FFMPEG_VIDEO",
+                                    "trigger=known_bad_mtk, hw=$mtkHardware, mime=$mime, channel=$channelName")
+                                withContext(Dispatchers.Main) {
+                                    rebuildPlayerWithFfmpegVideoDecoder()
+                                }
+                                return@launch
+                            }
+                            // FFmpeg AAR didn't load or doesn't support this codec — fall through
+                            // to the platform SW path so we still attempt SOMETHING.
+                        }
+
+                        // Other MTK chipsets without hwDecoderProvenGood: try platform SW
+                        // decoder + 720p cap. mt8696 (AFTKRT) lands here.
                         if (watchdogResetCount == 2
                             && AudioPipelineFactory.isMtkDevice()
                             && !hwDecoderProvenGood
                             && !usingSoftwareVideoDecoder) {
-                            AudioLogger.log("Frame watchdog: step 2 MTK — FFmpeg software decoder at 720p")
+                            AudioLogger.log("Frame watchdog: step 2 MTK — software decoder at 720p")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_MTK_SW_FALLBACK",
-                                "reset=2, hwProven=false, channel=$channelName")
+                                "reset=2, hwProven=false, hw=$mtkHardware, channel=$channelName")
                             withContext(Dispatchers.Main) {
                                 trackSelector?.setParameters(
                                     trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
@@ -1804,6 +1853,111 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
         Toast.makeText(requireContext(), "Optimizing video decoder...", Toast.LENGTH_SHORT).show()
         streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD", "decoder=software, position=${currentPosition}ms")
+    }
+
+    /**
+     * v3.7.10: Rebuilds the ExoPlayer around our FFmpeg software video decoder
+     * (ExperimentalFfmpegVideoRenderer from PR #1591 in the bundled AAR). This is
+     * the final escalation step in the watchdog ladder for content that neither
+     * the hardware decoder NOR the platform software decoder (OMX.google.h264.decoder)
+     * can handle.
+     *
+     * Why we need it: customer andresi (mt8695 Fire TV Stick Lite, 128MB heap) hit
+     * the WATCHDOG_GIVE_UP path on a 1080p H.264 High Profile series episode. HW
+     * decoder OMX.MTK.VIDEO.DECODER.AVC stalled after 1 frame; SW decoder
+     * OMX.google.h264.decoder is single-threaded and can't sustain 1080p on 4× A53.
+     * libavcodec via FFmpeg has frame-level multithreading and matches what IPTV
+     * Smarters / TiviMate do via IJKPlayer on the same hardware.
+     *
+     * Identical structure to [rebuildPlayerWithSoftwareDecoder] — same listener and
+     * glue re-attachment, same low-memory load control, same MediaSession lifecycle.
+     */
+    private fun rebuildPlayerWithFfmpegVideoDecoder() {
+        val p = player ?: return
+        val currentPosition = p.currentPosition
+        val currentUrl = viewModel.streamUrl
+        usingSoftwareVideoDecoder = true
+        usingFfmpegVideoDecoder = true
+
+        // Detach the OLD glue from its host BEFORE the rebuild — without this the old
+        // transport row stays in the fragment's row adapter and the default Leanback
+        // overlay renders behind our PlayerControlsBar.
+        glue?.host = null
+
+        p.stop()
+        diagnosticListener?.let { p.removeListener(it); p.removeAnalyticsListener(it) }
+        healthMonitor?.stop()
+        mediaSession?.release()
+        mediaSession = null
+        safeReleasePlayer(p)
+
+        val ffmpegVideoFactory = AudioPipelineFactory.createFfmpegVideoSoftwareRenderersFactory(requireContext())
+        val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
+
+        // Same buffer policy as SW rebuild: low-memory devices need conservative buffers
+        // so frame buffers (FFmpeg output is uncompressed YUV — a few MB per frame) and
+        // the existing decoded queue don't push the heap past the GC threshold.
+        val ffmpegLoadControl = run {
+            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
+            else BufferConfigs.forContentType(viewModel.contentType)
+        }
+
+        player = ExoPlayer.Builder(requireContext())
+            .setRenderersFactory(ffmpegVideoFactory)
+            .setBandwidthMeter(bandwidthMeter)
+            .setTrackSelector(trackSelector!!)
+            .setLoadControl(ffmpegLoadControl)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            .build()
+
+        player!!.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(),
+            true
+        )
+
+        diagnosticListener?.let { listener ->
+            player!!.addListener(listener)
+            player!!.addAnalyticsListener(listener)
+        }
+        healthMonitor?.apply {
+            this.bandwidthMeter = bandwidthMeter
+            start(player!!)
+        }
+
+        mediaSession = MediaSession.Builder(requireContext(), player!!)
+            .setId("ooustream_playback_ffvideo_${System.nanoTime()}")
+            .build()
+
+        attachPlayerListener()
+        attachCueListener()
+
+        val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
+        glue = OoustreamPlaybackGlue(requireContext(), newAdapter).apply {
+            host = VideoSupportFragmentGlueHost(this@OoustreamPlaybackFragment)
+            isControlsOverlayAutoHideEnabled = false
+            contentType = viewModel.contentType
+            title = viewModel.streamName
+            customControlsManager = controlsManager
+        }
+        wireGlueCallbacks(glue!!)
+        view?.post {
+            try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
+            forceHideLeanbackPlaybackDock()
+        }
+
+        player!!.setMediaItem(MediaItem.fromUri(currentUrl))
+        player!!.prepare()
+        if (currentPosition > 0) player!!.seekTo(currentPosition)
+        player!!.play()
+
+        Toast.makeText(requireContext(), "Switching to enhanced video decoder...", Toast.LENGTH_SHORT).show()
+        streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD",
+            "decoder=ffmpeg_video, position=${currentPosition}ms, channel=${healthMonitor?.channelName ?: "unknown"}")
     }
 
     /**
