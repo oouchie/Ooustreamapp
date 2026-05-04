@@ -11,6 +11,7 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -123,8 +124,17 @@ class SearchFragment : Fragment(), KeyEventHandler {
         setupContentInfo(view)
         observeViewModel()
 
-        // Focus search bar on open
-        view.post { searchEditText.requestFocus() }
+        // Focus search bar on open. On phone, also fire the soft keyboard up immediately
+        // — Leanback's request-focus-only path leaves the IME closed, so the user has to
+        // tap the field a second time before they can type.
+        view.post {
+            searchEditText.requestFocus()
+            if (!com.ooustream.iptv.common.DeviceUtils.isTV(requireContext())) {
+                val imm = requireContext()
+                    .getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.showSoftInput(searchEditText, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
     }
 
     private fun bindViews(view: View) {

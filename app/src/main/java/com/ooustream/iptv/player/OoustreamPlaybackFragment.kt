@@ -5,10 +5,12 @@ import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.media.AudioManager
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.WindowManager
 import android.view.View
 import android.view.ViewGroup
@@ -107,6 +109,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var channelBanner: ChannelBannerOverlay? = null
     private var seriesCompleteOverlay: SeriesCompleteOverlay? = null
     private var seekFeedback: SeekFeedbackOverlay? = null
+    // v3.7.11 phone HUD overlays — Netflix-style touch feedback
+    private var doubleTapRipple: DoubleTapRippleOverlay? = null
+    private var volumeBrightnessHud: VolumeBrightnessOverlay? = null
+    private var aspectHud: AspectRatioOverlay? = null
+    private var speedBadge: SpeedBadgeOverlay? = null
+    // Long-press 2x speed state — set true on onLongPress, cleared on ACTION_UP/CANCEL
+    private var speedHoldActive = false
+    // Original brightness saved at first brightness drag so we can restore on screen-off.
+    // Float.NaN = "no override active". A real saved value can be -1f (system default).
+    private var savedScreenBrightness: Float = Float.NaN
     private val chapterManager = ChapterManager()
     private var trackPickerOverlay: TrackPickerOverlay? = null
     /**
@@ -550,6 +562,37 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             )
         )
         seekFeedback = seekOv
+
+        // v3.7.11 phone HUD overlays — Netflix-style touch feedback. Always added
+        // to the view tree (cheap), but only triggered from setupTouchGestures
+        // which is itself gated on !isTV.
+        val rippleOv = DoubleTapRippleOverlay(requireContext())
+        (view as? ViewGroup)?.addView(
+            rippleOv,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        doubleTapRipple = rippleOv
+
+        val volBrightHud = VolumeBrightnessOverlay(requireContext())
+        (view as? ViewGroup)?.addView(
+            volBrightHud,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        volumeBrightnessHud = volBrightHud
+
+        val aspectOv = AspectRatioOverlay(requireContext())
+        (view as? ViewGroup)?.addView(
+            aspectOv,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        aspectHud = aspectOv
+
+        val spdBadge = SpeedBadgeOverlay(requireContext())
+        (view as? ViewGroup)?.addView(
+            spdBadge,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        speedBadge = spdBadge
 
         // Track picker overlay (audio + subtitle switching)
         val trackPicker = TrackPickerOverlay(requireContext())
@@ -2288,9 +2331,38 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     // ─── Mobile Touch Gesture Setup ────────────────────────────────────────
+    // v3.7.11 — Netflix-style phone gesture suite:
+    //   • single tap                    → toggle controls
+    //   • double tap LEFT half          → seek -10s + ripple
+    //   • double tap RIGHT half         → seek +10s + ripple
+    //   • horizontal fling              → channel zap (LIVE) / coarse seek (VOD)
+    //   • vertical drag LEFT half       → screen brightness
+    //   • vertical drag RIGHT half      → media volume
+    //   • long press + hold             → 2× playback speed (VOD/SERIES only)
+    //   • pinch zoom                    → cycle aspect ratio (Fit/Fill/Stretch)
+    //
+    // Gesture order in the touch listener matters:
+    //   1. ScaleGestureDetector first — it consumes pointer-down/up
+    //      events and reports onScaleEnd. If pinching, swallow other gestures.
+    //   2. GestureDetector second — handles tap, double-tap, fling, scroll.
+    //   3. Raw ACTION_UP / ACTION_CANCEL — needed because GestureDetector does
+    //      not signal long-press release. Without this, 2× speed gets stuck on.
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchGestures(rootView: View) {
-        val gestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
+        val ctx = requireContext()
+        val isLive = { viewModel.contentType == ContentType.LIVE }
+
+        // Track vertical-scroll mode so onScroll knows whether to keep adjusting
+        // brightness/volume or treat the gesture as something else.
+        var verticalScrollMode: VerticalScrollMode = VerticalScrollMode.NONE
+        var pinchActive = false
+
+        val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean {
+                verticalScrollMode = VerticalScrollMode.NONE
+                return true
+            }
+
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 controlsManager?.toggle()
                 return true
@@ -2298,9 +2370,58 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 val p = player ?: return false
-                if (p.isPlaying) p.pause() else p.play()
+                // LIVE has no concept of seeking — fall back to old toggle behavior.
+                if (isLive()) {
+                    if (p.isPlaying) p.pause() else p.play()
+                    controlsManager?.show()
+                    return true
+                }
+                val isLeftHalf = e.x < rootView.width / 2f
+                val deltaMs = if (isLeftHalf) -10_000L else 10_000L
+                val target = (p.currentPosition + deltaMs).coerceIn(0L, p.duration.coerceAtLeast(0L))
+                p.seekTo(target)
+                doubleTapRipple?.showAt(e.x, e.y, (deltaMs / 1000).toInt())
+                controlsBar?.updatePosition(p.currentPosition, p.duration)
                 controlsManager?.show()
                 return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                // Long-press = 2× speed while held. Disabled for LIVE (can't scrub).
+                if (isLive()) return
+                val p = player ?: return
+                speedHoldActive = true
+                p.setPlaybackParameters(androidx.media3.common.PlaybackParameters(2f))
+                speedBadge?.show()
+            }
+
+            override fun onScroll(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                if (e1 == null || pinchActive || speedHoldActive) return false
+                val totalDx = kotlin.math.abs(e2.x - e1.x)
+                val totalDy = kotlin.math.abs(e2.y - e1.y)
+                // Lock direction the first time we cross the deadband, to avoid jittery flips.
+                if (verticalScrollMode == VerticalScrollMode.NONE) {
+                    if (totalDy < 24f || totalDy < totalDx) return false
+                    verticalScrollMode = if (e1.x < rootView.width / 2f)
+                        VerticalScrollMode.BRIGHTNESS else VerticalScrollMode.VOLUME
+                    if (verticalScrollMode == VerticalScrollMode.BRIGHTNESS) {
+                        ensureSavedBrightness()
+                    }
+                }
+                // Pixels of vertical motion → 0..1 delta. Use rootView.height for consistent feel.
+                val verticalSpan = rootView.height.coerceAtLeast(1).toFloat()
+                val delta = distanceY / verticalSpan // positive = up = increase
+                when (verticalScrollMode) {
+                    VerticalScrollMode.VOLUME -> adjustVolumeBy(delta)
+                    VerticalScrollMode.BRIGHTNESS -> adjustBrightnessBy(delta)
+                    VerticalScrollMode.NONE -> {}
+                }
+                return verticalScrollMode != VerticalScrollMode.NONE
             }
 
             override fun onFling(
@@ -2309,12 +2430,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 velocityX: Float,
                 velocityY: Float
             ): Boolean {
+                if (verticalScrollMode != VerticalScrollMode.NONE) return false
                 val startX = e1?.x ?: return false
                 val deltaX = e2.x - startX
                 if (kotlin.math.abs(deltaX) < 100 || kotlin.math.abs(velocityX) < 300) return false
 
-                if (viewModel.contentType == ContentType.LIVE) {
-                    // Horizontal fling → channel zap
+                if (isLive()) {
                     val direction = if (deltaX > 0) -1 else 1
                     val newChannel = viewModel.switchChannel(direction)
                     if (newChannel != null) {
@@ -2322,7 +2443,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         debouncedTune(newChannel)
                     }
                 } else {
-                    // Horizontal fling → seek ±10s
                     val p = player ?: return false
                     if (deltaX > 0) {
                         p.seekTo((p.currentPosition + 10_000).coerceAtMost(p.duration))
@@ -2336,23 +2456,95 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
                 return true
             }
+        }
+        val gestureDetector = GestureDetector(ctx, gestureListener)
+        // Disable long-press when LIVE (we use it for 2× speed which doesn't apply).
+        // GestureDetector.setIsLongpressEnabled is dynamic — we re-check at touch time
+        // by gating onLongPress on isLive(), which is simpler than toggling state here.
+        gestureDetector.setIsLongpressEnabled(true)
 
-            override fun onDown(e: MotionEvent): Boolean = true
-        })
+        val scaleListener = object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            private var accumulatedScale = 1f
+            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                pinchActive = true
+                accumulatedScale = 1f
+                return true
+            }
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                accumulatedScale *= detector.scaleFactor
+                return true
+            }
+            override fun onScaleEnd(detector: ScaleGestureDetector) {
+                if (accumulatedScale > 1.15f) cycleAspectRatio()
+                else if (accumulatedScale < 0.85f) cycleAspectRatio() // single direction list — same call
+                pinchActive = false
+            }
+        }
+        val scaleDetector = ScaleGestureDetector(ctx, scaleListener)
 
-        rootView.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+        val touchListener = View.OnTouchListener { v, event ->
+            // Pinch detection first — its onTouchEvent updates internal state without
+            // consuming events that aren't part of a multi-touch pinch.
+            scaleDetector.onTouchEvent(event)
+            // Long-press release tracking (GestureDetector doesn't fire this itself).
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                if (speedHoldActive) {
+                    speedHoldActive = false
+                    player?.setPlaybackParameters(androidx.media3.common.PlaybackParameters(1f))
+                    speedBadge?.dismiss()
+                }
+                if (verticalScrollMode != VerticalScrollMode.NONE) {
+                    verticalScrollMode = VerticalScrollMode.NONE
+                }
+            }
+            // If we're mid-pinch, swallow the rest so single-tap doesn't fire when fingers lift.
+            if (pinchActive && event.actionMasked != MotionEvent.ACTION_UP) return@OnTouchListener true
+            gestureDetector.onTouchEvent(event)
+            true
+        }
 
-        // Walk the view tree to find any SurfaceView/TextureView and attach gesture detector
-        // Leanback's root may intercept touches before they reach the root listener on phones
+        rootView.setOnTouchListener(touchListener)
+
+        // Leanback's root sometimes intercepts touches before the listener fires on
+        // phones. Walk down and wire any video surface as well so taps on the actual
+        // video frame still reach our gesture pipeline.
         fun attachToSurfaces(v: View) {
             if (v is android.view.SurfaceView || v is android.view.TextureView) {
-                v.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+                v.setOnTouchListener(touchListener)
             }
             if (v is ViewGroup) {
                 for (i in 0 until v.childCount) attachToSurfaces(v.getChildAt(i))
             }
         }
         attachToSurfaces(rootView)
+    }
+
+    private enum class VerticalScrollMode { NONE, VOLUME, BRIGHTNESS }
+
+    private fun adjustVolumeBy(delta: Float) {
+        val am = requireContext().getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val current = am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVol
+        // delta is fraction of screen height — full screen sweep = ±1.0.
+        val newFrac = (current + delta).coerceIn(0f, 1f)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, (newFrac * maxVol).toInt(), 0)
+        volumeBrightnessHud?.show(VolumeBrightnessOverlay.Mode.VOLUME, newFrac)
+    }
+
+    private fun ensureSavedBrightness() {
+        if (savedScreenBrightness.isNaN()) {
+            savedScreenBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+        }
+    }
+
+    private fun adjustBrightnessBy(delta: Float) {
+        val window = activity?.window ?: return
+        val lp = window.attributes
+        val current = if (lp.screenBrightness >= 0f) lp.screenBrightness else 0.5f
+        val newFrac = (current + delta).coerceIn(0.05f, 1f) // floor at 5% so screen never goes black
+        lp.screenBrightness = newFrac
+        window.attributes = lp
+        volumeBrightnessHud?.show(VolumeBrightnessOverlay.Mode.BRIGHTNESS, newFrac)
     }
 
     /** Switch playback to [channel] and update viewModel + glue state. */
@@ -2484,9 +2676,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Capture which bar button has focus so we can restore it on dismiss.
         focusedBeforeTrackPicker = view?.findFocus()
         // Temporarily enable TEXT track type so ExoPlayer exposes subtitle tracks
-        // for enumeration. If user picks "Off", TrackPickerOverlay re-disables it.
+        // for enumeration. If user picks "Off", we re-disable it.
         val wasTextDisabled = p.trackSelectionParameters
             .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val launch = { showTrackPickerSurface(p) }
         if (wasTextDisabled) {
             subtitlesTemporarilyEnabled = true
             p.trackSelectionParameters = p.trackSelectionParameters
@@ -2500,7 +2693,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     if (pickerShown) return
                     pickerShown = true
                     p.removeListener(this)
-                    trackPickerOverlay?.show(p)
+                    launch()
                 }
             }
             p.addListener(listener)
@@ -2509,11 +2702,30 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 if (!pickerShown) {
                     pickerShown = true
                     p.removeListener(listener)
-                    trackPickerOverlay?.show(p)
+                    launch()
                 }
             }, 500)
         } else {
+            launch()
+        }
+    }
+
+    /**
+     * Picks the right track-picker surface for the device:
+     *   • TV → existing right-edge slide-in [TrackPickerOverlay] (D-pad navigable)
+     *   • Phone → bottom-sheet [PhoneTrackPickerSheet] (drag-to-dismiss, Material)
+     */
+    private fun showTrackPickerSurface(p: androidx.media3.common.Player) {
+        if (DeviceUtils.isTV(requireContext())) {
             trackPickerOverlay?.show(p)
+        } else {
+            val sheet = PhoneTrackPickerSheet()
+                .setPlayer(p)
+                .setOnDismissed {
+                    controlsManager?.resumeAutoHide()
+                    focusedBeforeTrackPicker?.requestFocus()
+                }
+            sheet.show(parentFragmentManager, "track_picker_sheet")
         }
     }
 
@@ -2827,7 +3039,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private fun cycleAspectRatio() {
         currentScalingMode = (currentScalingMode + 1) % scalingModes.size
         player?.videoScalingMode = scalingModes[currentScalingMode]
-        Toast.makeText(requireContext(), "Aspect: ${scalingLabels[currentScalingMode]}", Toast.LENGTH_SHORT).show()
+        // v3.7.11: replaced Toast with centered HUD label (works on TV + phone).
+        aspectHud?.show(scalingLabels[currentScalingMode])
     }
 
     // [Fix 1.1] Correct lifecycle order: clean up everything BEFORE super tears down view hierarchy
@@ -2877,6 +3090,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         seriesCompleteOverlay = null
         seekFeedback?.dismiss()
         seekFeedback = null
+        // v3.7.11 phone HUD overlays
+        doubleTapRipple = null
+        volumeBrightnessHud?.dismiss()
+        volumeBrightnessHud = null
+        aspectHud?.dismiss()
+        aspectHud = null
+        speedBadge?.dismiss()
+        speedBadge = null
+        // Restore brightness override so app exits leave screen at system brightness.
+        if (!savedScreenBrightness.isNaN()) {
+            val w = activity?.window
+            val attrs = w?.attributes
+            if (attrs != null) {
+                attrs.screenBrightness = savedScreenBrightness
+                w.attributes = attrs
+            }
+            savedScreenBrightness = Float.NaN
+        }
         trackPickerOverlay?.dismiss()
         trackPickerOverlay = null
         audioStatusOverlay?.dismiss()

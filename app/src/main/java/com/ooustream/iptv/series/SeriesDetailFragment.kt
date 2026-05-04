@@ -95,6 +95,10 @@ class SeriesDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // v3.7.11: phone-only back-arrow toolbar overlay.
+        com.ooustream.iptv.common.PhoneToolbarHelper.attach(
+            this, view as android.view.ViewGroup, seriesName
+        )
         bindViews(view)
         setupAdapters()
         observeViewModel()

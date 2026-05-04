@@ -16,11 +16,23 @@ class ContentInfoHelper(
     private val contentRepository: ContentRepository,
     private val onPlay: (PosterItem) -> Unit
 ) {
+    // TV path: full-screen overlay with D-pad focus trap.
     private var overlay: ContentInfoOverlay? = null
+    // Phone path: BottomSheetDialogFragment instance shown per long-press (created on demand).
+    private var activePhoneSheet: PhoneContentInfoSheet? = null
     private var currentItem: PosterItem? = null
+    private var favoriteCallback: ((PosterItem) -> Unit)? = null
+
+    private val isPhone: Boolean
+        get() = !DeviceUtils.isTV(fragment.requireContext())
 
     /** Add the overlay to the fragment's root view. Call in onViewCreated. */
     fun attach(root: ViewGroup) {
+        // On phone, we don't pre-attach an overlay — the BottomSheetDialogFragment
+        // is created per long-press and adds itself to the FragmentManager. The TV
+        // overlay path is unchanged.
+        if (isPhone) return
+
         val infoOverlay = ContentInfoOverlay(fragment.requireContext())
         root.addView(
             infoOverlay,
@@ -40,27 +52,60 @@ class ContentInfoHelper(
         currentItem = item
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             val data = fetchContentData(item)
-            overlay?.show(data)
+            if (isPhone) {
+                showPhoneSheet(data, item)
+            } else {
+                overlay?.show(data)
+            }
         }
     }
 
-    /** Dismiss the overlay. Returns true if it was showing. */
-    fun dismiss(): Boolean {
-        return if (overlay?.isShowing == true) {
-            overlay?.dismiss()
-            true
-        } else false
+    private fun showPhoneSheet(data: ContentInfoOverlay.ContentData, item: PosterItem) {
+        val sheet = PhoneContentInfoSheet()
+            .setData(data)
+            .setOnPlay { onPlay(item) }
+            .setOnFavorite {
+                favoriteCallback?.invoke(item)
+            }
+        activePhoneSheet = sheet
+        sheet.show(fragment.parentFragmentManager, "content_info_sheet")
     }
 
-    val isShowing: Boolean get() = overlay?.isShowing == true
+    /** Dismiss the overlay/sheet. Returns true if it was showing. */
+    fun dismiss(): Boolean {
+        return if (isPhone) {
+            val sheet = activePhoneSheet
+            if (sheet?.isVisible == true) {
+                sheet.dismissAllowingStateLoss()
+                activePhoneSheet = null
+                true
+            } else false
+        } else {
+            if (overlay?.isShowing == true) {
+                overlay?.dismiss()
+                true
+            } else false
+        }
+    }
+
+    val isShowing: Boolean
+        get() = if (isPhone) activePhoneSheet?.isVisible == true
+                else overlay?.isShowing == true
 
     fun cleanup() {
-        overlay?.dismiss()
-        overlay = null
+        if (isPhone) {
+            activePhoneSheet?.dismissAllowingStateLoss()
+            activePhoneSheet = null
+        } else {
+            overlay?.dismiss()
+            overlay = null
+        }
     }
 
     /** Set the favorite button callback. */
     fun setOnFavorite(callback: (PosterItem) -> Unit) {
+        favoriteCallback = callback
+        // TV overlay path needs the callback wired through the existing field.
         overlay?.onFavorite = {
             currentItem?.let { callback(it) }
         }

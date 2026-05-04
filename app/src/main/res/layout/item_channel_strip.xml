@@ -7,6 +7,7 @@
     android:padding="4dp"
     android:focusable="true"
     android:focusableInTouchMode="true"
+    android:foreground="?android:attr/selectableItemBackground"
     android:clipChildren="false"
     android:clipToPadding="false">
 

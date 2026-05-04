@@ -346,6 +346,132 @@ class TrackPickerOverlay(context: Context) : FrameLayout(context) {
 
     // ─── Track Selection ──────────────────────────────────────────────
 
+    companion object {
+        /**
+         * Public entry point for callers that render their own track UI (e.g. the
+         * v3.7.11 phone bottom-sheet picker). Selects [track] on [player] using the
+         * same logic the on-screen overlay uses.
+         */
+        @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+        fun applyTrack(player: Player, track: TrackInfo) {
+            applyTrackSelectionStatic(player, track)
+        }
+
+        /** Build the same TrackInfo list the overlay would render — phone sheet reuses this. */
+        @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+        fun buildTrackList(player: Player): Pair<List<TrackInfo>, List<TrackInfo>> {
+            val audio = collectTracks(player, C.TRACK_TYPE_AUDIO).ifEmpty {
+                listOf(TrackInfo("Default", -1, -1, true, C.TRACK_TYPE_AUDIO))
+            }
+            val subs = collectTracks(player, C.TRACK_TYPE_TEXT)
+            val subsDisabled = player.trackSelectionParameters
+                .disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+            val offSelected = subsDisabled || subs.none { it.isSelected }
+            val withOff = listOf(TrackInfo("Off", -1, -1, offSelected, C.TRACK_TYPE_TEXT)) + subs
+            return audio to withOff
+        }
+
+        @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+        private fun applyTrackSelectionStatic(player: Player, track: TrackInfo) {
+            if (track.groupIndex == -1) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(track.type, true)
+                    .build()
+            } else {
+                val groups = player.currentTracks.groups
+                if (track.groupIndex >= groups.size) return
+                val group = groups[track.groupIndex]
+                if (track.trackIndex >= group.length) return
+                val override = TrackSelectionOverride(group.mediaTrackGroup, track.trackIndex)
+                val builder = player.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(track.type, false)
+                    .setOverrideForType(override)
+                if (track.type == C.TRACK_TYPE_AUDIO && !track.language.isNullOrBlank()) {
+                    builder.setPreferredAudioLanguage(track.language)
+                }
+                if (track.type == C.TRACK_TYPE_TEXT && !track.language.isNullOrBlank()) {
+                    builder.setPreferredTextLanguage(track.language)
+                }
+                player.trackSelectionParameters = builder.build()
+            }
+        }
+
+        @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+        private fun collectTracks(player: Player, trackType: Int): List<TrackInfo> {
+            val result = mutableListOf<TrackInfo>()
+            val currentTracks = player.currentTracks
+            for ((groupIndex, group) in currentTracks.groups.withIndex()) {
+                if (group.type != trackType) continue
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    val name = buildTrackNameStatic(format, trackType, result.size + 1)
+                    val isSelected = group.isTrackSelected(trackIndex)
+                    result.add(TrackInfo(name, groupIndex, trackIndex, isSelected, trackType,
+                        language = format.language, mimeType = format.sampleMimeType))
+                }
+            }
+            return result
+        }
+
+        private fun buildTrackNameStatic(format: Format, trackType: Int, index: Int): String {
+            val baseName = when {
+                !format.label.isNullOrBlank() -> format.label!!
+                !format.language.isNullOrBlank() -> try {
+                    Locale(format.language!!).displayLanguage.replaceFirstChar { it.uppercase() }
+                } catch (_: Exception) { format.language!! }
+                else -> {
+                    val typeLabel = if (trackType == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitle"
+                    "$typeLabel Track $index"
+                }
+            }
+            if (trackType == C.TRACK_TYPE_AUDIO) {
+                val parts = listOfNotNull(
+                    formatCodecLabelStatic(format.sampleMimeType),
+                    formatChannelLabelStatic(format.channelCount)
+                )
+                if (parts.isNotEmpty()) return "$baseName (${parts.joinToString(" ")})"
+            }
+            if (trackType == C.TRACK_TYPE_TEXT) {
+                val parts = mutableListOf<String>()
+                formatSubtitleCodecLabelStatic(format.sampleMimeType)?.let { parts.add(it) }
+                if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) parts.add("Forced")
+                if (parts.isNotEmpty()) return "$baseName (${parts.joinToString(" ")})"
+            }
+            return baseName
+        }
+
+        private fun formatCodecLabelStatic(mime: String?): String? = when (mime) {
+            "audio/ac3" -> "AC3"
+            "audio/eac3" -> "E-AC3"
+            "audio/mp4a-latm" -> "AAC"
+            "audio/mpeg" -> "MP3"
+            "audio/vnd.dts" -> "DTS"
+            "audio/vnd.dts.hd" -> "DTS-HD"
+            "audio/opus" -> "Opus"
+            "audio/flac" -> "FLAC"
+            "audio/true-hd" -> "TrueHD"
+            "audio/vorbis" -> "Vorbis"
+            else -> null
+        }
+
+        private fun formatSubtitleCodecLabelStatic(mime: String?): String? = when (mime) {
+            "application/x-subrip" -> "SRT"
+            "text/vtt" -> "WebVTT"
+            "application/cea-608" -> "CC"
+            "application/cea-708" -> "CC"
+            else -> null
+        }
+
+        private fun formatChannelLabelStatic(channelCount: Int): String? = when (channelCount) {
+            1 -> "Mono"
+            2 -> "Stereo"
+            6 -> "5.1"
+            8 -> "7.1"
+            else -> null
+        }
+    }
+
     private fun applyTrackSelection(player: Player, track: TrackInfo) {
         if (track.groupIndex == -1) {
             // "Off" — disable subtitle track type

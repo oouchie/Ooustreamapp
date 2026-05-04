@@ -8,7 +8,8 @@
     android:clipToOutline="true"
     android:clipChildren="false"
     android:focusable="true"
-    android:focusableInTouchMode="true">
+    android:focusableInTouchMode="true"
+    android:foreground="?android:attr/selectableItemBackground">
 
     <!-- Left Panel: 2x2 Grid Preview (55% width) -->
     <FrameLayout

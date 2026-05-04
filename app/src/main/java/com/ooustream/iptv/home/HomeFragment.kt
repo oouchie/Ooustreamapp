@@ -659,6 +659,20 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     if (i == activeIndex) R.drawable.bg_hero_indicator_active
                     else R.drawable.bg_hero_indicator
                 )
+                // v3.7.11: dots are tappable on phone — jumps to that hero item.
+                // TV stays D-pad driven via existing left/right hero navigation
+                // at line 432, no need to enable touch focus on remote.
+                if (!com.ooustream.iptv.common.DeviceUtils.isTV(requireContext())) {
+                    isClickable = true
+                    val targetIndex = i
+                    setOnClickListener {
+                        if (targetIndex != heroIndex && targetIndex < featuredItems.size) {
+                            heroIndex = targetIndex
+                            displayHeroItem(featuredItems[targetIndex], animate = true)
+                            startHeroRotation()
+                        }
+                    }
+                }
             }
             heroIndicators.addView(dot)
         }

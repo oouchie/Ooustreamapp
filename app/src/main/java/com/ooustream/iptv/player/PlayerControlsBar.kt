@@ -477,6 +477,13 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
             isFocusable = true
             isClickable = true
             setPadding(dp(8), dp(8), dp(8), dp(8))
+            // v3.7.11: enforce Material Design 48dp minimum touch target on phone.
+            // The icon + label intrinsically renders ~64dp tall, but width can fall
+            // below 48dp on small phones with 5+ action buttons (Tracks, CC, Aspect,
+            // Stats, External). Min-width guarantees the tap zone never falls below
+            // the recommended hit area regardless of how many siblings there are.
+            minimumWidth = dp(48)
+            minimumHeight = dp(48)
             background = ContextCompat.getDrawable(context, R.drawable.bg_action_button_states)
 
             val icon = ImageView(context).apply {

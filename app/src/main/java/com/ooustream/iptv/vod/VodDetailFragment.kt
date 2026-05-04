@@ -51,6 +51,12 @@ class VodDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // v3.7.11: phone-only Material-style back arrow at top of detail screen.
+        // No-op on TV (Leanback uses D-pad back).
+        com.ooustream.iptv.common.PhoneToolbarHelper.attach(
+            this, view as android.view.ViewGroup, vodName
+        )
+
         val backdrop = view.findViewById<ImageView>(R.id.vod_backdrop)
         val cover = view.findViewById<ImageView>(R.id.vod_cover)
         val title = view.findViewById<TextView>(R.id.vod_title)

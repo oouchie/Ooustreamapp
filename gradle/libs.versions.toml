@@ -22,6 +22,7 @@ palette = "1.0.0"
 work = "2.9.0"
 hilt-work = "1.2.0"
 constraintlayout = "2.1.4"
+swiperefreshlayout = "1.1.0"
 zxing = "3.5.2"
 material = "1.11.0"
 firebase-bom = "33.0.0"
@@ -90,6 +91,9 @@ palette = { group = "androidx.palette", name = "palette-ktx", version.ref = "pal
 
 # ConstraintLayout
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+
+# SwipeRefreshLayout (pull-to-refresh on phone grids)
+swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefreshlayout" }
 
 # ZXing (QR code generation)
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
