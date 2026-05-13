@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.11",
-  "version_code": 77,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.11/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.11/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.11/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.11 — Phone Touch Overhaul\n\nThe phone version of the app now works the way you'd expect a streaming app to work on a phone — Netflix-style gestures, modern bottom sheets, real touch feedback. Fire TV behavior is unchanged.\n\nIn the player:\n• Double-tap LEFT half of the screen to skip back 10 seconds, RIGHT half to skip forward 10 seconds\n• Slide your finger UP/DOWN on the LEFT half to adjust screen brightness, on the RIGHT half to adjust volume\n• Press and hold anywhere = 2× fast-forward (release to return to normal speed) — only on movies and series\n• Pinch to cycle aspect ratio (Fit / Fill / Stretch) — same effect as the Aspect button\n\nElsewhere:\n• Search now opens the keyboard automatically when you tap the Search tab\n• Tapping a movie or show poster's audio/subtitle button now opens a proper bottom sheet you can drag away — no more half-screen TV-style panel\n• Long-press a poster brings up the Material info card with drag-to-dismiss\n• Detail screens (movie / show pages) now have a back arrow at the top\n• Hero carousel dots on Home are now tappable — jump straight to the title you want\n• Action buttons in the player meet the 48dp touch-target standard so you don't miss them\n• Cards across the app now show a touch ripple when you tap them\n\nNothing changed on Fire TV — every gesture above is phone-only.",
+  "version_name": "3.7.12",
+  "version_code": 78,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.12 — mt8695 Crash-Loop Fix\n\nFixes a long 'Unable to play content' wait on older Fire TV Sticks (AFTMM / mt8695) when a movie can't be decoded by either the hardware decoder or the FFmpeg software decoder.\n\n• On affected hardware, the app now caps to 720p and retries FFmpeg once. If that still can't keep up, the friendly 'format not supported' message appears in ~5 seconds instead of waiting ~30 seconds for a retry crash loop to finish.\n• The 'Switching to software audio decoder...' toast no longer pops up during automatic audio-decoder recovery — playback just continues. The change is still recorded in debug logs.\n\nContent that previously played fine via FFmpeg software video (the mt8695 fix from v3.7.10) is unaffected.",
   "mandatory": false
 }

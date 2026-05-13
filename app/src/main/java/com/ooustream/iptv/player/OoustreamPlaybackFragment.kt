@@ -1706,6 +1706,43 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             return@launch
                         }
 
+                        // v3.7.12: When FFmpeg software video is already active and stalled
+                        // on a known-bad MTK chipset (mt8695, mt8167), do NOT escalate into
+                        // rebuildPlayerWithSoftwareDecoder() — that builds the player around
+                        // OMX.google.h264.decoder which throws IllegalArgumentException from
+                        // MediaCodec.native_configure on these chipsets. ExoPlayer then
+                        // retries 6 times back-to-back and the user sees "Unable to play
+                        // content" after a long crash loop. (Customer vanaeym AFTMM mt8695,
+                        // May 2026 — "The Calling Witch" 1080p H.264 High Profile + EAC3.)
+                        //
+                        // Instead try one 720p cap on FFmpeg (fewer pixels per frame may
+                        // unblock libavcodec on 4× A53). If that also stalls, give up
+                        // cleanly with the friendly error — no more decoder swaps to try.
+                        if (isKnownBadMtk && usingFfmpegVideoDecoder) {
+                            if (watchdogResetCount == 2) {
+                                AudioLogger.log("Frame watchdog: FFmpeg stalled on $mtkHardware — 720p cap retry")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_FFMPEG_720P_CAP",
+                                    "reset=2, hw=$mtkHardware, channel=$channelName")
+                                withContext(Dispatchers.Main) {
+                                    trackSelector?.setParameters(
+                                        trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
+                                    )
+                                    player?.stop()
+                                    player?.prepare()
+                                    player?.play()
+                                }
+                                continue
+                            }
+                            val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
+                            val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
+                                "reason=ffmpeg_failed_on_bad_mtk, resets=$watchdogResetCount, hw=$mtkHardware, codecs=$codecs, mime=$mime, channel=$channelName")
+                            withContext(Dispatchers.Main) {
+                                showFriendlyError("This content uses a video format not supported on this device.")
+                            }
+                            return@launch
+                        }
+
                         when (watchdogResetCount) {
                             1 -> {
                                 // Step 1: Seek flush — forces decoder to reset output pipeline
@@ -2099,7 +2136,6 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (currentPosition > 0) player!!.seekTo(currentPosition)
         player!!.play()
 
-        Toast.makeText(requireContext(), "Switching to software audio decoder...", Toast.LENGTH_SHORT).show()
         streamDiagnosticLogger.logAppEvent("PLAYER_REBUILD",
             "decoder=ffmpeg_preferred, position=${currentPosition}ms, channel=${healthMonitor?.channelName ?: "unknown"}")
     }
