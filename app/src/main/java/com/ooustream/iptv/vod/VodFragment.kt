@@ -239,7 +239,8 @@ class VodFragment : Fragment(), KeyEventHandler {
                         skeletonSwapped = true
                         if (viewModel.savedGridPosition >= 0) {
                             posterGrid.post {
-                                posterGrid.selectedPosition = viewModel.savedGridPosition
+                                val maxPos = (posterAdapter.size() - 1).coerceAtLeast(0)
+                                posterGrid.selectedPosition = viewModel.savedGridPosition.coerceIn(0, maxPos)
                                 viewModel.savedGridPosition = -1
                             }
                         }
@@ -310,17 +311,17 @@ class VodFragment : Fragment(), KeyEventHandler {
                 tmdbId = movie.tmdbId
             )
         }
-        // Reset grid to position 0 before updating to prevent Leanback internal crash:
-        // GridLayoutManager.prependVisibleItems reads stale firstVisibleIndex=-1 during
-        // the deferred layout pass from notifyDataSetChanged, causing position -1 IOOBE.
-        try { if (posterAdapter.size() > 0) grid.selectedPosition = 0 } catch (_: Exception) { }
         posterAdapter.setItems(newItems, null)
-        if (newItems.isNotEmpty() && savedPos >= 0) {
-            grid.post {
-                try {
-                    grid.selectedPosition = savedPos.coerceAtMost(newItems.size - 1)
-                } catch (_: Exception) { }
-            }
+        // Leanback GridLayoutManager crash guard (IndexOutOfBoundsException: Invalid item position -1).
+        // setItems(..., null) calls notifyDataSetChanged(), which schedules a DEFERRED layout pass.
+        // On the empty -> populated transition (common on slow devices that emit a loading-empty list
+        // mid category switch) leanback's mFocusPosition is left at NO_POSITION (-1); the deferred
+        // layout then calls createItem(-1) -> IOOBE. Force a valid, in-bounds focus index SYNCHRONOUSLY
+        // here so leanback always lays out from a real position. Must be synchronous (not grid.post{})
+        // or the posted/parent layout can win the race and still observe -1.
+        if (newItems.isNotEmpty()) {
+            val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, newItems.size - 1)
+            try { grid.selectedPosition = target } catch (_: Exception) { }
         }
     }
 

@@ -1,9 +1,9 @@
 {
-  "version_name": "3.7.12",
-  "version_code": 78,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.12/app-armeabi-v7a-release.apk",
-  "changelog": "v3.7.12 — mt8695 Crash-Loop Fix\n\nFixes a long 'Unable to play content' wait on older Fire TV Sticks (AFTMM / mt8695) when a movie can't be decoded by either the hardware decoder or the FFmpeg software decoder.\n\n• On affected hardware, the app now caps to 720p and retries FFmpeg once. If that still can't keep up, the friendly 'format not supported' message appears in ~5 seconds instead of waiting ~30 seconds for a retry crash loop to finish.\n• The 'Switching to software audio decoder...' toast no longer pops up during automatic audio-decoder recovery — playback just continues. The change is still recorded in debug logs.\n\nContent that previously played fine via FFmpeg software video (the mt8695 fix from v3.7.10) is unaffected.",
+  "version_name": "3.7.13",
+  "version_code": 79,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.13/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.13/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.7.13/app-armeabi-v7a-release.apk",
+  "changelog": "v3.7.13 — Movies/Series Grid Crash Fix\n\nFixes a crash when browsing Movies or Series and switching categories — most common on older Fire TV Sticks (AFTSS / mt8695). The grid could try to draw an invalid position right after a category finished loading and force-close the app.\n\n• The poster grid now always lands on a valid item the instant new content loads, eliminating the 'Invalid item position' crash that had returned on slower devices.\n• Browsing and back-navigation focus restore are unchanged — just no more crash.",
   "mandatory": false
 }
