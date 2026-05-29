@@ -12,6 +12,7 @@ import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
 import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,8 +63,14 @@ class LiveTvViewModel @Inject constructor(
     var savedChannelPosition: Int = -1
     var savedCategoryPosition: Int = -1
 
+    // Single-flight guards: re-entry (onViewCreated after back-stack) or rapid category
+    // switching must not leave overlapping collectors writing _categories/_channels.
+    private var loadCategoriesJob: Job? = null
+    private var selectCategoryJob: Job? = null
+
     fun loadCategories() {
-        viewModelScope.launch {
+        loadCategoriesJob?.cancel()
+        loadCategoriesJob = viewModelScope.launch {
             _isLoading.value = true
             try {
                 contentCacheRepository.getCategories("live").collect { categories ->
@@ -88,7 +95,8 @@ class LiveTvViewModel @Inject constructor(
 
     fun selectCategory(categoryId: String) {
         _selectedCategoryId.value = categoryId
-        viewModelScope.launch {
+        selectCategoryJob?.cancel()
+        selectCategoryJob = viewModelScope.launch {
             try {
                 if (categoryId == FAVORITES_ID) {
                     val favs = favoriteRepository.getFavoritesListByType("live")

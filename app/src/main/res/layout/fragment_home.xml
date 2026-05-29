@@ -338,7 +338,7 @@
                     android:descendantFocusability="afterDescendants"
                     tools:visibility="visible" />
 
-                <!-- New Episodes Section -->
+                <!-- Pick Up & New (New Episodes + Watch It Again merged) -->
                 <TextView
                     android:id="@+id/new_episodes_label"
                     android:layout_width="match_parent"
@@ -346,7 +346,7 @@
                     android:paddingStart="@dimen/overscan_margin"
                     android:paddingEnd="@dimen/overscan_margin"
                     android:layout_marginTop="24dp"
-                    android:text="New Episodes"
+                    android:text="Pick Up &amp; New"
                     android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -423,34 +423,6 @@
                     android:id="@id/for_you_live_row"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/row_for_you_live_height"
-                    android:layout_marginTop="12dp"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:clipToPadding="false"
-                    android:clipChildren="false"
-                    android:visibility="gone"
-                    android:focusable="true"
-                    android:descendantFocusability="afterDescendants"
-                    tools:visibility="visible" />
-
-                <!-- Quick Tune Channel Strip -->
-                <TextView
-                    android:id="@+id/channel_strip_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:paddingEnd="@dimen/overscan_margin"
-                    android:layout_marginTop="24dp"
-                    android:text="Quick Tune"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
-
-                <androidx.leanback.widget.HorizontalGridView
-                    android:id="@+id/channel_strip_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
                     android:layout_marginTop="12dp"
                     android:paddingStart="@dimen/overscan_margin"
                     android:clipToPadding="false"
@@ -548,33 +520,7 @@
                     android:orientation="vertical"
                     android:visibility="gone" />
 
-                <!-- Watch It Again Section (bottom of home) -->
-                <TextView
-                    android:id="@+id/watch_again_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:paddingEnd="@dimen/overscan_margin"
-                    android:layout_marginTop="24dp"
-                    android:text="Watch It Again"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
-
-                <androidx.leanback.widget.HorizontalGridView
-                    android:id="@+id/watch_again_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="@dimen/row_watch_again_height"
-                    android:layout_marginTop="12dp"
-                    android:paddingStart="@dimen/overscan_margin"
-                    android:clipToPadding="false"
-                    android:clipChildren="false"
-                    android:visibility="gone"
-                    android:focusable="true"
-                    android:descendantFocusability="afterDescendants"
-                    tools:visibility="visible" />
+                <!-- Watch It Again merged into the "Pick Up & New" rail near the top (v3.7.13) -->
             </LinearLayout>
 
         </LinearLayout>

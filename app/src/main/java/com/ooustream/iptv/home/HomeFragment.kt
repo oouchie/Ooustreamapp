@@ -72,6 +72,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import javax.inject.Inject
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -101,6 +102,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private var heroDwellJob: Job? = null
     private var heroPreviewActive = false
     private var isLowMemoryDevice = false
+    // Most-recent Continue Watching item — drives the hero "Resume" CTA (Jump back in)
+    private var latestResumeItem: WatchProgressEntity? = null
+    // Lazy-load guard: below-the-fold rows bind only after first scroll / fallback
+    private var belowFoldStarted = false
     private var heroContentOverlay: View? = null // LinearLayout with title/genre/buttons
     private var heroGradientBottom: View? = null
     private var heroGradientLeft: View? = null
@@ -126,14 +131,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private lateinit var continueWatchingRow: HorizontalGridView
     private lateinit var newEpisodesLabel: TextView
     private lateinit var newEpisodesRow: HorizontalGridView
-    private lateinit var watchAgainLabel: TextView
-    private lateinit var watchAgainRow: HorizontalGridView
     private lateinit var forYouLabel: TextView
     private lateinit var forYouRow: HorizontalGridView
     private lateinit var forYouLiveLabel: TextView
     private lateinit var forYouLiveRow: HorizontalGridView
-    private lateinit var channelStripLabel: TextView
-    private lateinit var channelStripRow: HorizontalGridView
     private lateinit var sectionsLabel: TextView
     private lateinit var sectionsRow: HorizontalGridView
     private lateinit var trendingLabel: TextView
@@ -150,11 +151,16 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // Adapters
     private val cwObjectAdapter = ArrayObjectAdapter(ContinueWatchingPresenter())
-    private val newEpisodesObjectAdapter = ArrayObjectAdapter(NewEpisodesPresenter())
-    private val watchAgainObjectAdapter = ArrayObjectAdapter(WatchItAgainPresenter())
+    // "Pick Up & New" merged rail — new episodes + watch-it-again in one row.
+    // ClassPresenterSelector routes each entity type to its own card presenter.
+    private val pickUpObjectAdapter = ArrayObjectAdapter(
+        ClassPresenterSelector().apply {
+            addClassPresenter(SeriesTrackingEntity::class.java, NewEpisodesPresenter())
+            addClassPresenter(WatchProgressEntity::class.java, WatchItAgainPresenter())
+        }
+    )
     private val forYouObjectAdapter = ArrayObjectAdapter(ForYouPresenter())
     private val forYouLiveObjectAdapter = ArrayObjectAdapter(ForYouLivePresenter())
-    private val channelStripObjectAdapter = ArrayObjectAdapter(ChannelStripPresenter())
     private val sectionPresenterSelector = ClassPresenterSelector().apply {
         addClassPresenter(SectionItem::class.java, SectionCardPresenter())
         addClassPresenter(MultiViewHeroItem::class.java, MultiViewHeroPresenter())
@@ -214,32 +220,37 @@ class HomeFragment : Fragment(), KeyEventHandler {
         setupSectionsRow()
         setupTrendingRow()
         setupContinueWatchingRow()
-        setupNewEpisodesRow()
+        setupPickUpRow()
         setupForYouRow()
         setupForYouLiveRow()
-        setupChannelStripRow()
-        observeChannelStrip()
         setupHeroClickListener()
         if (!DeviceUtils.isTV(requireContext())) setupHeroSwipeGesture()
         observeFeaturedContent()
         observeContinueWatching()
         // Sports banner removed — unnecessary UI clutter
         sportsBanner.visibility = View.GONE
-        observeNewEpisodes()
+        observePickUpAndNew()
         observeForYouContent()
-        observeBecauseYouWatched()
         observeForYouLiveContent()
         observeTrendingContent()
         setupTrendingSeriesRow()
         observeTrendingSeries()
         setupTop10Row()
         observeTop10Content()
-        observeGenreRows()
-        setupWatchAgainRow()
-        observeWatchItAgain()
         setupGreeting()
         loadFeatured()
         setupOnboarding(view)
+
+        // Lazy-load the dynamically-inflated below-the-fold rows (genre rows +
+        // "Because You Watched" both addView into containers — the real up-front
+        // render cost). Bound only after first scroll or a short fallback, keeping
+        // the initial Home render light on slow devices (mt8695). The static XML
+        // rows above stay immediate so focus restore into them is unaffected.
+        belowFoldStarted = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            delay(1200)
+            startBelowFoldObservers()
+        }
 
         // Restore focus to where user was before navigating away, or default to hero
         restoreFocusState()
@@ -282,11 +293,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
                     viewModel.savedFocusPosition = newEpisodesRow.selectedPosition
                     return
                 }
-                R.id.watch_again_row -> {
-                    viewModel.savedFocusRowId = R.id.watch_again_row
-                    viewModel.savedFocusPosition = watchAgainRow.selectedPosition
-                    return
-                }
                 R.id.for_you_row -> {
                     viewModel.savedFocusRowId = R.id.for_you_row
                     viewModel.savedFocusPosition = forYouRow.selectedPosition
@@ -295,11 +301,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 R.id.for_you_live_row -> {
                     viewModel.savedFocusRowId = R.id.for_you_live_row
                     viewModel.savedFocusPosition = forYouLiveRow.selectedPosition
-                    return
-                }
-                R.id.channel_strip_row -> {
-                    viewModel.savedFocusRowId = R.id.channel_strip_row
-                    viewModel.savedFocusPosition = channelStripRow.selectedPosition
                     return
                 }
                 R.id.trending_row -> {
@@ -352,17 +353,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 }
             }
             R.id.new_episodes_row -> newEpisodesRow.post {
-                if (newEpisodesObjectAdapter.size() > 0) {
-                    newEpisodesRow.safeSetSelectedPosition(pos, newEpisodesObjectAdapter.size())
+                if (pickUpObjectAdapter.size() > 0) {
+                    newEpisodesRow.safeSetSelectedPosition(pos, pickUpObjectAdapter.size())
                     newEpisodesRow.requestFocus()
-                } else {
-                    heroWatchNow.requestFocus()
-                }
-            }
-            R.id.watch_again_row -> watchAgainRow.post {
-                if (watchAgainObjectAdapter.size() > 0) {
-                    watchAgainRow.safeSetSelectedPosition(pos, watchAgainObjectAdapter.size())
-                    watchAgainRow.requestFocus()
                 } else {
                     heroWatchNow.requestFocus()
                 }
@@ -379,14 +372,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 if (forYouLiveObjectAdapter.size() > 0) {
                     forYouLiveRow.safeSetSelectedPosition(pos, forYouLiveObjectAdapter.size())
                     forYouLiveRow.requestFocus()
-                } else {
-                    heroWatchNow.requestFocus()
-                }
-            }
-            R.id.channel_strip_row -> channelStripRow.post {
-                if (channelStripObjectAdapter.size() > 0) {
-                    channelStripRow.safeSetSelectedPosition(pos, channelStripObjectAdapter.size())
-                    channelStripRow.requestFocus()
                 } else {
                     heroWatchNow.requestFocus()
                 }
@@ -497,14 +482,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
         continueWatchingRow = view.findViewById(R.id.continue_watching_row)
         newEpisodesLabel = view.findViewById(R.id.new_episodes_label)
         newEpisodesRow = view.findViewById(R.id.new_episodes_row)
-        watchAgainLabel = view.findViewById(R.id.watch_again_label)
-        watchAgainRow = view.findViewById(R.id.watch_again_row)
         forYouLabel = view.findViewById(R.id.for_you_label)
         forYouRow = view.findViewById(R.id.for_you_row)
         forYouLiveLabel = view.findViewById(R.id.for_you_live_label)
         forYouLiveRow = view.findViewById(R.id.for_you_live_row)
-        channelStripLabel = view.findViewById(R.id.channel_strip_label)
-        channelStripRow = view.findViewById(R.id.channel_strip_row)
         sectionsLabel = view.findViewById(R.id.sections_label)
         sectionsRow = view.findViewById(R.id.sections_row)
         trendingLabel = view.findViewById(R.id.trending_label)
@@ -520,8 +501,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
         // On mobile: let touch events pass directly to grid children (Leanback grids intercept first tap for focus)
         if (!DeviceUtils.isTV(requireContext())) {
-            val grids = listOf(continueWatchingRow, newEpisodesRow, watchAgainRow, forYouRow,
-                forYouLiveRow, channelStripRow, sectionsRow, trendingRow, trendingSeriesRow, top10Row)
+            val grids = listOf(continueWatchingRow, newEpisodesRow, forYouRow,
+                forYouLiveRow, sectionsRow, trendingRow, trendingSeriesRow, top10Row)
             for (grid in grids) {
                 grid.isFocusableInTouchMode = true
             }
@@ -576,6 +557,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // ── Frosted Header Scroll ─────────────────────────────────────────────
 
+    /** One-shot: bind the dynamically-inflated below-the-fold rows. Safe to call repeatedly. */
+    private fun startBelowFoldObservers() {
+        if (belowFoldStarted) return
+        if (view == null || !isAdded) return
+        belowFoldStarted = true
+        observeBecauseYouWatched()
+        observeGenreRows()
+    }
+
     private fun setupFrostedHeaderScroll(view: View) {
         val scrollView = view.findViewById<NestedScrollView>(R.id.home_scroll)
         val frostedHeader = view.findViewById<LinearLayout>(R.id.frosted_header)
@@ -589,6 +579,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
         scrollView.setOnScrollChangeListener(
             NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                // Lazy-load: first scroll reveals the below-the-fold rows
+                if (scrollY > 0) startBelowFoldObservers()
                 val heroHeight = heroContainer.height.toFloat()
                 if (heroHeight > 0) {
                     val progress = (scrollY / heroHeight).coerceIn(0f, 1f)
@@ -768,13 +760,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         )
                     }
                     trendingObjectAdapter.safeReplaceAll(posterItems)
-                    if (items.isNotEmpty()) {
-                        trendingLabel.visibility = View.VISIBLE
-                        trendingRow.visibility = View.VISIBLE
-                    } else {
-                        trendingLabel.visibility = View.GONE
-                        trendingRow.visibility = View.GONE
-                    }
+                    toggleRow(trendingLabel, trendingRow, items.isNotEmpty())
                 }
             }
         }
@@ -821,13 +807,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         )
                     }
                     trendingSeriesObjectAdapter.safeReplaceAll(posterItems)
-                    if (items.isNotEmpty()) {
-                        trendingSeriesLabel.visibility = View.VISIBLE
-                        trendingSeriesRow.visibility = View.VISIBLE
-                    } else {
-                        trendingSeriesLabel.visibility = View.GONE
-                        trendingSeriesRow.visibility = View.GONE
-                    }
+                    toggleRow(trendingSeriesLabel, trendingSeriesRow, items.isNotEmpty())
                 }
             }
         }
@@ -898,13 +878,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                         )
                     }
                     top10ObjectAdapter.safeReplaceAll(top10Items)
-                    if (top10Items.isNotEmpty()) {
-                        top10Label.visibility = View.VISIBLE
-                        top10Row.visibility = View.VISIBLE
-                    } else {
-                        top10Label.visibility = View.GONE
-                        top10Row.visibility = View.GONE
-                    }
+                    toggleRow(top10Label, top10Row, top10Items.isNotEmpty())
                 }
             }
         }
@@ -1042,12 +1016,49 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun updateContinueWatchingRow(items: List<WatchProgressEntity>) {
         cwObjectAdapter.safeReplaceAll(items)
-        if (items.isNotEmpty()) {
-            continueWatchingLabel.visibility = View.VISIBLE
-            continueWatchingRow.visibility = View.VISIBLE
+        toggleRow(continueWatchingLabel, continueWatchingRow, items.isNotEmpty())
+        // Jump back in: most-recent item becomes the hero's primary action
+        latestResumeItem = items.firstOrNull()
+        refreshHeroResumeCta()
+    }
+
+    /** Hero primary button resumes the latest Continue Watching item when one exists. */
+    private fun refreshHeroResumeCta() {
+        if (!::heroWatchNow.isInitialized) return
+        val resume = latestResumeItem
+        heroWatchNow.text = if (resume != null) {
+            val name = resume.name
+            val short = if (name.length > 20) name.take(20).trimEnd() + "…" else name
+            "▶ Resume: $short"
         } else {
-            continueWatchingLabel.visibility = View.GONE
-            continueWatchingRow.visibility = View.GONE
+            getString(R.string.watch_now)
+        }
+    }
+
+    private fun playFeaturedHero() {
+        if (featuredItems.isEmpty()) return
+        val item = featuredItems.getOrNull(heroIndex) ?: return
+        val streamId = item.streamId.toIntOrNull() ?: return
+        val url = viewModel.buildVodStreamUrl(streamId, item.containerExtension)
+        playVodWithResumeCheck(url, item.streamId, item.title, item.backdropUrl ?: "")
+    }
+
+    /**
+     * Show/hide a label+row pair, fading the row in the first time it becomes visible
+     * (content reveal). Subsequent data refreshes don't re-animate. Keeps the visibility
+     * toggle in one place across all Home rows.
+     */
+    private fun toggleRow(label: View, row: View, show: Boolean) {
+        if (show) {
+            label.visibility = View.VISIBLE
+            if (row.visibility != View.VISIBLE) {
+                row.alpha = 0f
+                row.visibility = View.VISIBLE
+                row.animate().alpha(1f).setDuration(280).start()
+            }
+        } else {
+            label.visibility = View.GONE
+            row.visibility = View.GONE
         }
     }
 
@@ -1125,22 +1136,29 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // ── New Episodes Row ──────────────────────────────────────────────
 
-    private fun setupNewEpisodesRow() {
-        val bridgeAdapter = ItemBridgeAdapter(newEpisodesObjectAdapter)
+    // ── "Pick Up & New" Rail (New Episodes + Watch It Again) ────────────
+
+    private fun setupPickUpRow() {
+        val bridgeAdapter = ItemBridgeAdapter(pickUpObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
-                    val item = newEpisodesObjectAdapter.get(position)
-                    if (item is SeriesTrackingEntity) {
-                        // Clear new episode badge immediately so it leaves the row
-                        viewModel.clearNewEpisodes(item.seriesId)
-                        val fragment = SeriesDetailFragment.newInstance(item.seriesId, item.seriesTitle)
-                        val tx = requireActivity().supportFragmentManager.beginTransaction()
-                        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
-                        tx.replace(R.id.main_container, fragment)
-                            .addToBackStack(null)
-                            .commit()
+                    when (val item = pickUpObjectAdapter.get(position)) {
+                        is SeriesTrackingEntity -> {
+                            // Clear new episode badge immediately so it leaves the row
+                            viewModel.clearNewEpisodes(item.seriesId)
+                            openSeriesDetail(item.seriesId, item.seriesTitle)
+                        }
+                        is WatchProgressEntity -> {
+                            if (item.type == "series" && item.seriesId != null) {
+                                openSeriesDetail(item.seriesId, item.name)
+                            } else {
+                                val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
+                                val url = viewModel.buildVodStreamUrl(id, "mp4")
+                                playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
+                            }
+                        }
                     }
                 }
                 attachRowDimming(newEpisodesRow, newEpisodesLabel, viewHolder, position)
@@ -1150,66 +1168,29 @@ class HomeFragment : Fragment(), KeyEventHandler {
         newEpisodesRow.adapter = bridgeAdapter
     }
 
-    private fun observeNewEpisodes() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.newEpisodes.collect { items ->
-                    newEpisodesObjectAdapter.safeReplaceAll(items)
-                    if (items.isNotEmpty()) {
-                        newEpisodesLabel.visibility = View.VISIBLE
-                        newEpisodesRow.visibility = View.VISIBLE
-                    } else {
-                        newEpisodesLabel.visibility = View.GONE
-                        newEpisodesRow.visibility = View.GONE
-                    }
-                }
-            }
-        }
+    private fun openSeriesDetail(seriesId: Int, title: String) {
+        val fragment = SeriesDetailFragment.newInstance(seriesId, title)
+        val tx = requireActivity().supportFragmentManager.beginTransaction()
+        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+        tx.replace(R.id.main_container, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
-    // ── Watch It Again Row ──────────────────────────────────────────────
-
-    private fun setupWatchAgainRow() {
-        val bridgeAdapter = ItemBridgeAdapter(watchAgainObjectAdapter)
-        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
-            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.bindingAdapterPosition
-                viewHolder.itemView.setOnClickListener {
-                    val item = watchAgainObjectAdapter.get(position)
-                    if (item is WatchProgressEntity) {
-                        if (item.type == "series" && item.seriesId != null) {
-                            val fragment = SeriesDetailFragment.newInstance(item.seriesId, item.name)
-                            val tx = requireActivity().supportFragmentManager.beginTransaction()
-                            FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
-                            tx.replace(R.id.main_container, fragment)
-                                .addToBackStack(null)
-                                .commit()
-                        } else {
-                            val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
-                            val url = viewModel.buildVodStreamUrl(id, "mp4")
-                            playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
-                        }
-                    }
-                }
-                attachRowDimming(watchAgainRow, watchAgainLabel, viewHolder, position)
-            }
-        })
-        watchAgainRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
-        watchAgainRow.adapter = bridgeAdapter
-    }
-
-    private fun observeWatchItAgain() {
+    private fun observePickUpAndNew() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.watchItAgain.collect { items ->
-                    watchAgainObjectAdapter.safeReplaceAll(items)
-                    if (items.isNotEmpty()) {
-                        watchAgainLabel.visibility = View.VISIBLE
-                        watchAgainRow.visibility = View.VISIBLE
-                    } else {
-                        watchAgainLabel.visibility = View.GONE
-                        watchAgainRow.visibility = View.GONE
+                combine(viewModel.newEpisodes, viewModel.watchItAgain) { newEps, again ->
+                    // New episodes lead the rail; drop any watch-again series already
+                    // surfaced as a new-episode card so it isn't shown twice.
+                    val newSeriesIds = newEps.map { it.seriesId }.toSet()
+                    val dedupedAgain = again.filterNot {
+                        it.type == "series" && it.seriesId != null && it.seriesId in newSeriesIds
                     }
+                    (newEps as List<Any>) + dedupedAgain
+                }.collect { merged ->
+                    pickUpObjectAdapter.safeReplaceAll(merged)
+                    toggleRow(newEpisodesLabel, newEpisodesRow, merged.isNotEmpty())
                 }
             }
         }
@@ -1248,13 +1229,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     private fun updateForYouRow(items: List<RecommendedItem>) {
         forYouObjectAdapter.safeReplaceAll(items)
-        if (items.isNotEmpty()) {
-            forYouLabel.visibility = View.VISIBLE
-            forYouRow.visibility = View.VISIBLE
-        } else {
-            forYouLabel.visibility = View.GONE
-            forYouRow.visibility = View.GONE
-        }
+        toggleRow(forYouLabel, forYouRow, items.isNotEmpty())
     }
 
     // ── Because You Watched Rows ──────────────────────────────────────
@@ -1366,64 +1341,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.forYouLiveNow.collect { channels ->
                     forYouLiveObjectAdapter.safeReplaceAll(channels)
-                    if (channels.isNotEmpty()) {
-                        forYouLiveLabel.visibility = View.VISIBLE
-                        forYouLiveRow.visibility = View.VISIBLE
-                    } else {
-                        forYouLiveLabel.visibility = View.GONE
-                        forYouLiveRow.visibility = View.GONE
-                    }
+                    toggleRow(forYouLiveLabel, forYouLiveRow, channels.isNotEmpty())
                 }
             }
         }
     }
 
-    // ── Channel Strip (Quick Tune) Row ────────────────────────────────────
-
-    private fun setupChannelStripRow() {
-        val bridgeAdapter = ItemBridgeAdapter(channelStripObjectAdapter)
-        bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
-            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                val position = viewHolder.bindingAdapterPosition
-                viewHolder.itemView.setOnClickListener {
-                    val item = channelStripObjectAdapter.get(position)
-                    if (item is ChannelStripItem) {
-                        val fragment = OoustreamPlaybackFragment.newInstance(
-                            streamUrl = item.streamUrl,
-                            contentType = ContentType.LIVE,
-                            streamId = item.channelId.toString(),
-                            streamName = item.channelName
-                        )
-                        val tx = requireActivity().supportFragmentManager.beginTransaction()
-                        FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                        tx.replace(R.id.main_container, fragment)
-                            .addToBackStack(null)
-                            .commit()
-                    }
-                }
-                attachRowDimming(channelStripRow, channelStripLabel, viewHolder, position)
-            }
-        })
-        channelStripRow.setItemSpacing(resources.getDimensionPixelSize(R.dimen.spacing_md))
-        channelStripRow.adapter = bridgeAdapter
-    }
-
-    private fun observeChannelStrip() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.channelStripItems.collect { items ->
-                    channelStripObjectAdapter.safeReplaceAll(items)
-                    if (items.isNotEmpty()) {
-                        channelStripLabel.visibility = View.VISIBLE
-                        channelStripRow.visibility = View.VISIBLE
-                    } else {
-                        channelStripLabel.visibility = View.GONE
-                        channelStripRow.visibility = View.GONE
-                    }
-                }
-            }
-        }
-    }
 
     private fun navigateToLiveChannel(channel: ForYouChannel) {
         val url = viewModel.buildLiveStreamUrl(channel.channelId)
@@ -1792,11 +1715,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
 
         heroWatchNow.setOnClickListener {
-            if (featuredItems.isNotEmpty()) {
-                val item = featuredItems[heroIndex]
-                val streamId = item.streamId.toIntOrNull() ?: return@setOnClickListener
-                val url = viewModel.buildVodStreamUrl(streamId, item.containerExtension)
-                playVodWithResumeCheck(url, item.streamId, item.title, item.backdropUrl ?: "")
+            // Jump back in: resume the latest Continue Watching item when one exists,
+            // otherwise play the featured hero title.
+            val resume = latestResumeItem
+            if (resume != null) {
+                navigateToContinueWatching(resume)
+            } else {
+                playFeaturedHero()
             }
         }
 
@@ -1812,8 +1737,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
             }
         }
+        // "More Info" always plays the featured hero title, so it stays reachable
+        // even when the primary button has switched to Resume.
         heroMoreInfo.setOnClickListener {
-            heroWatchNow.performClick()
+            playFeaturedHero()
         }
     }
 

@@ -124,52 +124,7 @@ class HomeViewModel @Inject constructor(
         }
 
         // Live Sports banner removed — saves a network call + EPG parsing
-
-        // Load Quick Tune channel strip
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Try personalized channels first (requires enough watch data)
-                if (channelRecommendationEngine.hasEnoughData()) {
-                    channelRecommendationEngine.recomputeScores()
-                    val recs = channelRecommendationEngine.getRecommendations()
-                    if (recs.isNotEmpty()) {
-                        _channelStripItems.value = recs.take(20).map { rec ->
-                            ChannelStripItem(
-                                channelId = rec.channelId,
-                                channelName = rec.channelName,
-                                channelIcon = rec.channelIcon,
-                                streamUrl = contentRepository.buildLiveStreamUrl(rec.channelId)
-                            )
-                        }
-                        return@launch
-                    }
-                }
-                // Fallback: favorite live channels
-                val favLive = favoriteDao.getFavoritesListByType("live")
-                if (favLive.isNotEmpty()) {
-                    _channelStripItems.value = favLive.take(20).map { fav ->
-                        ChannelStripItem(
-                            channelId = fav.streamId,
-                            channelName = fav.name,
-                            channelIcon = fav.icon,
-                            streamUrl = contentRepository.buildLiveStreamUrl(fav.streamId)
-                        )
-                    }
-                } else {
-                    // No favorites yet — show first 20 live channels
-                    val rawStreams = contentRepository.getLiveStreams()
-                    val streams = contentFilterManager.filterContent("live", rawStreams) { it.categoryId }
-                    _channelStripItems.value = streams.take(20).map { stream ->
-                        ChannelStripItem(
-                            channelId = stream.streamId,
-                            channelName = stream.name,
-                            channelIcon = stream.streamIcon,
-                            streamUrl = contentRepository.buildLiveStreamUrl(stream.streamId)
-                        )
-                    }
-                }
-            } catch (_: Exception) { }
-        }
+        // Quick Tune channel strip removed (v3.7.13) — decluttered Home
     }
 
     val continueWatching: Flow<List<WatchProgressEntity>> =
@@ -192,9 +147,6 @@ class HomeViewModel @Inject constructor(
 
     private val _forYouLiveNow = MutableStateFlow<List<ForYouChannel>>(emptyList())
     val forYouLiveNow: StateFlow<List<ForYouChannel>> = _forYouLiveNow.asStateFlow()
-
-    private val _channelStripItems = MutableStateFlow<List<ChannelStripItem>>(emptyList())
-    val channelStripItems: StateFlow<List<ChannelStripItem>> = _channelStripItems.asStateFlow()
 
     private val _liveSportsEvent = MutableStateFlow<LiveSportsEvent?>(null)
     val liveSportsEvent: StateFlow<LiveSportsEvent?> = _liveSportsEvent.asStateFlow()

@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -36,13 +35,8 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
         trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)    // No subtitles in preview
-                    .setPreferredAudioLanguage("en")
-                    .setPreferredAudioMimeTypes(
-                        MimeTypes.AUDIO_AAC,
-                        MimeTypes.AUDIO_E_AC3,
-                        MimeTypes.AUDIO_AC3
-                    )
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)     // No subtitles in preview
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)    // Muted preview: no audio decode at all
                     .apply {
                         if (lowBitrateEnabled) {
                             setMaxVideoSize(854, 480)
@@ -61,14 +55,17 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
             .setTrackSelector(trackSelector!!)
 
         player = builder.build().apply {
+            // Muted browse preview: never take audio focus (don't duck/interrupt anything),
+            // and keep volume at 0. Audio track is also disabled above so no AC3/EAC3/FFmpeg
+            // decode is spun up while the user is merely scrolling channels.
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build(),
-                /* handleAudioFocus = */ true  // Preview owns audio focus while browsing
+                /* handleAudioFocus = */ false
             )
-            volume = 1f
+            volume = 0f
             setMediaItem(MediaItem.fromUri(streamUrl))
             prepare()
             play()

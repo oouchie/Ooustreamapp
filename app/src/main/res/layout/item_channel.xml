@@ -70,7 +70,7 @@
                 android:id="@+id/channel_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="#FFFFFF"
                 android:maxLines="2"
@@ -91,7 +91,7 @@
                     android:id="@+id/epg_time"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="10.5sp"
+                    android:textSize="11sp"
                     android:fontFamily="monospace"
                     android:textColor="#80FFD700"
                     android:layout_marginEnd="6dp" />
@@ -101,8 +101,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textSize="11sp"
-                    android:textColor="#59FFFFFF"
+                    android:textSize="12sp"
+                    android:textColor="#73FFFFFF"
                     android:singleLine="true"
                     android:ellipsize="end" />
             </LinearLayout>

@@ -35,6 +35,8 @@ import com.ooustream.iptv.common.CategoryEmoji
 import com.ooustream.iptv.common.CategoryItem
 import com.ooustream.iptv.common.CategoryListAdapter
 import com.ooustream.iptv.common.ChannelDisplayHelper
+import com.ooustream.iptv.epg.ChannelNameParser
+import com.ooustream.iptv.epg.EpgSource
 import com.ooustream.iptv.common.ChannelPresenter
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
 import com.ooustream.iptv.common.DeviceUtils
@@ -77,6 +79,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     private var previewingChannel: LiveStream? = null
     private var previewJob: Job? = null
     private var epgJob: Job? = null
+    private var lowMemoryDevice = false
     private var searchFilter = ""
     private var searchOpen = false
     private var favoriteIds: Set<String> = emptySet()
@@ -103,8 +106,10 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val previewPlayerView = view.findViewById<PlayerView>(R.id.preview_player_view)
         val previewPlaceholder = view.findViewById<TextView>(R.id.preview_placeholder)
         val previewContainer = view.findViewById<FrameLayout>(R.id.preview_container)
-        val previewFocusHint = view.findViewById<TextView>(R.id.preview_focus_hint)
-        val navHints = view.findViewById<TextView>(R.id.nav_hints)
+
+        // Device tier: skip auto-preview on low-memory sticks (mt8695), like the hero trailer
+        val am = requireContext().getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        lowMemoryDevice = am.memoryClass <= 128
 
         // Header search
         val headerTitle = view.findViewById<TextView>(R.id.header_title)
@@ -114,13 +119,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
         // Hide TV-only UI on mobile + enable touch passthrough on Leanback grids
         if (!DeviceUtils.isTV(requireContext())) {
-            navHints.visibility = View.GONE
             view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
             // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
             channelsList.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             channelsList.isFocusableInTouchMode = false
         }
-        navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
 
         // Preview container — DPAD-Right from channels list focuses it, OK launches fullscreen.
         // v3.7.8: previewContainer is now focusable from boot, NOT toggled on channel click.
@@ -144,12 +147,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     v.overlay.add(GoldGlowFocusDrawable())
                     v.overlay.add(FocusBracketDrawable())
                 }
-                previewFocusHint.visibility = View.VISIBLE
-                navHints.text = "OK: Watch fullscreen \u2022 \u2190: Back to channels"
             } else {
                 v.overlay.clear()
-                previewFocusHint.visibility = View.GONE
-                navHints.text = "OK: Watch \u2022 Long-press: Favorite \u2022 Back: Home"
             }
         }
         // PlayerView should NOT steal focus — container handles it
@@ -174,7 +173,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         // Speed up rapid D-pad scrolling: disable child layout animation
         channelsList.setAnimateChildLayout(false)
         channelsList.itemAnimator = null
-        val channelPresenter = ChannelPresenter()
+        val channelPresenter = ChannelPresenter(epgResolver = { ch ->
+            val categoryName = viewModel.categories.value
+                .find { it.categoryId == viewModel.selectedCategoryId.value }?.categoryName
+            smartEpgFiller.inferRuleBased(ch.name, categoryName)
+        })
         val channelAdapter = ArrayObjectAdapter(channelPresenter)
 
         // Search icon focus highlight — gold ring + scale so user sees when it's focused
@@ -260,28 +263,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                 viewHolder.itemView.setOnClickListener {
                     val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0 || pos >= filteredChannels.size) return@setOnClickListener
-                    val channel = filteredChannels[pos]
-                    // On mobile: single tap goes straight to fullscreen
-                    if (!DeviceUtils.isTV(requireContext())) {
-                        goFullscreen(channel)
-                        return@setOnClickListener
-                    }
-                    if (previewingChannel?.streamId == channel.streamId) {
-                        // Second tap — go fullscreen
-                        goFullscreen(channel)
-                    } else {
-                        // First tap — start preview
-                        previewJob?.cancel()
-                        previewingChannel = channel
-                        val url = viewModel.buildStreamUrl(channel.streamId)
-                        previewPlayerView.visibility = View.VISIBLE
-                        previewPlaceholder.visibility = View.GONE
-                        previewManager?.startPreview(previewPlayerView, url)
-                        // Preview is not D-pad focusable — second OK on the same channel
-                        // goes fullscreen. Making it focusable stole focus from the channel
-                        // item on the same frame as the click, causing the cursor to disappear.
-                        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    }
+                    // OK always goes fullscreen — preview now auto-starts on focus dwell,
+                    // so the old first-OK-preview / second-OK-fullscreen two-press model is gone.
+                    goFullscreen(filteredChannels[pos])
                 }
                 // Long press for favorites
                 viewHolder.itemView.setOnLongClickListener {
@@ -366,7 +350,19 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         viewModel.loadEpg(channel.streamId)
                     }
 
+                    // Auto-preview on focus dwell (TV only, skip on low-memory sticks).
+                    // ~1s dwell so fast scrolling doesn't thrash the decoder.
                     previewJob?.cancel()
+                    if (DeviceUtils.isTV(requireContext()) && !lowMemoryDevice) {
+                        previewJob = viewLifecycleOwner.lifecycleScope.launch {
+                            delay(1000)
+                            // Don't spin up a decoder if the screen was paused/stopped during
+                            // the dwell (lifecycleScope only cancels at DESTROYED, not STOPPED).
+                            if (viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                startPreviewFor(channel)
+                            }
+                        }
+                    }
                 } else {
                     // Focus moved to an invalid position, cancel pending preview
                     previewJob?.cancel()
@@ -469,21 +465,27 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                                 if (progressContainer != null && progressFill != null) {
                                     ChannelDisplayHelper.setProgressBar(progressFill, progressContainer, progress)
                                 }
+                                // Upgrade the preview overlay to real EPG when it's the previewing channel
+                                if (previewingChannel?.streamId == channel.streamId) {
+                                    showPreviewOverlay(channel.name, current.title, progress)
+                                }
                             }
                         } else if (epgTextView != null) {
+                            // No real EPG. The row already shows a rule-based guess from the
+                            // presenter (ChannelPresenter.epgResolver). Only UPGRADE it when we
+                            // have a more-informed, clearly-hedged "Likely:" learned pattern —
+                            // re-binding a bare rule guess would just swap one guess for another
+                            // on focus, which reads as a glitch.
                             val categoryName = viewModel.categories.value
                                 .find { it.categoryId == viewModel.selectedCategoryId.value }
                                 ?.categoryName
                             val inferred = smartEpgFiller.getSmartEpg(
                                 null, channel.streamId, channel.name, categoryName
                             )
-                            bindEpgText(epgTextView, inferred)
-                            // Show EPG container if inferred text is set
-                            if (epgTextView.text.isNotBlank()) {
+                            if (inferred.source == EpgSource.PATTERN_CACHE && inferred.title.isNotBlank()) {
+                                bindEpgText(epgTextView, inferred)
                                 epgContainer?.visibility = View.VISIBLE
                                 epgTimeView?.text = ""
-                            } else {
-                                epgContainer?.visibility = View.GONE
                             }
                             progressContainer?.visibility = View.GONE
                         }
@@ -617,13 +619,24 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     private var filteredChannels: List<LiveStream> = emptyList()
 
     private fun updateChannelList(channelAdapter: ArrayObjectAdapter) {
+        val grid = view?.findViewById<VerticalGridView>(R.id.channels_list)
         val channels = viewModel.channels.value
         filteredChannels = if (searchFilter.isEmpty()) {
             channels
         } else {
             channels.filter { it.name.lowercase().contains(searchFilter) }
         }
-        channelAdapter.safeReplaceAll(filteredChannels)
+        // Leanback GridLayoutManager crash guard ("Invalid item position -1"), same class
+        // as the v3.7.13 VOD/Series fix: setItems(..., null) schedules a deferred layout;
+        // on the empty->populated transition (category switch) mFocusPosition can be left at
+        // NO_POSITION (-1) and the layout calls createItem(-1). Force a valid, in-bounds focus
+        // index SYNCHRONOUSLY after setItems so the channels grid never lays out against -1.
+        val savedPos = grid?.selectedPosition ?: -1
+        channelAdapter.setItems(filteredChannels, null)
+        if (filteredChannels.isNotEmpty() && grid != null) {
+            val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, filteredChannels.size - 1)
+            try { grid.selectedPosition = target } catch (_: Exception) { }
+        }
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {
@@ -640,6 +653,50 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
     }
 
+    /** Start the muted preview for a channel with a crossfade + now-playing overlay. */
+    private fun startPreviewFor(channel: LiveStream) {
+        val v = view ?: return
+        val playerView = v.findViewById<PlayerView>(R.id.preview_player_view) ?: return
+        val placeholder = v.findViewById<TextView>(R.id.preview_placeholder)
+        previewingChannel = channel
+        val url = viewModel.buildStreamUrl(channel.streamId)
+        placeholder?.visibility = View.GONE
+        playerView.animate().cancel()
+        playerView.alpha = 0f
+        playerView.visibility = View.VISIBLE
+        playerView.animate().alpha(1f).setDuration(220).start()
+        previewManager?.startPreview(playerView, url)
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Now-playing overlay: channel + inferred on-now (upgraded to real when EPG loads)
+        val categoryName = viewModel.categories.value
+            .find { it.categoryId == viewModel.selectedCategoryId.value }?.categoryName
+        val inferred = smartEpgFiller.inferRuleBased(channel.name, categoryName)
+        showPreviewOverlay(channel.name, inferred.title, null)
+    }
+
+    /** Update the preview's now-playing overlay (channel name + on-now + optional live progress). */
+    private fun showPreviewOverlay(channelName: String, nowTitle: String?, progress: Float?) {
+        val v = view ?: return
+        val overlay = v.findViewById<View>(R.id.preview_info_overlay) ?: return
+        v.findViewById<TextView>(R.id.preview_channel_name)?.text =
+            ChannelNameParser.parseForDisplay(channelName).name
+        val nowView = v.findViewById<TextView>(R.id.preview_now_playing)
+        if (!nowTitle.isNullOrBlank()) {
+            nowView?.text = "ON NOW · $nowTitle"
+            nowView?.visibility = View.VISIBLE
+        } else {
+            nowView?.visibility = View.GONE
+        }
+        val pc = v.findViewById<View>(R.id.preview_progress_container)
+        val pf = v.findViewById<View>(R.id.preview_progress_fill)
+        if (progress != null && progress > 0f && pc != null && pf != null) {
+            ChannelDisplayHelper.setProgressBar(pf, pc, progress)
+        } else {
+            pc?.visibility = View.GONE
+        }
+        overlay.visibility = View.VISIBLE
+    }
+
     private fun stopPreview() {
         epgJob?.cancel()
         epgJob = null
@@ -647,10 +704,16 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         previewJob = null
         previewManager?.release()
         previewingChannel = null
-        // v3.7.8: keep preview focusable even when nothing is playing — see onViewCreated
-        // for why. Just clear the focus overlay.
+        // Keep preview focusable even when nothing is playing. Clear focus overlay,
+        // hide the now-playing overlay, and restore the idle play-glyph placeholder.
         view?.findViewById<FrameLayout>(R.id.preview_container)?.overlay?.clear()
-        view?.findViewById<TextView>(R.id.preview_focus_hint)?.visibility = View.GONE
+        view?.findViewById<View>(R.id.preview_info_overlay)?.visibility = View.GONE
+        view?.findViewById<PlayerView>(R.id.preview_player_view)?.let {
+            it.animate().cancel()
+            it.visibility = View.GONE
+            it.alpha = 1f
+        }
+        view?.findViewById<TextView>(R.id.preview_placeholder)?.visibility = View.VISIBLE
     }
 
     override fun onPause() {
@@ -727,6 +790,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         previewPlaceholder?.visibility = View.GONE
         previewManager?.startPreview(previewPlayerView, url)
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val resumeCat = viewModel.categories.value
+            .find { it.categoryId == viewModel.selectedCategoryId.value }?.categoryName
+        showPreviewOverlay(channel.name, smartEpgFiller.inferRuleBased(channel.name, resumeCat).title, null)
 
         // Scroll channel list to the resumed channel and load its EPG
         val channelsList = view?.findViewById<VerticalGridView>(R.id.channels_list)

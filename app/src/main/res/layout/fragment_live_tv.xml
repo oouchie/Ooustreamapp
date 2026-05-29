@@ -27,34 +27,18 @@
             android:layout_weight="1"
             android:orientation="horizontal">
 
-            <!-- Categories Panel (25%) - Glass Card -->
+            <!-- Categories Panel (22%) - Glass Card -->
             <LinearLayout
                 android:id="@+id/categories_panel"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="25"
+                android:layout_weight="22"
                 android:orientation="vertical"
                 android:background="@drawable/bg_glass_panel"
                 android:padding="6dp"
                 android:layout_marginEnd="8dp"
                 android:clipToPadding="false"
                 android:clipChildren="false">
-
-                <EditText
-                    android:id="@+id/category_search"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:layout_marginBottom="4dp"
-                    android:background="@drawable/bg_input_rounded"
-                    android:hint="Search"
-                    android:textColorHint="@color/text_muted"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp"
-                    android:paddingHorizontal="12dp"
-                    android:singleLine="true"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:visibility="gone" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/categories_list"
@@ -65,11 +49,11 @@
                     android:nextFocusUp="@+id/header_search_icon" />
             </LinearLayout>
 
-            <!-- Channels Panel (35%) - Glass Card -->
+            <!-- Channels Panel (33%) - Glass Card -->
             <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="35"
+                android:layout_weight="33"
                 android:layout_marginHorizontal="4dp"
                 android:background="@drawable/bg_glass_panel"
                 android:padding="6dp"
@@ -87,25 +71,27 @@
                     android:nextFocusUp="@+id/header_search_icon" />
             </FrameLayout>
 
-            <!-- Preview + EPG Panel (40%) - Glass Card -->
+            <!-- Preview + EPG Panel (45%) - Glass Card -->
             <LinearLayout
                 android:id="@+id/preview_panel"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="40"
+                android:layout_weight="45"
                 android:orientation="vertical"
                 android:layout_marginStart="8dp">
 
-                <!-- Video Preview (55%) - Cinematic frame, D-pad focusable -->
+                <!-- Video Preview (60%) - Cinematic frame -->
                 <FrameLayout
                     android:id="@+id/preview_container"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="55"
+                    android:layout_weight="60"
                     android:background="@drawable/bg_preview_frame"
                     android:clipToOutline="true"
                     android:focusable="false"
-                    android:nextFocusLeft="@+id/channels_list">
+                    android:nextFocusLeft="@+id/channels_list"
+                    android:nextFocusUp="@+id/channels_list"
+                    android:nextFocusDown="@+id/channels_list">
 
                     <androidx.media3.ui.PlayerView
                         android:id="@+id/preview_player_view"
@@ -113,36 +99,74 @@
                         android:layout_height="match_parent"
                         android:visibility="gone" />
 
+                    <!-- Affordance, not instruction: a play glyph while idle -->
                     <TextView
                         android:id="@+id/preview_placeholder"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="Select a channel to preview"
+                        android:text="▶"
                         android:textColor="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:alpha="0.5"
+                        android:textSize="44sp" />
 
-                    <TextView
-                        android:id="@+id/preview_focus_hint"
-                        android:layout_width="wrap_content"
+                    <!-- Now-playing overlay: channel + on-now + live progress -->
+                    <LinearLayout
+                        android:id="@+id/preview_info_overlay"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|center_horizontal"
-                        android:layout_marginBottom="8dp"
-                        android:background="#80000000"
-                        android:paddingHorizontal="12dp"
-                        android:paddingVertical="4dp"
-                        android:text="Press OK to watch"
-                        android:textColor="#FFC107"
-                        android:textSize="12sp"
-                        android:visibility="gone" />
+                        android:layout_gravity="bottom"
+                        android:orientation="vertical"
+                        android:background="@drawable/bg_hero_gradient_bottom"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingTop="22dp"
+                        android:paddingBottom="10dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/preview_channel_name"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:ellipsize="end"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/preview_now_playing"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="1dp"
+                            android:singleLine="true"
+                            android:ellipsize="end"
+                            android:textColor="@color/focus_gold"
+                            android:textSize="13sp" />
+
+                        <FrameLayout
+                            android:id="@+id/preview_progress_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="3dp"
+                            android:layout_marginTop="7dp"
+                            android:background="#33FFFFFF"
+                            android:visibility="gone">
+
+                            <View
+                                android:id="@+id/preview_progress_fill"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:background="@color/focus_gold" />
+                        </FrameLayout>
+                    </LinearLayout>
                 </FrameLayout>
 
-                <!-- EPG Programs (45%) - Glass Card -->
+                <!-- EPG Programs (40%) - Glass Card -->
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/epg_list"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="45"
+                    android:layout_weight="40"
                     android:layout_marginTop="8dp"
                     android:background="@drawable/bg_epg_aurora"
                     android:clipToPadding="false"
@@ -150,19 +174,6 @@
                     android:padding="10dp" />
             </LinearLayout>
         </LinearLayout>
-
-        <!-- Navigation Hints - Aurora styled -->
-        <TextView
-            android:id="@+id/nav_hints"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_nav_hints_aurora"
-            android:paddingVertical="6dp"
-            android:paddingHorizontal="16dp"
-            android:textColor="@color/text_muted"
-            android:textSize="11sp"
-            android:gravity="center" />
     </LinearLayout>
 
     <!-- Layer 2: Frosted Glass Header (on top) -->
@@ -255,7 +266,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:clickable="true"
-            android:alpha="0.4"
             android:contentDescription="MultiView"
             android:nextFocusDown="@+id/channels_list"
             android:nextFocusLeft="@+id/header_search_icon" />

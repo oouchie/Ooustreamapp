@@ -109,6 +109,24 @@ class SmartEpgFiller @Inject constructor(
     }
 
     /**
+     * Pure, synchronous rule-based inference (Tier 2 only) — no DB access, no suspend.
+     * Safe to call from a RecyclerView/Presenter bind to give every visible channel an
+     * "on now" guess without the cost of the pattern-cache DB lookup in getSmartEpg().
+     */
+    fun inferRuleBased(channelName: String, categoryName: String?): InferredEpg {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        val parsed = ChannelNameParser.parse(channelName, categoryName)
+        return InferredEpg(
+            title = inferFromRules(parsed, hour, dayOfWeek),
+            description = null,
+            confidence = EpgConfidence.LOW,
+            source = EpgSource.RULE_INFERRED
+        )
+    }
+
+    /**
      * Check if EPG title is valid and usable.
      */
     private fun isGoodEpg(title: String?): Boolean {

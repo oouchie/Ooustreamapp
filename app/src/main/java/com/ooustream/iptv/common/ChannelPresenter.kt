@@ -12,6 +12,8 @@ import androidx.leanback.widget.Presenter
 import com.ooustream.iptv.R
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.epg.ChannelNameParser
+import com.ooustream.iptv.epg.InferredEpg
+import com.ooustream.iptv.epg.bindEpgText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,7 +31,10 @@ import kotlinx.coroutines.launch
  * are debounced behind 60ms so rapid D-pad scrolling stays smooth.
  */
 open class ChannelPresenter(
-    var favoriteIds: Set<String> = emptySet()
+    var favoriteIds: Set<String> = emptySet(),
+    // Cheap, synchronous "on now" resolver (rule-based inference, no DB). When set,
+    // every visible row shows programming context instead of only the focused one.
+    var epgResolver: ((LiveStream) -> InferredEpg?)? = null
 ) : Presenter() {
 
     /** Throttle sound during fast scrolling — minimum 80ms between sounds */
@@ -67,11 +72,19 @@ open class ChannelPresenter(
         val parsed = ChannelNameParser.parseForDisplay(channel.name)
         name.text = parsed.name
 
-        // EPG hidden by default — set externally when EPG data arrives
-        epg.text = ""
+        // "On now" line for every row: cheap rule-based inference so the whole list
+        // shows programming context, not just the focused row. The fragment upgrades
+        // the focused card to real EPG + a live progress bar when it loads.
         epgTime.text = ""
-        epgContainer.visibility = View.GONE
         epgProgressContainer.visibility = View.GONE
+        val inferred = epgResolver?.invoke(channel)
+        if (inferred != null && inferred.title.isNotBlank()) {
+            bindEpgText(epg, inferred)
+            epgContainer.visibility = View.VISIBLE
+        } else {
+            epg.text = ""
+            epgContainer.visibility = View.GONE
+        }
 
         // Quality badge
         ChannelDisplayHelper.bindQualityBadge(qualityBadge, parsed.quality)
