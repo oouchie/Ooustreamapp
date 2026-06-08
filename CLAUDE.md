@@ -483,6 +483,26 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
   `ContentRepository.search` (client-side bulk-list filter), NOT the FTS index (offline fallback only).
   New files: `common/PhoneGuidedStepFragment.kt`, `data/local/entity/VodCastEntity.kt`,
   `data/local/dao/VodCastDao.kt`, `recommendation/VodCastBackfillWorker.kt`.
+  **(4) Watch-experience P0+P1 sweep** (from `tasks/flawless-watch-audit.md`, a Netflix-benchmarked audit
+  scoring the watch experience 5.5/10 — engine is well-hardened, gap is transient-moment polish + state
+  bugs). Implemented in `player/OoustreamPlaybackFragment.kt` (+ `PlayerViewModel.kt`,
+  `ExoPlayerDiagnosticListener.kt`): **P0 resume-save gate** — new `checkpointProgress()` gates onPause +
+  the 5s autosave on a settled `STATE_READY` player, skips during decoder rebuilds (`rebuildInProgress`
+  flag across all 3 rebuilds + STATE_READY safety net) and refuses a glitchy collapse of a deep bookmark
+  (fixes silent progress regression to ~0). **Art backdrop** — the buffering overlay is now poster-art
+  (Coil `streamIcon`) + scrim + spinner in ONE FrameLayout, shown immediately on play/zap/rebuild and
+  crossfaded out on `onRenderedFirstFrame` (new callback on the diagnostic listener) with STATE_READY +
+  6s fail-safes so it can never permanently cover video; dropped the 3 "Optimizing…/Switching…" toasts.
+  **Spinner debounce** (600ms, immediate=true for guaranteed-black moments). **Episode state reset**
+  (`resetTrackStateForNewContent()` in skipToNextEpisode + binge onPlayNext — stops disabled-audio /
+  manual-track / subtitle leak into the next episode). **Binge false-stop fix** — `PlayerViewModel`
+  session-caches `get_series_info` (`seriesInfoCached()`) so a network blip can't fake "No more episodes".
+  **Quality cap clears on new content** — `clearVideoSizeConstraints()` in tuneToChannel + episode reset +
+  Retry, so a stutter on one channel/episode no longer softens the next. **Reconnect-from-buffering** —
+  network-return guard broadened to `STATE_BUFFERING` (+ `seekToDefaultPosition` for LIVE). **CC honesty**
+  — toggle checks for a `TRACK_TYPE_TEXT` group before claiming "On". DEFERRED (device-verify follow-up,
+  noted in `tasks/todo.md`): PixelCopy last-frame hold; next-episode ExoPlayer playlist pre-buffer;
+  mid-title upward HW decoder re-probe; silent-resume + in-player Restart (a product decision).
 
 - **v2.1.0** — Phase 4 premium playback UX (all overlays, track picker, controls bar)
 - **v2.1.1** — OTA update system fix, speed test accuracy fix

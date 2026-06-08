@@ -42,6 +42,12 @@ class PlayerViewModel @Inject constructor(
     var seasonNum: Int = 0
     var episodeNum: Int = 0
 
+    // Session cache of get_series_info so binge boundaries don't re-hit the network. Without this a
+    // transient network blip made resolveNextEpisode() throw → null → a false "No more episodes" /
+    // series-complete mid-binge. Cached per seriesId for the life of the player session.
+    private var cachedSeriesInfo: com.ooustream.iptv.data.model.SeriesInfo? = null
+    private var cachedSeriesInfoId: Int = 0
+
     // Channel list for live TV switching
     private val _channels = MutableStateFlow<List<LiveStream>>(emptyList())
     val channels: StateFlow<List<LiveStream>> = _channels.asStateFlow()
@@ -216,10 +222,23 @@ class PlayerViewModel @Inject constructor(
      * Fetches series info from API, finds the current episode position,
      * then returns the next episode (same season or first of next season).
      */
+    /** Session-cached series info; only the FIRST boundary hits the network, the rest reuse it. */
+    private suspend fun seriesInfoCached(): com.ooustream.iptv.data.model.SeriesInfo? {
+        cachedSeriesInfo?.let { if (cachedSeriesInfoId == seriesId) return it }
+        return try {
+            val info = contentRepository.getSeriesInfo(seriesId)
+            cachedSeriesInfo = info
+            cachedSeriesInfoId = seriesId
+            info
+        } catch (_: Exception) {
+            null // transient failure — caller treats this as "couldn't look up", not "exhausted"
+        }
+    }
+
     suspend fun resolveNextEpisode(): NextEpisodeResult? {
         if (seriesId == 0) return null
         return try {
-            val info = contentRepository.getSeriesInfo(seriesId)
+            val info = seriesInfoCached() ?: return null
             val episodesMap = info.episodes ?: return null
 
             // Sort season keys numerically

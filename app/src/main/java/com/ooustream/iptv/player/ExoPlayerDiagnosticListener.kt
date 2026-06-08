@@ -21,6 +21,9 @@ class ExoPlayerDiagnosticListener(
     var channelName: String = "unknown"
 ) : Player.Listener, AnalyticsListener {
 
+    /** Invoked on the first rendered video frame — the fragment uses it to crossfade out the art backdrop. */
+    var onFirstFrame: (() -> Unit)? = null
+
     private var lastBufferingStart = 0L
     private var lastBandwidthLogTime = 0L
 
@@ -69,6 +72,7 @@ class ExoPlayerDiagnosticListener(
 
     override fun onRenderedFirstFrame() {
         logger.logAppEvent("FIRST_FRAME_RENDERED", "channel=$channelName")
+        onFirstFrame?.invoke()
     }
 
     override fun onDroppedVideoFrames(
