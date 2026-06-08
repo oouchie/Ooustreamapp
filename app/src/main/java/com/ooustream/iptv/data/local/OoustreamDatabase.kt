@@ -14,6 +14,7 @@ import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
 import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
+import com.ooustream.iptv.data.local.dao.VodCastDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
 import com.ooustream.iptv.data.local.dao.WatchProgressDao
 import com.ooustream.iptv.data.local.entity.BlockedCategoryEntity
@@ -31,6 +32,7 @@ import com.ooustream.iptv.data.local.entity.SearchIndexEntity
 import com.ooustream.iptv.data.local.entity.SearchIndexFts
 import com.ooustream.iptv.data.local.entity.WatchAnalyticsEntity
 import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
+import com.ooustream.iptv.data.local.entity.VodCastEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 
 @Database(
@@ -50,9 +52,10 @@ import com.ooustream.iptv.data.local.entity.WatchProgressEntity
         EpgPatternEntity::class,
         PosterCacheEntity::class,
         SeriesTrackingEntity::class,
-        BlockedCategoryEntity::class
+        BlockedCategoryEntity::class,
+        VodCastEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class OoustreamDatabase : RoomDatabase() {
@@ -70,4 +73,5 @@ abstract class OoustreamDatabase : RoomDatabase() {
     abstract fun posterCacheDao(): PosterCacheDao
     abstract fun seriesTrackingDao(): SeriesTrackingDao
     abstract fun blockedCategoryDao(): BlockedCategoryDao
+    abstract fun vodCastDao(): VodCastDao
 }

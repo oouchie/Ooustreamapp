@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.app.AlertDialog
@@ -67,6 +68,12 @@ class MainActivity : FragmentActivity() {
         }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Phone: resize the window when the soft keyboard appears so scrollable forms (Login,
+        // search inputs) can pan their focused field above the IME. TV has no soft keyboard.
+        if (!DeviceUtils.isTV(this)) {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
 
         setupSidebar()
         setupBottomNavigation()
@@ -170,6 +177,20 @@ class MainActivity : FragmentActivity() {
         val hideNav = fragment is OoustreamPlaybackFragment || fragment is MultiViewFragment
                 || fragment is IntroSplashFragment || fragment is LoginFragment
         nav.visibility = if (hideNav) View.GONE else View.VISIBLE
+
+        // Reclaim the reserved nav strip when the bar is hidden — otherwise main_container keeps
+        // its 56dp bottom margin and a dead black bar sits under the fullscreen player / MultiView
+        // / Login. Mirror the margin to the bar's visibility.
+        findViewById<View>(R.id.main_container)?.let { container ->
+            (container.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                val target = if (hideNav) 0
+                    else resources.getDimensionPixelSize(R.dimen.bottom_nav_height)
+                if (lp.bottomMargin != target) {
+                    lp.bottomMargin = target
+                    container.layoutParams = lp
+                }
+            }
+        }
 
         // Silently update the selected item (don't re-trigger listener)
         if (itemId != null && nav.selectedItemId != itemId) {
@@ -450,5 +471,16 @@ class MainActivity : FragmentActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.main_container, LoginFragment())
             .commit()
+        // Login commits don't hit the back-stack listener, so hide the nav chrome deterministically
+        // (logout arrives here from Home where the bar is visible).
+        bottomNav?.visibility = View.GONE
+        findViewById<View>(R.id.main_container)?.let { container ->
+            (container.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                if (lp.bottomMargin != 0) {
+                    lp.bottomMargin = 0
+                    container.layoutParams = lp
+                }
+            }
+        }
     }
 }

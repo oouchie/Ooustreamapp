@@ -1,11 +1,11 @@
 package com.ooustream.iptv.backup
 
 import android.os.Bundle
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 
-class ClearConfirmFragment : GuidedStepSupportFragment() {
+class ClearConfirmFragment : PhoneGuidedStepFragment() {
 
     override fun onCreateGuidance(savedInstanceState: Bundle?): GuidanceStylist.Guidance {
         return GuidanceStylist.Guidance(

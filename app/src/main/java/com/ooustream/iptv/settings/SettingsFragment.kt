@@ -8,7 +8,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.app.AlertDialog
 import androidx.fragment.app.viewModels
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
 import androidx.lifecycle.Lifecycle
@@ -18,6 +17,7 @@ import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.MainActivity
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 import com.ooustream.iptv.common.CrashLogger
 import com.ooustream.iptv.account.AccountDashboardFragment
 import com.ooustream.iptv.backup.BackupFragment
@@ -32,7 +32,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class SettingsFragment : GuidedStepSupportFragment() {
+class SettingsFragment : PhoneGuidedStepFragment() {
 
     companion object {
         private const val ACTION_ACCOUNT = 1L

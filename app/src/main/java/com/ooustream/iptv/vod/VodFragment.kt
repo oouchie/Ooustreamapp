@@ -77,11 +77,14 @@ class VodFragment : Fragment(), KeyEventHandler {
 
         navHints.text = "OK: Play Movie \u2022 Long-press: More Info \u2022 Back: Home"
 
-        // Hide TV-only elements on mobile + enable touch passthrough on Leanback grids
+        // Mobile: keep the header visible — its search icon is the ONLY in-screen movie filter,
+        // and the bottom nav's Search tab is a different (global) search. Hide just the decorative
+        // branding so the bar reads as a phone toolbar (logo + clock + search). Touch passthrough
+        // on the Leanback grid (it intercepts the first tap for focus otherwise).
         if (!DeviceUtils.isTV(requireContext())) {
             navHints.visibility = View.GONE
-            view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
-            // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
+            view.findViewById<View>(R.id.header_center_logo)?.visibility = View.GONE
+            view.findViewById<View>(R.id.header_title)?.visibility = View.GONE
             posterGrid.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             posterGrid.isFocusableInTouchMode = false
         }

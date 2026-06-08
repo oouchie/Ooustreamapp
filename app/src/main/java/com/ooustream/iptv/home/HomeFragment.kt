@@ -102,8 +102,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private var heroDwellJob: Job? = null
     private var heroPreviewActive = false
     private var isLowMemoryDevice = false
-    // Most-recent Continue Watching item — drives the hero "Resume" CTA (Jump back in)
-    private var latestResumeItem: WatchProgressEntity? = null
     // Lazy-load guard: below-the-fold rows bind only after first scroll / fallback
     private var belowFoldStarted = false
     private var heroContentOverlay: View? = null // LinearLayout with title/genre/buttons
@@ -499,12 +497,17 @@ class HomeFragment : Fragment(), KeyEventHandler {
         genreRowsContainer = view.findViewById(R.id.genre_rows_container)
         heroGreeting = view.findViewById(R.id.hero_greeting)
 
-        // On mobile: let touch events pass directly to grid children (Leanback grids intercept first tap for focus)
+        // On mobile: let touch events pass directly to grid children. This must MATCH the
+        // VOD/Series idiom — FOCUS_AFTER_DESCENDANTS + isFocusableInTouchMode=false. Setting
+        // isFocusableInTouchMode=true (the previous code, contradicting its own comment) makes
+        // each Leanback row a focus contender on drag-start/empty-area touches, so a vertical
+        // finger-scroll first fights the grid for focus before the NestedScrollView takes over.
         if (!DeviceUtils.isTV(requireContext())) {
             val grids = listOf(continueWatchingRow, newEpisodesRow, forYouRow,
                 forYouLiveRow, sectionsRow, trendingRow, trendingSeriesRow, top10Row)
             for (grid in grids) {
-                grid.isFocusableInTouchMode = true
+                grid.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+                grid.isFocusableInTouchMode = false
             }
         }
     }
@@ -936,7 +939,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 clipToPadding = false
                 clipChildren = false
                 isFocusable = true
-                isFocusableInTouchMode = !DeviceUtils.isTV(requireContext())
+                // Always false: with descendantFocusability=afterDescendants the row is a D-pad
+                // focus host on TV (isFocusable=true) and a transparent passthrough on touch
+                // (matches the static rows + the VOD/Series idiom). It must NOT be a touch-mode
+                // focus contender on either platform.
+                isFocusableInTouchMode = false
                 descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                 setItemSpacing(spacingMd)
             }
@@ -1017,22 +1024,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private fun updateContinueWatchingRow(items: List<WatchProgressEntity>) {
         cwObjectAdapter.safeReplaceAll(items)
         toggleRow(continueWatchingLabel, continueWatchingRow, items.isNotEmpty())
-        // Jump back in: most-recent item becomes the hero's primary action
-        latestResumeItem = items.firstOrNull()
-        refreshHeroResumeCta()
-    }
-
-    /** Hero primary button resumes the latest Continue Watching item when one exists. */
-    private fun refreshHeroResumeCta() {
-        if (!::heroWatchNow.isInitialized) return
-        val resume = latestResumeItem
-        heroWatchNow.text = if (resume != null) {
-            val name = resume.name
-            val short = if (name.length > 20) name.take(20).trimEnd() + "…" else name
-            "▶ Resume: $short"
-        } else {
-            getString(R.string.watch_now)
-        }
     }
 
     private fun playFeaturedHero() {
@@ -1288,7 +1279,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 clipToPadding = false
                 clipChildren = false
                 isFocusable = true
-                isFocusableInTouchMode = !DeviceUtils.isTV(requireContext())
+                // Always false: with descendantFocusability=afterDescendants the row is a D-pad
+                // focus host on TV (isFocusable=true) and a transparent passthrough on touch
+                // (matches the static rows + the VOD/Series idiom). It must NOT be a touch-mode
+                // focus contender on either platform.
+                isFocusableInTouchMode = false
                 descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                 setItemSpacing(spacingMd)
             }
@@ -1714,18 +1709,15 @@ class HomeFragment : Fragment(), KeyEventHandler {
             }
         }
 
+        // Primary action is a clear PLAY of the movie shown in the hero. (Resume of the last
+        // watched title lives in the Continue Watching row directly below — it shouldn't hijack
+        // the hero's primary button into playing a different movie than the one on screen.)
+        heroWatchNow.text = getString(R.string.hero_play)
         heroWatchNow.setOnClickListener {
-            // Jump back in: resume the latest Continue Watching item when one exists,
-            // otherwise play the featured hero title.
-            val resume = latestResumeItem
-            if (resume != null) {
-                navigateToContinueWatching(resume)
-            } else {
-                playFeaturedHero()
-            }
+            playFeaturedHero()
         }
 
-        // "More Info" button — same as Watch Now for now
+        // "More Info" opens the detail page for the hero movie.
         heroMoreInfo.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 if (DeviceUtils.isTV(requireContext())) {
@@ -1737,11 +1729,27 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
             }
         }
-        // "More Info" always plays the featured hero title, so it stays reachable
-        // even when the primary button has switched to Resume.
         heroMoreInfo.setOnClickListener {
-            playFeaturedHero()
+            openFeaturedHeroDetail()
         }
+    }
+
+    /** Open the VOD detail page for the movie currently shown in the hero. */
+    private fun openFeaturedHeroDetail() {
+        if (!isAdded) return
+        val item = featuredItems.getOrNull(heroIndex) ?: return
+        val vodId = item.streamId.toIntOrNull() ?: return
+        val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
+            vodId = vodId,
+            vodName = item.title,
+            coverUrl = item.backdropUrl,
+            containerExtension = item.containerExtension
+        )
+        requireActivity().supportFragmentManager.beginTransaction()
+            .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
+            .replace(R.id.main_container, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     @SuppressLint("ClickableViewAccessibility")

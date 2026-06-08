@@ -3,20 +3,37 @@ package com.ooustream.iptv.backup
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.viewModels
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.ooustream.iptv.common.DeviceUtils
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class BackupFragment : GuidedStepSupportFragment() {
+class BackupFragment : PhoneGuidedStepFragment() {
 
     private val viewModel: BackupViewModel by viewModels()
+
+    // SAF picker: read the bytes of a chosen .ooubackup file and restore (the export is encrypted,
+    // so this — not the paste-JSON box — is how a phone user restores an exported backup).
+    private val importFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            val bytes = runCatching {
+                requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }.getOrNull()
+            if (bytes != null) {
+                viewModel.importBackupEncrypted(bytes)
+            } else {
+                Toast.makeText(requireContext(), "Could not read that file", Toast.LENGTH_SHORT).show()
+            }
+        }
 
     override fun onCreateGuidance(savedInstanceState: Bundle?): GuidanceStylist.Guidance {
         return GuidanceStylist.Guidance(
@@ -54,6 +71,19 @@ class BackupFragment : GuidedStepSupportFragment() {
                 .build()
         )
 
+        // Phone: a real file picker for the encrypted .ooubackup export (pasting multi-line JSON
+        // into a Leanback inline editor is impractical on a touch keyboard, and the paste path
+        // can't decrypt the exported file anyway).
+        if (!DeviceUtils.isTV(requireContext())) {
+            actions.add(
+                GuidedAction.Builder(requireContext())
+                    .id(ACTION_IMPORT_FILE)
+                    .title("Import from File")
+                    .description("Restore from a saved .ooubackup file")
+                    .build()
+            )
+        }
+
         actions.add(
             GuidedAction.Builder(requireContext())
                 .id(ACTION_CLEAR)
@@ -75,6 +105,8 @@ class BackupFragment : GuidedStepSupportFragment() {
                     viewModel.importBackup(json)
                 }
             }
+
+            ACTION_IMPORT_FILE -> importFileLauncher.launch(arrayOf("*/*"))
 
             ACTION_CLEAR -> showClearConfirmation()
         }
@@ -154,5 +186,6 @@ class BackupFragment : GuidedStepSupportFragment() {
         private const val ACTION_IMPORT = 2L
         private const val ACTION_IMPORT_CONFIRM = 3L
         private const val ACTION_CLEAR = 4L
+        private const val ACTION_IMPORT_FILE = 5L
     }
 }

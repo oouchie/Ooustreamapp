@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Episode
 import java.text.SimpleDateFormat
@@ -25,18 +26,24 @@ class EpisodeRecyclerAdapter(
     /** Map of episode streamId -> watch progress. Set externally, triggers rebind. */
     var watchProgressMap: Map<String, WatchProgressEntity> = emptyMap()
         set(value) {
+            if (field == value) return
             field = value
-            // Resubmit current list to trigger DiffUtil-based rebind
-            val current = currentList.toList()
-            submitList(null)
-            submitList(current)
+            // Rebind visible rows IN PLACE so the watched-check / progress-bar refresh.
+            // Do NOT submitList(null)+submitList(current): the null submit empties the
+            // adapter for a frame, collapsing the RecyclerView to 0 height and jolting the
+            // parent NestedScrollView on every onResume (return from playback). The list
+            // identity/count is unchanged here — only per-row progress visuals change.
+            if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
         }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EpisodeViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_episode_card, parent, false)
         view.isFocusable = true
-        view.isFocusableInTouchMode = true
+        // TV only: a focusableInTouchMode row inside the detail NestedScrollView makes the
+        // first tap a focus event that auto-scrolls the page to the row. On phone, let the
+        // click fire without grabbing focus.
+        view.isFocusableInTouchMode = DeviceUtils.isTV(parent.context)
         return EpisodeViewHolder(view)
     }
 

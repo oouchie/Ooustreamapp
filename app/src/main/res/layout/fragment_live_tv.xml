@@ -51,6 +51,7 @@
 
             <!-- Channels Panel (33%) - Glass Card -->
             <FrameLayout
+                android:id="@+id/channels_panel"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="33"

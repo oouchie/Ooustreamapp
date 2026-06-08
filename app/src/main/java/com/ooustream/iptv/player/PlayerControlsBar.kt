@@ -2,11 +2,13 @@ package com.ooustream.iptv.player
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -33,6 +35,7 @@ import java.util.Locale
  * Cinematic bottom-anchored controls bar overlay for the player.
  * Adapts to content type: Live TV (logo + EPG), VOD (poster + seek), Series (poster + episode info).
  */
+@SuppressLint("ClickableViewAccessibility")
 class PlayerControlsBar(context: Context) : FrameLayout(context) {
 
     // Views
@@ -64,6 +67,13 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onSeekBack: (() -> Unit)? = null
     var onSeekForward: (() -> Unit)? = null
     var onScrimTap: (() -> Unit)? = null
+    /**
+     * Mobile: forward empty-area touches on the (full-screen) controls bar to the player's
+     * gesture pipeline. Without this, while controls are visible the bar swallows every touch
+     * and double-tap-seek / drag volume-brightness / fling-zap / long-press-speed all go dead
+     * for the whole auto-hide window. Returns true if the gesture pipeline handled the event.
+     */
+    var onScrimTouch: ((MotionEvent) -> Boolean)? = null
     var onExternalPlayer: (() -> Unit)? = null
     var onTracksClicked: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
@@ -96,6 +106,12 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
 
         // Mobile: tap on the scrim/background area dismisses controls
         setOnClickListener { onScrimTap?.invoke() }
+
+        // Mobile: route empty-area touches through the player's gesture pipeline so a visible
+        // controls bar doesn't kill the touch gestures. Falls through (returns false) when no
+        // handler is wired (TV) so the click listener above still fires. Child widgets
+        // (play/pause, seek bar, action buttons) consume their own touches and are unaffected.
+        setOnTouchListener { _, ev -> onScrimTouch?.invoke(ev) ?: false }
 
         // Start hidden — PlayerControlsManager controls visibility
         visibility = GONE
@@ -401,7 +417,13 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         val btn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dp(2)
+                marginEnd = dp(2)
+            }
             isFocusable = true
             isClickable = true
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -473,7 +495,13 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         val btn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dp(2)
+                marginEnd = dp(2)
+            }
             isFocusable = true
             isClickable = true
             setPadding(dp(8), dp(8), dp(8), dp(8))

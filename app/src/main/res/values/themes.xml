@@ -28,4 +28,19 @@
         <item name="playbackProgressSecondaryColor">@color/playback_progress_buffered</item>
         <item name="playbackControlsIconHighlightColor">@color/focus_gold</item>
     </style>
+
+    <!-- Phone-only GuidedStep theme: widens the actions pane to ~full width so the settings/
+         confirm/PIN menus aren't crammed into ~42% of a portrait phone. Applied via
+         PhoneGuidedStepFragment.onProvideTheme() ONLY when !isTV — TV keeps Leanback defaults.
+         Brand overrides mirror Theme.Ooustream so the dark/gold styling is consistent. -->
+    <style name="Theme.Ooustream.GuidedStep.Phone" parent="Theme.Leanback.GuidedStep">
+        <item name="guidedActionContentWidthWeight">@dimen/guidedstep_actions_width_weight_phone</item>
+        <item name="defaultBrandColor">@color/aurora_bg_deep</item>
+        <item name="defaultBrandColorDark">#040408</item>
+        <item name="android:windowBackground">@color/aurora_bg_deep</item>
+        <item name="android:colorBackground">@color/aurora_bg_deep</item>
+        <item name="android:colorAccent">@color/focus_gold</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+    </style>
 </resources>

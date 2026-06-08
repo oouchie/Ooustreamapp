@@ -226,14 +226,25 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ROW 2: Action buttons (populated programmatically) -->
-        <LinearLayout
-            android:id="@+id/action_buttons_row"
+        <!-- ROW 2: Action buttons (populated programmatically). Wrapped in a HorizontalScrollView
+             so the row scrolls instead of clipping its buttons on a narrow phone (8-9 buttons ×
+             48dp overflows ~360dp). fillViewport keeps the buttons centered on wide TV screens
+             where they don't fill the width. -->
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:gravity="center"
-            android:orientation="horizontal" />
+            android:fillViewport="true"
+            android:scrollbars="none"
+            android:overScrollMode="never">
+
+            <LinearLayout
+                android:id="@+id/action_buttons_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
     </LinearLayout>
 
 </FrameLayout>

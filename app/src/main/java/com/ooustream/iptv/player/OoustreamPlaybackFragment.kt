@@ -2553,6 +2553,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
         }
         attachToSurfaces(rootView)
+
+        // The controls bar is a full-screen overlay; when it's visible it sits above the surface
+        // and would swallow every gesture. Forward its empty-area touches into the SAME pipeline
+        // so double-tap-seek / drag volume-brightness / fling-zap / long-press-speed keep working
+        // while controls are shown (single tap still toggles controls via onSingleTapConfirmed).
+        controlsBar?.onScrimTouch = { ev -> touchListener.onTouch(controlsBar, ev) }
     }
 
     private enum class VerticalScrollMode { NONE, VOLUME, BRIGHTNESS }

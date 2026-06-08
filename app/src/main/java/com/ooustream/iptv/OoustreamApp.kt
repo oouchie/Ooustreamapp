@@ -3,7 +3,9 @@ package com.ooustream.iptv
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.ImageLoader
@@ -19,6 +21,7 @@ import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.StreamDiagnosticLogger
 import com.ooustream.iptv.recommendation.NewEpisodeSyncWorker
 import com.ooustream.iptv.recommendation.ScoreRefreshWorker
+import com.ooustream.iptv.recommendation.VodCastBackfillWorker
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -55,6 +58,7 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
 
         scheduleScoreRefresh()
         scheduleNewEpisodeSync()
+        scheduleVodCastBackfill()
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -90,6 +94,25 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "new_episode_sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    /**
+     * Gently backfill movie cast for actor search. Runs only when connected; each pass handles a
+     * small batch and stops once the whole library is cached (see [VodCastBackfillWorker]).
+     */
+    private fun scheduleVodCastBackfill() {
+        val request = PeriodicWorkRequestBuilder<VodCastBackfillWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "vod_cast_backfill",
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )

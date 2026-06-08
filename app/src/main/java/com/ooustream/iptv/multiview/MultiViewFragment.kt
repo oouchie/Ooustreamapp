@@ -146,6 +146,11 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
         topBar = view.findViewById(R.id.top_bar)
         bottomBar = view.findViewById(R.id.bottom_bar)
         emptyState = view.findViewById(R.id.empty_state)
+        // Phone has no D-pad OK — say "tap" instead of "Press OK".
+        if (!DeviceUtils.isTV(requireContext())) {
+            view.findViewById<android.widget.TextView>(R.id.empty_state_hint)?.text =
+                "Tap a screen to pick a channel"
+        }
 
         slotFrames[0] = view.findViewById(R.id.slot_1)
         slotFrames[1] = view.findViewById(R.id.slot_2)
@@ -194,14 +199,20 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                 }
             }
 
-            // Mobile touch: tap to select slot + switch audio, long-press to change channel
+            // Mobile touch: tap an EMPTY slot to pick a channel (there's no D-pad OK on a phone,
+            // so without this the whole feature is a dead grid of empty boxes on entry); tap a
+            // FILLED slot to select it + switch audio; long-press a filled slot to change channel.
             if (!DeviceUtils.isTV(requireContext())) {
                 slotFrames[i]?.setOnClickListener {
                     viewModel.setFocusedSlot(i)
-                    playerManager?.setFocusedSlot(i)
-                    playerManager?.setAudioSlot(i)
-                    slotFrames[i]?.requestFocus()
-                    showControls()
+                    if (viewModel.slots.value[i].channel == null) {
+                        openChannelPicker(i)
+                    } else {
+                        playerManager?.setFocusedSlot(i)
+                        playerManager?.setAudioSlot(i)
+                        slotFrames[i]?.requestFocus()
+                        showControls()
+                    }
                 }
                 slotFrames[i]?.setOnLongClickListener {
                     viewModel.setFocusedSlot(i)

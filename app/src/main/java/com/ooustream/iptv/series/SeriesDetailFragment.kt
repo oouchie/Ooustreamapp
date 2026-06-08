@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
@@ -235,9 +236,15 @@ class SeriesDetailFragment : Fragment() {
             if (tabs.isNotEmpty()) {
                 seasonsLabel.visibility = View.VISIBLE
                 seasonsRow.visibility = View.VISIBLE
-                seasonsRow.post {
-                    if (seasonsAdapter.size() > 0) {
-                        seasonsRow.requestFocus()
+                // TV only: auto-focus the seasons row so the D-pad lands somewhere useful.
+                // On a phone this requestFocus makes the parent NestedScrollView auto-scroll
+                // to the (below-the-header) seasons row on load, yanking the poster/title
+                // off-screen. Touch users don't need auto-focus.
+                if (DeviceUtils.isTV(requireContext())) {
+                    seasonsRow.post {
+                        if (seasonsAdapter.size() > 0) {
+                            seasonsRow.requestFocus()
+                        }
                     }
                 }
             }
@@ -269,9 +276,13 @@ class SeriesDetailFragment : Fragment() {
                 }
                 Log.i(TAG, "collectEpisodes: submitted ${episodes.size} items to RecyclerView adapter")
 
-                episodesList.post {
-                    if (!seasonsRow.hasFocus() && episodesRvAdapter.itemCount > 0) {
-                        episodesList.requestFocus()
+                // TV only — same reason as the seasons row above: on a phone this auto-scrolls
+                // the NestedScrollView down to the episode list on load.
+                if (DeviceUtils.isTV(requireContext())) {
+                    episodesList.post {
+                        if (!seasonsRow.hasFocus() && episodesRvAdapter.itemCount > 0) {
+                            episodesList.requestFocus()
+                        }
                     }
                 }
             } else {

@@ -1,11 +1,13 @@
 package com.ooustream.iptv.vod
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.fragment.app.Fragment
@@ -16,6 +18,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import coil.load
 import coil.request.CachePolicy
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.PosterUrlRewriter
 import com.ooustream.iptv.common.FragmentTransitions
 import com.ooustream.iptv.common.TransitionDirection
@@ -69,6 +72,36 @@ class VodDetailFragment : Fragment() {
         val plot = view.findViewById<TextView>(R.id.vod_plot)
         val playButton = view.findViewById<Button>(R.id.vod_play_button)
         val loadingIndicator = view.findViewById<ProgressBar>(R.id.loading_indicator)
+
+        // Phone: the cover + metadata are laid out side-by-side (a 10-foot/landscape pattern),
+        // which squeezes both into ~half the width in portrait. Stack the poster over the
+        // metadata, give the metadata full width, and let the plot run long (the ScrollView
+        // scrolls). Also stop auto-focusing the Play button — on a touch device that just paints
+        // a "focused" gold state with nothing driving it.
+        val isTv = DeviceUtils.isTV(requireContext())
+        if (!isTv) {
+            val density = resources.displayMetrics.density
+            view.findViewById<LinearLayout>(R.id.vod_info_row)?.let { row ->
+                row.orientation = LinearLayout.VERTICAL
+                row.gravity = Gravity.START
+                row.setPadding(row.paddingLeft, (96 * density).toInt(), row.paddingRight, row.paddingBottom)
+            }
+            (cover.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                lp.gravity = Gravity.CENTER_HORIZONTAL
+                cover.layoutParams = lp
+            }
+            view.findViewById<LinearLayout>(R.id.vod_metadata)?.let { meta ->
+                (meta.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                    lp.weight = 0f
+                    lp.topMargin = (16 * density).toInt()
+                    meta.layoutParams = lp
+                }
+                meta.setPadding(0, meta.paddingTop, 0, meta.paddingBottom)
+            }
+            plot.maxLines = Integer.MAX_VALUE
+            playButton.isFocusableInTouchMode = false
+        }
 
         // Set title immediately from arguments
         title.text = vodName
@@ -223,8 +256,8 @@ class VodDetailFragment : Fragment() {
                         plot.visibility = View.VISIBLE
                     }
 
-                    // Request focus on play button once info is loaded
-                    playButton.requestFocus()
+                    // Request focus on play button once info is loaded (TV/D-pad only)
+                    if (isTv) playButton.requestFocus()
                 }
             }
         }
@@ -252,8 +285,8 @@ class VodDetailFragment : Fragment() {
         // Load the movie info from API
         viewModel.loadVodInfo(vodId)
 
-        // Request focus on play button immediately (even before API returns)
-        playButton.post { playButton.requestFocus() }
+        // Request focus on play button immediately (even before API returns) — TV/D-pad only
+        if (isTv) playButton.post { playButton.requestFocus() }
     }
 
     override fun onResume() {

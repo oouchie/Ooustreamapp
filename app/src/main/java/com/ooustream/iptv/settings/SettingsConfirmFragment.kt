@@ -1,16 +1,16 @@
 package com.ooustream.iptv.settings
 
 import android.os.Bundle
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 
 /**
  * A reusable confirmation overlay for settings actions.
  * Uses the GuidedStepSupportFragment overlay pattern consistent
  * with the rest of the Leanback UI.
  */
-class SettingsConfirmFragment : GuidedStepSupportFragment() {
+class SettingsConfirmFragment : PhoneGuidedStepFragment() {
 
     override fun onCreateGuidance(savedInstanceState: Bundle?): GuidanceStylist.Guidance {
         return GuidanceStylist.Guidance(

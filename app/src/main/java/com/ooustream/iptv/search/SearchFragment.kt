@@ -534,7 +534,8 @@ class SearchFragment : Fragment(), KeyEventHandler {
                         imageUrl = vod.streamIcon,
                         rating = vod.rating,
                         extension = vod.containerExtension,
-                        type = "vod"
+                        type = "vod",
+                        castMatch = results.castMatches["vod_${vod.streamId}"]
                     )
                 )
             }
@@ -558,7 +559,8 @@ class SearchFragment : Fragment(), KeyEventHandler {
                         imageUrl = series.cover,
                         rating = series.rating,
                         extension = null,
-                        type = "series"
+                        type = "series",
+                        castMatch = results.castMatches["series_${series.seriesId}"]
                     )
                 )
             }

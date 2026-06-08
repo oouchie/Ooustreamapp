@@ -179,7 +179,8 @@ class SearchViewModel @Inject constructor(
         return SearchResults(
             live = contentFilterManager.filterContent("live", results.live) { it.categoryId },
             vod = contentFilterManager.filterContent("vod", results.vod) { it.categoryId },
-            series = contentFilterManager.filterContent("series", results.series) { it.categoryId }
+            series = contentFilterManager.filterContent("series", results.series) { it.categoryId },
+            castMatches = results.castMatches
         )
     }
 

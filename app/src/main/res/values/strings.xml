@@ -98,6 +98,7 @@
 
     <!-- Hero / Home -->
     <string name="watch_now">Watch Now</string>
+    <string name="hero_play">▶ Play</string>
     <string name="watch_trailer">Trailer</string>
     <string name="featured">Featured</string>
     <string name="resume">Resume</string>

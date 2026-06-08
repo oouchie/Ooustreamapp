@@ -56,6 +56,11 @@
     <dimen name="top10_poster_width">110dp</dimen>
     <dimen name="top10_number_size">80sp</dimen>
 
+    <!-- Phone GuidedStep: actions-pane width weight (vs the guidance pane's fixed weight of 1).
+         Leanback default is 0.714 → actions get only ~42% of the width, which crams the settings
+         menu into less than half a portrait phone. ~40 gives the actions list ~97% of the width. -->
+    <item name="guidedstep_actions_width_weight_phone" format="float" type="dimen">40.0</item>
+
     <!-- Grid -->
     <integer name="poster_columns">3</integer>
     <integer name="category_columns">2</integer>

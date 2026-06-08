@@ -23,7 +23,9 @@ data class PosterItem(
     val type: String, // "vod" or "series"
     val watchCompleted: Boolean = false,
     val watchProgress: Float = 0f, // 0.0 - 1.0
-    val tmdbId: String? = null
+    val tmdbId: String? = null,
+    /** Set on search results that matched on an actor (not the title) → renders "Starring {actor}". */
+    val castMatch: String? = null
 )
 
 open class PosterPresenter : Presenter() {
@@ -56,6 +58,15 @@ open class PosterPresenter : Presenter() {
             rating.visibility = View.VISIBLE
         } else {
             rating.visibility = View.GONE
+        }
+
+        // "Starring {actor}" — only for search results matched on cast (always visible when set)
+        val starringView = root.findViewById<TextView>(R.id.poster_starring)
+        if (!poster.castMatch.isNullOrBlank()) {
+            starringView.text = "Starring ${poster.castMatch}"
+            starringView.visibility = View.VISIBLE
+        } else {
+            starringView.visibility = View.GONE
         }
 
         // Quality badge - parse from title + extension

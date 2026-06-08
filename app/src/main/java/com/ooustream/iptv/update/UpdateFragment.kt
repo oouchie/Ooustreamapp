@@ -3,18 +3,18 @@ package com.ooustream.iptv.update
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.viewModels
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class UpdateFragment : GuidedStepSupportFragment() {
+class UpdateFragment : PhoneGuidedStepFragment() {
 
     private val viewModel: UpdateViewModel by viewModels()
 

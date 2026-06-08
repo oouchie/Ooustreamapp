@@ -117,12 +117,31 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
-        // Hide TV-only UI on mobile + enable touch passthrough on Leanback grids
+        // Phone: re-stack the 10-foot 3-panel layout for a portrait screen.
+        //  - KEEP the header visible (it carries the channel-filter search + MultiView entry —
+        //    the bottom nav has neither). The content already clears it via screen_top_clearance.
+        //  - DROP the 45%-wide preview panel: on phone the preview never auto-starts and tapping
+        //    it is a no-op, so it was pure dead width.
+        //  - Re-weight categories slim / channels wide so the channel list isn't trapped in a
+        //    ~33%-width column.
+        //  - Touch passthrough on the Leanback grid (intercepts first tap for focus otherwise).
         if (!DeviceUtils.isTV(requireContext())) {
-            view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
-            // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
             channelsList.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             channelsList.isFocusableInTouchMode = false
+
+            view.findViewById<View>(R.id.preview_panel)?.visibility = View.GONE
+            view.findViewById<View>(R.id.categories_panel)?.let { panel ->
+                (panel.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.weight = 32f
+                    panel.layoutParams = lp
+                }
+            }
+            view.findViewById<View>(R.id.channels_panel)?.let { panel ->
+                (panel.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.weight = 68f
+                    panel.layoutParams = lp
+                }
+            }
         }
 
         // Preview container — DPAD-Right from channels list focuses it, OK launches fullscreen.
@@ -134,8 +153,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         // playback. Trade-off: when no preview is running, DPAD-Right still focuses the
         // empty preview area and shows the "Select a channel to preview" placeholder,
         // which doubles as the hint.
-        previewContainer.isFocusable = true
-        previewContainer.isFocusableInTouchMode = true
+        // Preview is a D-pad/TV affordance only. On phone the panel is hidden (above) and a
+        // focusable empty container would just be a dead tab-stop.
+        val previewFocusable = DeviceUtils.isTV(requireContext())
+        previewContainer.isFocusable = previewFocusable
+        previewContainer.isFocusableInTouchMode = previewFocusable
         previewContainer.setOnClickListener {
             previewingChannel?.let { goFullscreen(it) }
         }

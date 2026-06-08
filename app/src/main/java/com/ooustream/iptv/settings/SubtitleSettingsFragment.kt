@@ -3,16 +3,16 @@ package com.ooustream.iptv.settings
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.Toast
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
 import androidx.media3.ui.CaptionStyleCompat
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 import com.ooustream.iptv.player.SubtitlePreferences
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class SubtitleSettingsFragment : GuidedStepSupportFragment() {
+class SubtitleSettingsFragment : PhoneGuidedStepFragment() {
 
     @Inject lateinit var subtitlePreferences: SubtitlePreferences
 

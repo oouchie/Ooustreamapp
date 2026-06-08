@@ -5,13 +5,13 @@ import android.text.InputType
 import android.view.View
 import android.widget.Toast
 import androidx.fragment.app.viewModels
-import androidx.leanback.app.GuidedStepSupportFragment
 import androidx.leanback.widget.GuidanceStylist
 import androidx.leanback.widget.GuidedAction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PhoneGuidedStepFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ParentalPinFragment : GuidedStepSupportFragment() {
+class ParentalPinFragment : PhoneGuidedStepFragment() {
 
     private val viewModel: ParentalViewModel by viewModels()
     private val settingsViewModel: ParentalSettingsViewModel by viewModels()

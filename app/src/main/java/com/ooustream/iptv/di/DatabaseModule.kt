@@ -17,6 +17,7 @@ import com.ooustream.iptv.data.local.dao.PosterCacheDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.SearchIndexDao
 import com.ooustream.iptv.data.local.dao.SeriesTrackingDao
+import com.ooustream.iptv.data.local.dao.VodCastDao
 import com.ooustream.iptv.data.local.dao.WatchAnalyticsDao
 import com.ooustream.iptv.data.local.dao.WatchProgressDao
 import dagger.Module
@@ -39,6 +40,20 @@ object DatabaseModule {
                     `poster_url` TEXT,
                     `backdrop_url` TEXT,
                     `fetched_at` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+        }
+    }
+
+    // v11→v12: Add vod_cast cache table (cast/director per movie, for actor search)
+    private val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `vod_cast` (
+                    `streamId` INTEGER NOT NULL PRIMARY KEY,
+                    `cast` TEXT NOT NULL DEFAULT '',
+                    `director` TEXT,
+                    `fetchedAt` INTEGER NOT NULL DEFAULT 0
                 )
             """.trimIndent())
         }
@@ -89,7 +104,7 @@ object DatabaseModule {
             OoustreamDatabase::class.java,
             "ooustream_db"
         )
-            .addMigrations(MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+            .addMigrations(MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
             .fallbackToDestructiveMigration() // safety net for ancient versions (pre-v8)
             .build()
     }
@@ -135,4 +150,7 @@ object DatabaseModule {
 
     @Provides
     fun provideBlockedCategoryDao(db: OoustreamDatabase): BlockedCategoryDao = db.blockedCategoryDao()
+
+    @Provides
+    fun provideVodCastDao(db: OoustreamDatabase): VodCastDao = db.vodCastDao()
 }

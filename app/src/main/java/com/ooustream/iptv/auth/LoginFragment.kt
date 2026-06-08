@@ -7,8 +7,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -16,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.DeviceUtils
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -28,6 +31,10 @@ class LoginFragment : Fragment() {
     private lateinit var passwordInput: EditText
     private lateinit var loginButton: Button
     private lateinit var statusText: TextView
+
+    // Resting (unfocused) button alpha. TV dims slightly to make D-pad focus obvious; on a
+    // phone there is no focus state so the button must stay at full opacity.
+    private var restAlpha = 0.9f
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -45,12 +52,36 @@ class LoginFragment : Fragment() {
         loginButton = view.findViewById(R.id.loginButton)
         statusText = view.findViewById(R.id.statusText)
 
+        val isTv = DeviceUtils.isTV(requireContext())
+        restAlpha = if (isTv) 0.9f else 1.0f
+
+        // Phone: widen the fixed 480dp card to fill a narrow screen (it would otherwise
+        // overflow with no horizontal scroll). TV / tablet keep the 480dp centered card.
+        if (!isTv) {
+            view.findViewById<LinearLayout>(R.id.login_card)?.let { card ->
+                card.layoutParams = card.layoutParams.apply {
+                    width = ViewGroup.LayoutParams.MATCH_PARENT
+                }
+            }
+        }
+
         // Login button click — server URL is hardcoded
         loginButton.setOnClickListener {
             val serverUrl = getString(R.string.default_server_url)
             val username = usernameInput.text.toString().trim()
             val password = passwordInput.text.toString().trim()
             viewModel.login(serverUrl, username, password)
+        }
+
+        // Phone fallback submit: with the keyboard up, the IME "Done" key must be able to
+        // sign in even if the button is scrolled under the keyboard.
+        passwordInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                loginButton.performClick()
+                true
+            } else {
+                false
+            }
         }
 
         // Focus animation for login button: scale up with gold outline on focus
@@ -73,15 +104,18 @@ class LoginFragment : Fragment() {
                     duration = 150
                     start()
                 }
-                v.alpha = 0.9f
+                v.alpha = restAlpha
             }
         }
 
-        // Slight dim on unfocused state to make focus more apparent
-        loginButton.alpha = 0.9f
+        // Resting alpha (full on phone, slight dim on TV to make focus apparent)
+        loginButton.alpha = restAlpha
 
-        // Auto-focus the username field for D-pad users
-        usernameInput.post { usernameInput.requestFocus() }
+        // Auto-focus the username field for D-pad users. On a phone this would pop the IME
+        // immediately over a non-scrolled card; let the user tap a field instead.
+        if (isTv) {
+            usernameInput.post { usernameInput.requestFocus() }
+        }
 
         observeAuthState()
     }
@@ -106,12 +140,12 @@ class LoginFragment : Fragment() {
                             statusText.text = state.message
                             statusText.setTextColor(Color.parseColor("#EF4444"))
                             loginButton.isEnabled = true
-                            loginButton.alpha = 0.9f
+                            loginButton.alpha = restAlpha
                         }
                         is AuthState.Idle -> {
                             statusText.visibility = View.GONE
                             loginButton.isEnabled = true
-                            loginButton.alpha = 0.9f
+                            loginButton.alpha = restAlpha
                         }
                     }
                 }

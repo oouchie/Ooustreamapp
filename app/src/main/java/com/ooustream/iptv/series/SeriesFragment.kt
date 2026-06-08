@@ -75,11 +75,13 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
         navHints.text = "OK: Series Detail \u2022 Long-press: More Info \u2022 Back: Home"
 
-        // Hide TV-only elements on mobile + enable touch passthrough on Leanback grids
+        // Mobile: keep the header visible — its search icon is the ONLY in-screen series filter
+        // (the bottom nav's Search tab is a different global search). Hide just the decorative
+        // branding. Touch passthrough on the Leanback grid (intercepts first tap for focus).
         if (!DeviceUtils.isTV(requireContext())) {
             navHints.visibility = View.GONE
-            view.findViewById<View>(R.id.frosted_header)?.visibility = View.GONE
-            // Let touch events pass directly to children (Leanback grids intercept first tap for focus)
+            view.findViewById<View>(R.id.header_center_logo)?.visibility = View.GONE
+            view.findViewById<View>(R.id.header_title)?.visibility = View.GONE
             posterGrid.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             posterGrid.isFocusableInTouchMode = false
         }

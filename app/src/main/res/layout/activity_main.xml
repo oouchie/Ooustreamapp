@@ -19,12 +19,15 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Bottom navigation bar (mobile only) -->
+    <!-- Bottom navigation bar (mobile only). Starts GONE so it never shows over the splash or
+         the Login screen (those commits don't hit the back-stack listener); syncBottomNav()
+         reveals it on the first content fragment. -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
         android:layout_height="@dimen/bottom_nav_height"
         android:layout_gravity="bottom"
+        android:visibility="gone"
         android:background="@color/aurora_bg_elevated"
         app:itemIconTint="@color/bottom_nav_item_color"
         app:itemTextColor="@color/bottom_nav_item_color"

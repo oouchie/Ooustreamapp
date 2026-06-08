@@ -35,8 +35,12 @@ class FavoritesAdapter(
         set(value) {
             if (field != value) {
                 field = value
-                isFirstLoad = true
-                // Full rebind required — view TYPE changes (grid vs list layout)
+                // Full rebind required — view TYPE changes (grid vs list layout).
+                // NOTE: do NOT re-arm isFirstLoad here. The staggered alpha fade in
+                // onViewAttachedToWindow is for the genuine first data load only; re-arming
+                // it on a user Grid/List toggle leaves it true (markFirstLoadComplete only
+                // fires on the next data emit), so every row recycled during a finger-scroll
+                // fades in — read as "the list flashes while scrolling".
                 notifyDataSetChanged()
             }
         }

@@ -55,6 +55,26 @@ class BackupViewModel @Inject constructor(
         }
     }
 
+    /** Restore from the raw bytes of an exported (encrypted) `.ooubackup` file. */
+    fun importBackupEncrypted(bytes: ByteArray) {
+        viewModelScope.launch {
+            _backupState.value = BackupState.Importing
+            _isLoading.value = true
+
+            backupService.importBackupEncrypted(bytes)
+                .onSuccess { count ->
+                    _backupState.value = BackupState.ImportSuccess(count)
+                    _toastEvent.emit("Restored $count items")
+                }
+                .onFailure { error ->
+                    _backupState.value = BackupState.Error(error.message ?: "Import failed")
+                    _error.emit(error.message ?: "Import failed")
+                }
+
+            _isLoading.value = false
+        }
+    }
+
     fun clearAllData() {
         viewModelScope.launch {
             _isLoading.value = true

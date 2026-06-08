@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="#0A0A0A"
-    android:padding="48dp">
+    android:padding="@dimen/overscan_horizontal">
 
     <!-- Header -->
     <LinearLayout
@@ -111,50 +111,54 @@
         android:clipToPadding="false"
         android:paddingBottom="16dp" />
 
-    <!-- Quick Actions -->
+    <!-- Quick Actions — equal thirds (0dp + weight) so the three buttons share the row width and
+         never clip off the edges on a narrow phone (was wrap_content + gravity=center, which
+         pushed "Block All Adult" and "Change PIN" past both edges). 48dp tall = Material touch. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center"
         android:layout_marginTop="16dp">
 
         <Button
             android:id="@+id/btn_block_adult"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
             android:text="Block All Adult"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_action_button_red"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:layout_marginEnd="12dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="8dp"
             android:focusable="true" />
 
         <Button
             android:id="@+id/btn_allow_all"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
             android:text="Allow All"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_action_button_green"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:layout_marginEnd="12dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="8dp"
             android:focusable="true" />
 
         <Button
             android:id="@+id/btn_change_pin"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
             android:text="Change PIN"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_action_button_gold"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:focusable="true" />
     </LinearLayout>
 

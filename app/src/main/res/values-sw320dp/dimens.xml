@@ -4,6 +4,10 @@
     <dimen name="overscan_margin">8dp</dimen>
     <dimen name="overscan_horizontal">8dp</dimen>
 
+    <!-- Browse grid: 2 columns on a 320-359dp phone so posters aren't postage stamps
+         (default phone is 3, tablet/TV is 4). -->
+    <integer name="poster_columns">2</integer>
+
     <!-- Cards -->
     <dimen name="card_poster_width">100dp</dimen>
     <dimen name="card_poster_height">150dp</dimen>

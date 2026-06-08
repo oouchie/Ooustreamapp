@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.BaseFragment
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.data.model.AuthResponse
 import com.ooustream.iptv.data.model.UserInfo
 import dagger.hilt.android.AndroidEntryPoint
@@ -69,6 +70,25 @@ class AccountDashboardFragment : BaseFragment() {
         expiryDate = view.findViewById(R.id.expiry_date)
         connectionGauge = view.findViewById(R.id.connection_gauge)
         outputFormats = view.findViewById(R.id.output_formats)
+
+        // Phone: the three cards are laid out side-by-side (a 10-foot dashboard). In portrait that
+        // squeezes each to ~100dp — clipping the 72sp day count and overflowing the 140dp gauge.
+        // Stack them vertically at full width (the ScrollView already scrolls).
+        if (!DeviceUtils.isTV(requireContext())) {
+            contentArea.orientation = LinearLayout.VERTICAL
+            val gap = (16 * resources.displayMetrics.density).toInt()
+            val last = contentArea.childCount - 1
+            for (i in 0 until contentArea.childCount) {
+                val card = contentArea.getChildAt(i)
+                (card.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                    lp.weight = 0f
+                    lp.marginEnd = 0
+                    lp.bottomMargin = if (i < last) gap else 0
+                    card.layoutParams = lp
+                }
+            }
+        }
     }
 
     private fun observeState() {

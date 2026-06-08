@@ -52,7 +52,7 @@ When building a version for update/release, follow these steps in order:
 
 ## Architecture
 - **DI**: Hilt (`@AndroidEntryPoint`, `@HiltViewModel`, `@Singleton`)
-- **Database**: Room v11 with FTS4 (not FTS5 — minSdk 21 compat), 16 entities, 13 DAOs
+- **Database**: Room v12 with FTS4 (not FTS5 — minSdk 21 compat), 17 entities, 14 DAOs
 - **Background**: WorkManager (periodic score refresh every 6h, new episode sync every 6h)
 - **Navigation**: Manual FragmentManager (no NavGraph)
 - **State**: StateFlow / MutableStateFlow
@@ -313,6 +313,13 @@ These features were scoped but deferred for a future release:
 - **Settings: Send Debug Log** — New action in SettingsFragment with confirmation dialog, optional issue description input, opens email chooser with pre-filled report. (`settings/SettingsFragment.kt`)
 - **App startup logging** — StreamDiagnosticLogger wired into NetworkMonitor at app start, APP_START event logged with version. (`OoustreamApp.kt`)
 
+### Debug-Log Triage Reference (reading customer `Repport.docx` exports)
+Conventions for interpreting the exported debug report so customer reports aren't misdiagnosed:
+- **The `RECENT CRASH LOG` section is NOT version-stamped.** It's a rolling file (`CrashLogger`) that survives app updates. The report **header** (`App: 3.8.0`) shows only the version installed *at export time*, NOT the version each crash ran on. Always line each `CRASH <date>` up against the ship dates in "Version Release History" before blaming the current build. (Real case: a customer on 3.8.0 had 5 `vod_grid` "Invalid item position -1" crashes that were all actually on 3.7.12, every one before the v3.7.13 fix shipped.) Only the per-session `DIAGNOSTIC LOG` blocks (which print `App Version:` in their header) tell you what version a given session ran on.
+- **Buffering diagnosis — refill time is the signal, not the bandwidth estimate.** `BUFFER_COMPLETE took=Nms` is how long a `BUFFERING→READY` refill took. Consistent 13–15s refills while `event=BANDWIDTH estimate=` peaks at 9–11Mbps means the estimate is catching bursts but **sustained throughput is low/unstable** = customer-side network bottleneck, not a device/app defect. Confirm with: `fps=24` when buffer is full but `fps=1–2` only when buffer is near-empty (`dropped=0`) → decoder is fine, player is starved. IPTV VOD/series are single-bitrate (no ABR rung to drop to), so a shrinking pipe can only buffer→drain→rebuffer. `DEVICE_TIER ... goodMtk=true` (e.g. mt8696/AFTKA) rules out a hardware-capability cause.
+- **Repeated `AUDIO_UNDERRUN` / `AUDIO_DISABLED` / `AUDIO_SINK_ERROR` usually ride on top of starvation** — the audio fallback ladder reacting to data not arriving in time (plus occasional source-stream timestamp discontinuities). Fix throughput first before treating these as an audio bug.
+- **`EPG_EMPTY` spam for all live channels is cosmetic/data, not a crash** — either a server-side EPG gap for that account or a fetch issue; never the cause of a crash/buffering report.
+
 ### Hotfixes (v3.3.x)
 - **Software video decoder fallback** (v3.3.2) — Frame watchdog auto-switches to software AVC decoder (`c2.android.*`/`OMX.google.*`) when hardware decoder fails to render frames. `rebuildPlayerWithSoftwareDecoder()` preserves position, listeners, glue. `AudioPipelineFactory.createSoftwareVideoRenderersFactory()` uses custom `MediaCodecSelector` that filters to software-only for video, keeps all decoders for audio.
 - **AC3/EAC3 FFmpeg audio fallback** (v3.3.3) — Fixes infinite crash loop on mt8695-based Fire TV Sticks (AFTSSS) where hardware MediaCodec falsely claims AC3/EAC3 `format_supported=YES` but crashes at runtime with `MediaCodecAudioRenderer error` (code 5001). Root cause: `onTracksChanged` re-enabled audio immediately after Stage 2 fallback disabled it (line `setTrackTypeDisabled(AUDIO, false)` in the English auto-select block). Three-stage audio recovery: (1) alternate track (different codec, prefer English), (1.5) `rebuildPlayerWithFfmpegPreferred()` — rebuilds ExoPlayer with `EXTENSION_RENDERER_MODE_PREFER` so FFmpeg handles AC3/EAC3 instead of hardware, (2) disable audio entirely. `audioDisabledByFallback` flag prevents `onTracksChanged` from undoing Stage 2. `isAudioDecoderError()` broadened to check `error.message` for "MediaCodecAudioRenderer". Core player listener (`corePlayerListener`) extracted to field for reuse across player rebuilds via `attachPlayerListener()`. (`player/OoustreamPlaybackFragment.kt`, `common/AudioPipelineFactory.kt`)
@@ -434,6 +441,7 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - v9: poster_cache table (proper Migration, preserves user data)
 - v10: series_tracking table (proper Migration, preserves user data)
 - v11: blocked_categories table for parental controls (proper Migration, preserves user data)
+- v12: vod_cast table (cast/director per movie, for actor/cast search). Proper Migration, additive (no user data touched).
 
 ### MANDATORY: Database Migration Rules
 - **NEVER use destructive migration for new DB versions.** Users have real data (favorites, watch progress, series tracking) that must survive updates.
@@ -443,6 +451,39 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **UNRELEASED (committed, NOT yet version-bumped / shipped — pending on-device verification)** — three
+  batched work streams, all build-verified (`assembleDebug` BUILD SUCCESSFUL) but NOT device-tested.
+  When shipping: bump version, update `update.json`, build release APKs, GitHub release, and convert this
+  bullet into a proper `v3.9.0`-style entry. **(1) Mobile touch & scroll P0+P1 sweep** — runtime
+  `DeviceUtils.isPhone()/isTV()` swaps on the single (TV-derived) layouts so the phone build stops being a
+  10-foot UI squeezed into portrait; TV path preserved. Fixes: 3 real touch-scroll bugs (Favorites
+  Grid/List toggle re-armed a per-row fade → flashes on scroll; Series-Detail load `requestFocus` yanked
+  the header off-screen + `watchProgressMap` setter `submitList(null)` collapsed the episode list every
+  onResume; player controls bar swallowed ALL gestures for its 15s visible window). Live TV phone re-stack
+  (drop dead 45% preview panel, re-weight channels 32/68, keep touch header); Login keyboard fix
+  (ScrollView + `adjustResize` in MainActivity + IME-Done submit + full-width card); nav bottom-bar no
+  longer flashes over splash/Login + dead 56dp bar removed under fullscreen; VOD/Series in-screen search
+  restored on phone; VOD-Detail portrait poster-over-metadata stack; Account 3-col → vertical; Home rows
+  corrected to the `FOCUS_AFTER_DESCENDANTS`+`isFocusableInTouchMode=false` passthrough idiom; player
+  action row wrapped in HorizontalScrollView; MultiView empty-slot tap opens the picker; all 7 GuidedStep
+  screens widened to ~full width on phone via new `common/PhoneGuidedStepFragment` base +
+  `Theme.Ooustream.GuidedStep.Phone` (`guidedActionContentWidthWeight` 0.714→40, phone-only via
+  `onProvideTheme`); Parental quick-action row un-clipped; Backup gained a phone SAF "Import from File"
+  that wires the previously-UI-less `importBackupEncrypted` (the export is AES/GCM-encrypted but the only
+  import path fed the *unencrypted* parser → restore was impossible). Audit report: `tasks/mobile-touch-scroll-audit.md`.
+  **(2) Home hero Play button** — hero primary is now `▶ Play` (plays the featured movie shown);
+  `More Info` opens that movie's `VodDetailFragment`. Removed the confusing v3.8.0 "Resume: {other title}"
+  hijack (`latestResumeItem`/`refreshHeroResumeCta` deleted) — resume lives in the Continue Watching row.
+  **(3) Actor / cast search** — search now matches cast/director. Series are free (bulk list carries
+  cast). Movies use a new `vod_cast` cache (DB v12): `ContentRepository.getVodInfo` upserts cast on every
+  detail open (opportunistic), and `VodCastBackfillWorker` (15-min periodic, CONNECTED, ~150/run @200ms,
+  resumable, daily-rescan-once-done) backfills the library gently. Cast-matched cards show a gold
+  "Starring {actor}" line (`PosterItem.castMatch` → `poster_starring`). NOTE: main search is
+  `ContentRepository.search` (client-side bulk-list filter), NOT the FTS index (offline fallback only).
+  New files: `common/PhoneGuidedStepFragment.kt`, `data/local/entity/VodCastEntity.kt`,
+  `data/local/dao/VodCastDao.kt`, `recommendation/VodCastBackfillWorker.kt`.
+
 - **v2.1.0** — Phase 4 premium playback UX (all overlays, track picker, controls bar)
 - **v2.1.1** — OTA update system fix, speed test accuracy fix
 - **v2.2.0** — Phase 4b audio system hardening (DefaultTrackSelector, AudioLogger, CrashLogger)
