@@ -4,8 +4,9 @@ import android.content.Context
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 
 /**
- * Shows a Resume / Play from Beginning dialog when watch progress exists.
- * If no progress, calls [onPlay] with forceBeginning=false immediately.
+ * Resumes silently when watch progress exists (Netflix-style) — no blocking modal. A brief toast tells
+ * the user where they resumed; "start over" lives on the in-player Restart control instead. If no
+ * meaningful progress, calls [onPlay] with forceBeginning=false immediately.
  */
 object ResumePlaybackHelper {
 
@@ -19,14 +20,13 @@ object ResumePlaybackHelper {
             return
         }
 
+        // Silent resume — no dialog. Let the user know where they picked up; the player's Restart
+        // button handles starting over.
         val resumeTime = formatTime(progress.position)
-        android.app.AlertDialog.Builder(context).apply {
-            setTitle("Resume Playback")
-            setMessage("You stopped at $resumeTime. Would you like to resume or start over?")
-            setPositiveButton("Resume from $resumeTime") { _, _ -> onPlay(false) }
-            setNegativeButton("Play from Beginning") { _, _ -> onPlay(true) }
-            setCancelable(true)
-        }.show()
+        android.widget.Toast.makeText(
+            context, "Resuming from $resumeTime", android.widget.Toast.LENGTH_SHORT
+        ).show()
+        onPlay(false)
     }
 
     private fun formatTime(ms: Long): String {

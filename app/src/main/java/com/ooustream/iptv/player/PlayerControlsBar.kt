@@ -66,6 +66,7 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
     var onAspectRatio: (() -> Unit)? = null
     var onSeekBack: (() -> Unit)? = null
     var onSeekForward: (() -> Unit)? = null
+    var onRestart: (() -> Unit)? = null   // VOD/Series: play from the beginning (replaces the resume modal's "start over")
     var onScrimTap: (() -> Unit)? = null
     /**
      * Mobile: forward empty-area touches on the (full-screen) controls bar to the player's
@@ -403,6 +404,7 @@ class PlayerControlsBar(context: Context) : FrameLayout(context) {
         addActionButton(R.drawable.ic_play_arrow_24, "Play") { onPlayPause?.invoke() }
         addActionButton(R.drawable.ic_forward_10_24, "+10s") { onSeekForward?.invoke() }
         addActionButton(R.drawable.ic_skip_next_24, "Next Ch") { onNextChapter?.invoke() }
+        addActionButton(R.drawable.ic_restart_24, "Restart") { onRestart?.invoke() }
         addActionButton(R.drawable.ic_aspect_ratio_24, "Aspect") { onAspectRatio?.invoke() }
         addCcButton()
         addActionButton(R.drawable.ic_audio_track, "Audio") { onTracksClicked?.invoke() }

@@ -3,7 +3,11 @@ package com.ooustream.iptv.player
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import android.os.Bundle
 import android.media.AudioManager
 import android.view.GestureDetector
@@ -156,6 +160,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var bufferingArt: ImageView? = null      // poster/channel art shown behind the spinner
     private var bufferingShowJob: Job? = null        // debounce: delays the spinner so sub-second dips don't flash
     private val BUFFER_SPINNER_DEBOUNCE_MS = 600L    // mid-playback rebuffers under this never flash a spinner
+    private var hasRenderedFirstFrame = false        // once true, the loading backdrop can hold the last frame
     private var retryCount = 0
     private var retryJob: Job? = null
     private var stallDetectorJob: Job? = null
@@ -188,6 +193,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var rebuildInProgress = false
     // Last position we persisted this session — used to refuse a glitchy collapse of a deep bookmark.
     private var lastSavedPositionMs = 0L
+    // Bidirectional quality: clear a watchdog resolution cap ONCE after sustained-good playback so a
+    // transient dip doesn't leave the rest of the title soft. (One-shot per content to avoid oscillation.)
+    private var upwardReprobeAttempted = false
     // Cache video codec string from first TRACKS_CHANGED so we can identify the format
     // (e.g. HEVC Main 10) even after a SW rebuild where videoFormat becomes null
     private var cachedVideoCodecs: String = ""
@@ -356,7 +364,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         diagnosticListener = ExoPlayerDiagnosticListener(streamDiagnosticLogger, initialContentName)
         // Crossfade the art backdrop out the instant real video appears (not on STATE_READY, which
         // fires before the first frame paints on slow decoders). Runs on the player's (main) looper.
-        diagnosticListener!!.onFirstFrame = { showBufferingOverlay(false) }
+        diagnosticListener!!.onFirstFrame = {
+            hasRenderedFirstFrame = true
+            showBufferingOverlay(false)
+        }
         player!!.addListener(diagnosticListener!!)
         player!!.addAnalyticsListener(diagnosticListener!!)
         // Initial play is a guaranteed black moment — show the title art immediately.
@@ -505,6 +516,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         bingeShown = false
 
                         resetTrackStateForNewContent()
+                        // Hold the last frame of this episode over the load gap instead of a black cut.
+                        showBufferingOverlay(true, immediate = true)
                         player?.setMediaItem(MediaItem.fromUri(next.url))
                         player?.prepare()
                         player?.play()
@@ -817,6 +830,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
             }
             bar.onAspectRatio = { cycleAspectRatio() }
+            bar.onRestart = {
+                // Play from the beginning — the in-player "start over" (resume is now silent).
+                player?.let { p ->
+                    p.seekTo(0)
+                    p.play()
+                    bar.updatePosition(0, p.duration)
+                }
+            }
             bar.onTracksClicked = { showTrackPicker() }
             bar.onCcToggle = { toggleClosedCaptions() }
             bar.updateCcState(subtitlePreferences.subtitlesEnabled)
@@ -1837,6 +1858,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             AudioLogger.log("Frame watchdog: sustained playback confirmed after step $watchdogResetCount — resetting ladder")
                             watchdogResetCount = 0
                             consecutiveGoodPolls = 0
+                            // Bidirectional quality (watch-audit #4): lift any watchdog resolution cap once
+                            // playback has been sustained-good, so a transient dip doesn't keep the rest of
+                            // the title soft. One-shot per content (upwardReprobeAttempted) to avoid
+                            // oscillation. NOTE: the SW→HW *decoder*-swap re-probe is intentionally NOT done
+                            // here — HW-decode failures are usually a permanent codec/chip limit, so a
+                            // mid-title HW rebuild would almost always glitch then fall back. Left for a
+                            // device-verified follow-up.
+                            if (!upwardReprobeAttempted) {
+                                upwardReprobeAttempted = true
+                                withContext(Dispatchers.Main) {
+                                    trackSelector?.let { ts ->
+                                        ts.setParameters(ts.buildUponParameters().clearVideoSizeConstraints())
+                                    }
+                                    streamDiagnosticLogger.logAppEvent("QUALITY_REPROBE", "cleared video cap after sustained playback")
+                                }
+                            }
                         }
                     } else {
                         consecutiveGoodPolls = 0
@@ -2225,6 +2262,46 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     /**
+     * Hold the LAST rendered video frame behind the spinner during a stop/rebuild/zap/rebuffer, so
+     * recovery looks like a freeze, not a cut to a poster (Netflix/YouTube behaviour). Best-effort:
+     * PixelCopy is API 24+ and can fail; on any miss it falls back to the poster backdrop, so this can
+     * never be worse than the v3.9.0 art backdrop. Only attempts once a real frame has rendered.
+     */
+    private fun captureLastFrame() {
+        val art = bufferingArt
+        if (art == null) return
+        if (Build.VERSION.SDK_INT < 24 || !hasRenderedFirstFrame) { loadBufferingArt(); return }
+        val sv = findSurfaceView(view as? ViewGroup)
+        if (sv == null || sv.width <= 0 || sv.height <= 0 || !sv.holder.surface.isValid) {
+            loadBufferingArt(); return
+        }
+        val bmp = try {
+            Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
+        } catch (_: Throwable) { loadBufferingArt(); return }
+        try {
+            PixelCopy.request(sv, bmp, { result ->
+                val a = bufferingArt
+                if (result == PixelCopy.SUCCESS && a != null && bufferingOverlay?.visibility == View.VISIBLE) {
+                    a.setImageBitmap(bmp)
+                    a.visibility = View.VISIBLE
+                } else {
+                    loadBufferingArt()   // capture missed — fall back to poster
+                }
+            }, Handler(Looper.getMainLooper()))
+        } catch (_: Throwable) { loadBufferingArt() }
+    }
+
+    private fun findSurfaceView(vg: ViewGroup?): android.view.SurfaceView? {
+        vg ?: return null
+        for (i in 0 until vg.childCount) {
+            val c = vg.getChildAt(i)
+            if (c is android.view.SurfaceView) return c
+            if (c is ViewGroup) findSurfaceView(c)?.let { return it }
+        }
+        return null
+    }
+
+    /**
      * Buffering/loading affordance. [immediate]=true for the guaranteed-black moments (initial play, zap,
      * decoder rebuild) so art appears at once; default is debounced ~600ms so a sub-second mid-playback
      * rebuffer never flashes a spinner. Dismissed on onRenderedFirstFrame / STATE_READY (fail-safe: a 6s
@@ -2257,7 +2334,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     private fun revealBufferingOverlay() {
         ensureBufferingOverlay()
-        loadBufferingArt()
+        captureLastFrame()   // hold the last frame if we have one, else the poster backdrop
         bufferingOverlay?.let { ov ->
             ov.alpha = 1f
             ov.visibility = View.VISIBLE
@@ -2445,6 +2522,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         audioDisabledByFallback = false
         userTrackOverrideActive = false
         mtkMultichannelFfmpegApplied = false
+        upwardReprobeAttempted = false
         subtitleSelfTestRan = false
         player?.trackSelectionParameters = player?.trackSelectionParameters
             ?.buildUpon()
@@ -2469,6 +2547,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 bingeShown = false
 
                 resetTrackStateForNewContent()
+                // Hold the last frame of this episode over the load gap instead of a black cut.
+                showBufferingOverlay(true, immediate = true)
                 player?.setMediaItem(MediaItem.fromUri(next.url))
                 player?.prepare()
                 player?.play()
@@ -2733,6 +2813,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         bufferStormWindowStart = 0L
         ffmpegRebuildAttemptedForBufferStorm = false
         mtkMultichannelFfmpegApplied = false
+        upwardReprobeAttempted = false
         // Force-restart watchdog so the new channel gets a fresh escalation ladder
         frameWatchdogJob?.cancel()
         frameWatchdogJob = null

@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.9.0 (versionCode 81)
+- **Current Version**: 3.9.1 (versionCode 82)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -451,6 +451,26 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v3.9.1** — The 4 deferred watch-audit items (versionCode 82). Follow-up to v3.9.0's watch-experience sweep
+  (`tasks/flawless-watch-audit.md` / `tasks/todo.md`). **NOTE: shipped build-verified, NOT on-device-verified
+  at release time** — heavy core-player surgery. Two items full, two to their safe high-value part:
+  **(A, #9) Silent resume + Restart** — `ResumePlaybackHelper` resumes silently with a "Resuming from H:MM"
+  toast (no modal); new `res/drawable/ic_restart_24.xml` + a "Restart" action button on VOD/Series controls
+  (`PlayerControlsBar.onRestart` → `seekTo(0)+play`). All 3 resume call sites unchanged (shared helper).
+  **(B, #2) Last-frame hold** — `OoustreamPlaybackFragment.captureLastFrame()` PixelCopies the SurfaceView's
+  current frame into the loading backdrop on every stop/rebuild/zap/rebuffer (freezes the frame instead of
+  cutting to the poster). API24+; on any miss falls back to the poster (`hasRenderedFirstFrame` gate +
+  `findSurfaceView`), so never worse than v3.9.0's art backdrop. **(C, #4) Quality — safe part:** mid-title
+  resolution-cap re-probe (`clearVideoSizeConstraints()` ONCE after sustained-good playback,
+  `upwardReprobeAttempted` reset per channel/episode). **DEFERRED (held blind):** the SW→HW *decoder*-swap
+  re-probe — HW-decode failures are usually a permanent codec/chip limit, so a mid-title HW rebuild would
+  almost always glitch then fall back (low reward, oscillation risk). **(D, #6) Binge — safe part:** both
+  episode transitions hold the last frame over the load gap (`showBufferingOverlay(immediate)` → no black
+  cut). **DEFERRED (held blind):** the true seamless ExoPlayer playlist pre-buffer
+  (`addMediaItem`/auto-advance/`onMediaItemTransition`) — a rewrite of the working binge flow that conflicts
+  with the single-item rebuild machinery. Files: `player/OoustreamPlaybackFragment.kt`,
+  `player/PlayerControlsBar.kt`, `common/ResumePlaybackHelper.kt`, `res/drawable/ic_restart_24.xml`.
 
 - **v3.9.0** — Smoother Playback + Phone Overhaul + Actor Search (versionCode 81). Batched release of FOUR
   work streams (commits `a7fb990` + `04d0b43`), all build-verified (`assembleRelease` clean). **NOTE: shipped

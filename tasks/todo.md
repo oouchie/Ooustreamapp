@@ -1,78 +1,48 @@
-# Watch-Experience P0+P1 Sweep (from tasks/flawless-watch-audit.md)
+# v3.9.1 — the 4 deferred watch-experience items (highest-risk; device-test before release)
 
-Heavy core-player surgery. Runtime-safe, build-verified each batch. **Must be device-tested before release**
-(project norm for playback changes). Baseline: committed a7fb990 builds clean (assembleDebug verified).
+Baseline: v3.9.0 (c047dfe) shipped, builds clean. Each item compile-verified individually + graceful fallback.
 
-## Batch 1 — P0: resume save-gate (surgical, highest value)
-- [ ] 1. Gate onPause save + 5s autosave on STATE_READY (or playWhenReady && pos>0); monotonic floor
-      (refuse >15s regression vs prior persisted pos unless user seeked back); `rebuildInProgress` flag
-      set across rebuildPlayerWith* so saves skip during rebuild. Keep 95%/STATE_ENDED completion.
+## A — #9 Silent resume + in-player Restart (product decision: silent)
+- [ ] ResumePlaybackHelper.showIfNeeded → resume silently (no modal), still honoring an explicit "start over".
+- [ ] Add a "Restart" (play from beginning) action button to the VOD/Series player controls → seekTo(0).
+- [ ] Brief "Resuming from H:MM" toast/chip on silent resume so the user knows.
 
-## Batch 2 — Episode-transition state hygiene + binge robustness (P1 #5,6,7)
-- [ ] 5. `resetAudioStateForNewContent()` + `reapplySubtitleState()` called at top of skipToNextEpisode +
-      binge onPlayNext before setMediaItem (audio-disable/override/subtitle leak).
-- [ ] 7. Cache getSeriesInfo per seriesId (session); resolve next-ep once; distinguish lookup-failure from
-      exhaustion (don't false-fire "No more episodes" on a throw).
-- [ ] 6. Pre-buffer next episode: addMediaItem(next) at the 15s binge mark; seekToNextMediaItem() on advance.
+## B — #2 Last-frame hold (PixelCopy)
+- [ ] Before stop()/rebuild/zap, PixelCopy the SurfaceView's current frame into the art-backdrop ImageView
+      (so recovery shows a frozen frame, not the poster). Graceful fallback to poster art if capture fails.
 
-## Batch 3 — Spinner debounce + player art / hold-last-frame layer (P1 #2,3) — BIGGEST/RISKIEST
-- [ ] 3. Debounce showBufferingOverlay(true) ~600-800ms cancellable; cancel on STATE_READY; ~500ms min-show.
-      Carve out the frame-watchdog deliberate show. Drop the "Optimizing…" toasts.
-- [ ] 2. Full-screen art ImageView behind SurfaceView (Coil streamIcon/cover + scrim); keep art+spinner until
-      onRenderedFirstFrame (not STATE_READY); last-frame hold (PixelCopy snapshot) during stop/rebuild/zap.
+## C — #4 Mid-title upward HW re-probe
+- [ ] In the watchdog "sustained playback confirmed" branch: after sustained-good polls, if capped/SW,
+      clear cap + rebuild ONCE with the HW factory at current position; if it re-stalls within a window,
+      mark confirmed-bad and never re-probe again (oscillation guard). Skip for mt8695/mt8167.
 
-## Batch 4 — Bidirectional quality + reconnect-from-buffering (P1 #4,8)
-- [ ] 4. Clear video size cap + reset SW/FFmpeg flags in tuneToChannel + Retry; upward HW re-probe after N
-      good polls in watchdog "sustained" branch; keep cap sticky ONLY for mt8695/mt8167.
-- [ ] 8. Network-return guard at :1383 broadened to include STATE_BUFFERING (reset retry, seekToDefault for
-      LIVE, prepare/play).
-
-## Batch 5 — Silent resume + in-player Restart + CC toggle truthfulness (P1 #9,10)
-- [ ] 9. Stop ResumePlaybackHelper modal on detail/hero/recommendation/Search; thread position through
-      newInstance; in-player "Resuming from X — DOWN to restart" chip + persistent Restart control.
-- [ ] 10. CC toggle checks for a TRACK_TYPE_TEXT group; none → stay Off + "No subtitles available"; some →
-      verify a track selected (auto-select fallback) before claiming "On".
+## D — #6 Next-episode pre-buffer (riskiest — binge flow change)
+- [ ] At the 15s binge mark, addMediaItem(next) so ExoPlayer pre-buffers it.
+- [ ] Advance via seekToNextMediaItem() when pre-buffered (instant), else setMediaItem fallback.
+- [ ] onMediaItemTransition updates metadata (streamId/controlsBar/glue) + resetTrackStateForNewContent +
+      markCompleted(prev) for BOTH auto-advance and seek-advance. Series-complete only when no next item.
+- [ ] Show art immediately on the transition gap regardless (safe interim).
 
 ## Verify
-- [ ] compileDebugKotlin after each batch; final assembleDebug.
+- [x] compileDebugKotlin per item (A+B clean; C+D verifying). Then assembleDebug.
 
-## Review
+## Review — the 4 deferred items: 2 done in full, 2 done to their SAFE part (riskiest sub-parts held)
+- **A (#9) Silent resume + Restart — DONE FULL.** `ResumePlaybackHelper` resumes silently with a
+  "Resuming from H:MM" toast (no modal); new `ic_restart_24` + "Restart" action button on VOD/Series
+  controls (`onRestart` → seekTo(0)+play). All 3 call sites unchanged (shared helper).
+- **B (#2) Last-frame hold — DONE FULL (best-effort).** `captureLastFrame()` PixelCopies the SurfaceView's
+  current frame into the loading backdrop on every stop/rebuild/zap/rebuffer, so recovery freezes the frame
+  instead of cutting to the poster. API24+; on ANY miss (old API / invalid surface / not-yet-rendered)
+  falls back to the poster backdrop, so it can never be worse than v3.9.0. `hasRenderedFirstFrame` gates it.
+- **C (#4) Quality — SAFE PART DONE.** Mid-title resolution-cap re-probe: clears `clearVideoSizeConstraints()`
+  ONCE after sustained-good playback (`upwardReprobeAttempted`, reset per channel/episode). **Held blind:**
+  the SW→HW *decoder*-swap re-probe — HW-decode failures are usually a permanent codec/chip limit, so a
+  mid-title HW rebuild (a ~110-line clone of the SW rebuild) would almost always glitch then fall back. Low
+  reward, real oscillation risk → device-verified follow-up.
+- **D (#6) Binge — SAFE PART DONE.** Both episode transitions now hold the last frame over the load gap
+  (`showBufferingOverlay(immediate)` → frozen frame, no black cut) + the v3.9.0 series-info cache already
+  removed the boundary network round-trip. **Held blind:** the TRUE seamless ExoPlayer playlist pre-buffer
+  (`addMediaItem`/auto-advance/`onMediaItemTransition`) — a significant rewrite of the working binge flow
+  that conflicts with the single-item rebuild machinery → device-verified follow-up.
 
-**Status: P0 + 9 of 10 P1 items implemented, compile-clean each batch. assembleDebug verifying.**
-**MUST be device-tested before any release** — this is heavy core-player surgery done build-verified-only.
-
-### Done (all in OoustreamPlaybackFragment unless noted)
-- **P0 resume gate** — new `checkpointProgress()` (STATE_READY + pos>0 + `rebuildInProgress` + anti-collapse
-  guard); used by onPause + the 5s loop. `rebuildInProgress` set across all 3 rebuilds + STATE_READY safety
-  net. Completion (95%/STATE_ENDED) left untouched. **Stops the real progress-loss bug.**
-- **#5 episode state reset** — `resetTrackStateForNewContent()` (audio flags + re-enable AUDIO +
-  clearOverridesOfType + subtitle re-apply + self-test reset) called in skipToNextEpisode + binge onPlayNext.
-- **#7 binge false-stop** — PlayerViewModel caches `get_series_info` per seriesId (`seriesInfoCached()`); a
-  network blip no longer throws → no false "No more episodes". (Safe part of #6: removes the boundary
-  network round-trip; the ExoPlayer playlist pre-buffer itself deferred — see below.)
-- **#3 spinner debounce** — `showBufferingOverlay` posts a 600ms cancellable show; immediate=true for the
-  guaranteed-black moments; fade-out on hide.
-- **#2 art backdrop** — overlay is now art (Coil streamIcon) + scrim + spinner inside ONE FrameLayout
-  (reuses the proven overlay z-order, not fragile separate layering). Dismissed on `onRenderedFirstFrame`
-  (new callback on ExoPlayerDiagnosticListener) + STATE_READY + 6s failsafe (can never permanently cover
-  video). Shown immediately on play/zap/rebuild. Dropped the 3 "Optimizing…/Switching…" toasts.
-- **#4 quality cap (safe part)** — `clearVideoSizeConstraints()` on tuneToChannel + episode reset + Retry,
-  so a stutter on one channel/episode no longer softens the next. (Mid-title HW re-probe deferred.)
-- **#8 reconnect-from-buffering** — network-return guard broadened to STATE_BUFFERING (+ seekToDefault for
-  LIVE); scoped by the !previouslyConnected guard so it only fires on a real reconnect.
-- **#10 CC truthfulness** — toggle checks for a TRACK_TYPE_TEXT group; none → stays Off + "No subtitles
-  available", instead of a lying "On".
-
-### Deferred (with reason — for a device-verified follow-up)
-- **#2 last-frame hold (PixelCopy snapshot)** — riskiest surface op; the art backdrop already removes the
-  black on start/zap/recovery. Hold-frame is the "no black on recovery" refinement; needs device testing.
-- **#6 next-episode ExoPlayer pre-buffer (addMediaItem/seekToNextMediaItem)** — bolting a multi-item
-  playlist onto the single-item rebuild/watchdog machinery is high-risk; the cache (#7) + art backdrop
-  already remove the network latency and the black gap.
-- **#4 mid-title upward HW re-probe** — recreating the player mid-movie to climb back to HW after a
-  transient dip risks decoder oscillation; the cap-clear-on-new-content covers the common channel case.
-- **#9 silent resume + in-player Restart** — user-facing resume-behavior change (product decision) AND
-  removing the only restart path blind risks a regression. Warrants a product call + device test.
-
-### Verify
-- compileDebugKotlin clean after every batch (1, 2, 3, 4, 5). assembleDebug: (verifying).
+NOT version-bumped / released — per the plan, sideload v3.9.0+these on a stick first, THEN cut v3.9.1.
