@@ -1,9 +1,9 @@
 {
-  "version_name": "3.8.0",
-  "version_code": 80,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.8.0/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.8.0/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.8.0/app-armeabi-v7a-release.apk",
-  "changelog": "v3.8.0 — Home Refresh + Live TV Overhaul\n\nHOME\n• Quick Tune row removed for a cleaner layout.\n• Hero 'Resume' — the main button now jumps straight back into whatever you were last watching.\n• New 'Pick Up & New' rail merges new episodes and watch-it-again into one row.\n• Rows fade in as they load; below-the-fold rows load on scroll for a faster start.\n\nLIVE TV\n• Channels now auto-preview as you browse (muted) — no more empty preview panel.\n• Every channel shows what's on now; the focused channel shows a bigger preview with a live progress bar.\n• One press to watch fullscreen.\n• Cleaner, larger preview and channel text; smoother focus and crash hardening on big channel lists.",
+  "version_name": "3.9.0",
+  "version_code": 81,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.9.0/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.9.0/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v3.9.0/app-armeabi-v7a-release.apk",
+  "changelog": "v3.9.0 — Smoother Playback + Phone Overhaul + Actor Search\n\nPLAYBACK\n• Poster art now shows while a movie, show, or channel loads — no more black screen with a lone spinner.\n• Fewer loading spinners on quick buffers, and faster, quieter recovery when a stream hiccups.\n• Resume is more reliable — your spot is no longer lost if a stream rebuffers as you exit.\n• Channel changes start fresh at full quality; binge episodes no longer lose audio; captions only turn on when the show actually has them.\n\nSEARCH\n• Search by actor — type a star's name to find their movies and shows.\n\nHOME\n• The hero banner now has a clear ▶ Play button for the featured movie, with More Info for details.\n\nPHONE / TABLET\n• Major touch overhaul: smoother scrolling, full-width Settings, and fixed Live TV, Login, Account, and detail screens on phones.",
   "mandatory": false
 }

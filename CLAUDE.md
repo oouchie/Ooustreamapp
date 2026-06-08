@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.8.0 (versionCode 80)
+- **Current Version**: 3.9.0 (versionCode 81)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -452,10 +452,11 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 
 ## Version Release History
 
-- **UNRELEASED (committed, NOT yet version-bumped / shipped — pending on-device verification)** — three
-  batched work streams, all build-verified (`assembleDebug` BUILD SUCCESSFUL) but NOT device-tested.
-  When shipping: bump version, update `update.json`, build release APKs, GitHub release, and convert this
-  bullet into a proper `v3.9.0`-style entry. **(1) Mobile touch & scroll P0+P1 sweep** — runtime
+- **v3.9.0** — Smoother Playback + Phone Overhaul + Actor Search (versionCode 81). Batched release of FOUR
+  work streams (commits `a7fb990` + `04d0b43`), all build-verified (`assembleRelease` clean). **NOTE: shipped
+  build-verified but NOT on-device-verified at release time** — the watch-experience changes are heavy
+  core-player surgery; treat any playback regression report against this version with that in mind.
+  **(1) Mobile touch & scroll P0+P1 sweep** — runtime
   `DeviceUtils.isPhone()/isTV()` swaps on the single (TV-derived) layouts so the phone build stops being a
   10-foot UI squeezed into portrait; TV path preserved. Fixes: 3 real touch-scroll bugs (Favorites
   Grid/List toggle re-armed a per-row fade → flashes on scroll; Series-Detail load `requestFocus` yanked
