@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.9.1 (versionCode 82)
+- **Current Version**: 3.9.2 (versionCode 83)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -451,6 +451,14 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v3.9.2** — Live TV preview controller fix (versionCode 83). Bug: Media3 `PlayerView`'s built-in
+  transport controls popped up over the Live TV channel preview while scrolling down channels — the
+  preview `preview_player_view` never had its controller disabled (`use_controller` defaults true; layout
+  has no `app:` namespace), so each preview re-tune auto-showed the controller. Fix: `LiveTvFragment` sets
+  `previewPlayerView.useController = false` + `controllerAutoShow = false` next to the existing
+  `isFocusable = false` (`livetv/LiveTvFragment.kt:177`). Pre-existing bug (present in v3.9.1 and earlier),
+  not a regression. One-line fix; `compileDebugKotlin` clean.
 
 - **v3.9.1** — The 4 deferred watch-audit items (versionCode 82). Follow-up to v3.9.0's watch-experience sweep
   (`tasks/flawless-watch-audit.md` / `tasks/todo.md`). **NOTE: shipped build-verified, NOT on-device-verified

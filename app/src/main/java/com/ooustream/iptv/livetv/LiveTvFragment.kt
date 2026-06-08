@@ -175,6 +175,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         }
         // PlayerView should NOT steal focus — container handles it
         previewPlayerView.isFocusable = false
+        // Disable Media3's built-in transport controls on the preview — without this they pop up over
+        // the preview as you move down channels (the preview re-tunes and PlayerView auto-shows its
+        // controller). The preview is a silent, control-free thumbnail.
+        previewPlayerView.useController = false
+        previewPlayerView.controllerAutoShow = false
 
         // Categories RecyclerView — stable adapter for smooth D-pad scrolling
         categoriesList.layoutManager = LinearLayoutManager(requireContext())
