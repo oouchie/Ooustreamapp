@@ -372,7 +372,7 @@ Conventions for interpreting the exported debug report so customer reports aren'
 37. `home/WatchItAgainPresenter.kt` — Watch It Again row presenter with checkmark badge
 38. `recommendation/NewEpisodeSyncWorker.kt` — periodic new episode detection worker
 
-## Source File Inventory (204 Kotlin files, 58 XML layouts)
+## Source File Inventory (208 Kotlin files, 58 XML layouts)
 
 ### By Package
 | Package | Files | Key Components |
@@ -380,9 +380,9 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
 | `auth/` | 2 | AuthViewModel, LoginFragment |
 | `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
-| `common/` | 38 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper |
-| `data/local/dao/` | 13 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao, BlockedCategoryDao |
-| `data/local/entity/` | 15 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity, BlockedCategoryEntity |
+| `common/` | 39 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper, PhoneGuidedStepFragment, DeviceUtils, PhoneToolbarHelper, PhoneFeedback, ResumePlaybackHelper |
+| `data/local/dao/` | 14 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao, BlockedCategoryDao, VodCastDao |
+| `data/local/entity/` | 16 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity, BlockedCategoryEntity, VodCastEntity |
 | `data/local/` | 1 | OoustreamDatabase (Room v10) |
 | `data/` | 1 | UserPlanManager |
 | `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
@@ -397,7 +397,7 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `onboarding/` | 1 | OnboardingOverlay |
 | `parental/` | 7 | ParentalControlManager, ParentalPinFragment, ParentalViewModel, ContentFilterManager, AdultCategoryDetector, ParentalSettingsFragment, ParentalSettingsViewModel, CategoryToggleAdapter |
 | `player/` | 21 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor |
-| `recommendation/` | 6 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker |
+| `recommendation/` | 7 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker, VodCastBackfillWorker |
 | `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
 | `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
 | `settings/` | 3 | SettingsFragment, SettingsViewModel, SettingsConfirmFragment |
