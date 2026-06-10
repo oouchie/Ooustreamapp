@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.9.2 (versionCode 83)
+- **Current Version**: 3.9.3 (versionCode 84)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -451,6 +451,22 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v3.9.3** — Movies/Series grid 2-columns-on-TV fix (versionCode 84). Bug: the Movies and Series
+  poster grids rendered only 2 columns on Fire TV (wasting ~half the content area) instead of 4. Root
+  cause is an Android resource-qualifier precedence trap, not a layout bug: column count came from
+  `R.integer.poster_columns`, defined as 4 in `values-television/` + `values-sw600dp/`, 3 in `values/`,
+  and **2 in `values-sw320dp/`** (added in Phase 11 for "320–359dp phones"). A `swNNNdp` qualifier means
+  "this width **or wider**," not a bounded range, and `smallestWidth` (precedence #4) outranks the
+  `-television` UI-mode qualifier (#13). AFTKRT measured via adb: 1920×1080 override @ 320dpi → density
+  factor 2.0 → smallestWidth **540dp**. That's ≥320 (matches `sw320dp`=2) but <600 (`sw600dp`=4 doesn't
+  apply), so `values-sw320dp` won over `values-television` → 2 columns on every Fire TV Stick. Fix
+  (Option B, code not resources — immune to per-model density/resolution differences): force `4` when
+  `DeviceUtils.isTV()`, else `R.integer.poster_columns`, in `VodFragment.kt:124` and
+  `SeriesFragment.kt:114`. **Verified on-device** on AFTKRT (192.168.1.84): Movies grid now renders 4
+  columns (Series carries the byte-identical change in the same APK but was not separately re-navigated
+  on device). `assembleDebug` + `assembleRelease` clean. Files: `vod/VodFragment.kt`,
+  `series/SeriesFragment.kt`.
 
 - **v3.9.2** — Live TV preview controller fix (versionCode 83). Bug: Media3 `PlayerView`'s built-in
   transport controls popped up over the Live TV channel preview while scrolling down channels — the
