@@ -111,7 +111,11 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         }
         categoriesList.adapter = categoryAdapter
 
-        posterGrid.setNumColumns(resources.getInteger(R.integer.poster_columns))
+        // Force 4 columns on TV — a Fire TV's smallestWidth (~540dp) matches the
+        // values-sw320dp bucket (2 cols), which outranks the -television qualifier.
+        val posterColumns = if (DeviceUtils.isTV(requireContext())) 4
+                            else resources.getInteger(R.integer.poster_columns)
+        posterGrid.setNumColumns(posterColumns)
         posterGrid.setHorizontalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing))
         posterGrid.setVerticalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing))
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())

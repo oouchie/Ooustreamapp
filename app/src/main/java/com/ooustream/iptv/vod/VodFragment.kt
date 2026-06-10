@@ -120,8 +120,13 @@ class VodFragment : Fragment(), KeyEventHandler {
         }
         categoriesList.adapter = categoryAdapter
 
-        // Poster grid: column count from resources (4 on TV, 3 on phone)
-        posterGrid.setNumColumns(resources.getInteger(R.integer.poster_columns))
+        // Poster grid: force 4 columns on TV. We can't rely on the values-television
+        // integer here — a Fire TV's smallestWidth (~540dp on AFTKRT) matches the
+        // values-sw320dp bucket, and smallestWidth qualifiers outrank the -television
+        // UI-mode qualifier, so the phone value (2) would win on the TV otherwise.
+        val posterColumns = if (DeviceUtils.isTV(requireContext())) 4
+                            else resources.getInteger(R.integer.poster_columns)
+        posterGrid.setNumColumns(posterColumns)
         posterGrid.setHorizontalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing))
         posterGrid.setVerticalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing))
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())
