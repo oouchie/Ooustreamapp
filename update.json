@@ -1,9 +1,9 @@
 {
-  "version_name": "4.0.0",
-  "version_code": 85,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.0/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.0/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.0/app-armeabi-v7a-release.apk",
-  "changelog": "v4.0.0 — TV Guide + Seamless Binge\n\n• NEW: Full TV Guide — a classic channel grid with program times, what's on now, and what's next. Open it from the new TV Guide card on Home or the guide icon in Live TV. Switch categories right inside the guide.\n• NEW: Seamless episode transitions — the next episode pre-loads while you finish the current one, so binge watching advances instantly with no loading screen.\n• Better seeking: fast-forward/rewind taps respond instantly and land faster, with the exact landing time shown on screen.\n• Subtitles now stay visible above the playback controls.\n• \"Reconnecting…\" status is shown when your network drops instead of an unexplained spinner.\n• Audio that cuts out mid-stream now recovers automatically.\n• Empty categories now say so instead of loading forever.\n• Many more playback polish fixes for smoother watching.",
+  "version_name": "4.0.1",
+  "version_code": 86,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-armeabi-v7a-release.apk",
+  "changelog": "v4.0.1 — Live TV Cursor Fix\n\n• Coming back from fullscreen Live TV now puts the highlight right back on the channel you were watching — no more invisible cursor and blind D-pad presses.\n• The category list highlight is now clearly visible even when it sits on the category that's already selected.\n\nIncludes everything from v4.0.0: the new TV Guide, seamless binge episode transitions, and the playback polish pack.",
   "mandatory": false
 }

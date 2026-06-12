@@ -843,13 +843,18 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             .find { it.categoryId == viewModel.selectedCategoryId.value }?.categoryName
         showPreviewOverlay(channel.name, smartEpgFiller.inferRuleBased(channel.name, resumeCat).title, null)
 
-        // Scroll channel list to the resumed channel and load its EPG
+        // Scroll channel list to the resumed channel, load its EPG, and put the FOCUS CURSOR
+        // back on it. Without the explicit requestFocus, the back-stack re-attach hands focus
+        // to the first focusable view (the category list), where the selected category's
+        // styling masks the focus ring — the user sees no cursor anywhere and has to blindly
+        // press D-pad to find it.
         val channelsList = view?.findViewById<VerticalGridView>(R.id.channels_list)
         channelsList?.post {
             val listIndex = filteredChannels.indexOfFirst { it.streamId == channel.streamId }
             if (listIndex >= 0) {
                 channelsList.selectedPosition = listIndex
             }
+            channelsList.requestFocus()
         }
         viewModel.loadEpg(channel.streamId)
     }

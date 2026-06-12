@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sidebar item focused state: stronger gold gradient + gold border -->
+<!-- Sidebar item FOCUSED state: full gold outline + brighter fill. Must be clearly
+     distinct from bg_sidebar_item_active (selected = gold left bar only) — they used
+     to differ only by gradient alpha, so the cursor was invisible whenever it sat on
+     the already-selected category. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <gradient
-                android:startColor="#20FFC107"
-                android:endColor="@android:color/transparent"
+                android:startColor="#2EFFC107"
+                android:endColor="#10FFC107"
                 android:angle="0" />
             <corners android:radius="8dp" />
+            <stroke android:width="2dp" android:color="@color/focus_gold" />
         </shape>
     </item>
     <item android:width="3dp" android:gravity="start">

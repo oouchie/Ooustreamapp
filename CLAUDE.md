@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.0.0 (versionCode 85)
+- **Current Version**: 4.0.1 (versionCode 86)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -452,6 +452,26 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.0.1** — Live TV Cursor Fix (versionCode 86). Two cursor-visibility bugs on the Live TV screen,
+  found by navigating the screen on-device (user request: "cursor functionality on the live tv screen"),
+  both **device-verified on AFTKRT before release**. **(1) Focus not restored on return from fullscreen**
+  — `LiveTvFragment.resumePreviewIfReturning()` scrolled the channel list to the resumed channel
+  (`selectedPosition = listIndex`) but never requested focus; the back-stack re-attach handed focus to the
+  first focusable view (the category list), so the user saw NO cursor anywhere and had to blindly press
+  D-pad (DOWN moved the cursor inside the CATEGORY list, revealing where focus had landed). Fix: the same
+  `channelsList.post {}` block now calls `channelsList.requestFocus()` after setting the position — the
+  gold cursor lands back on the exact channel that was playing. This is the FOURTH incarnation of the
+  "Live TV cursor disappears" family (v3.5.6 focus-loss debounce, v3.6.4 preview focusability, v3.8.0
+  preview D-pad dead-end) — this one was a missing-focus-restore, not a rendering symptom. **(2) Focused
+  and selected category styles were indistinguishable** — `bg_sidebar_item_focused_v2` (state_focused) and
+  `bg_sidebar_item_active` (state_selected) were near-identical layer-lists (same gold left bar + gold
+  gradient; only difference gradient alpha #20 vs #14), so whenever the cursor sat on the already-selected
+  category (the default Favorites row — exactly where focus landed after bug #1) it was invisible. Fix:
+  `bg_sidebar_item_focused_v2` now adds a full 2dp gold outline + brighter two-stop gold fill; selected
+  keeps the left-bar-only look. Drawable is referenced ONLY by `bg_category_states.xml` (verified) — no
+  other surfaces affected. Files: `livetv/LiveTvFragment.kt` (+1 line + comment),
+  `res/drawable/bg_sidebar_item_focused_v2.xml`.
 
 - **v4.0.0** — TV Guide + Gapless Binge + Watch-Polish Sweep (versionCode 85). Major release, three
   workstreams, **device-verified on AFTKRT (192.168.1.84) before release** (screenshots + diagnostic log).
