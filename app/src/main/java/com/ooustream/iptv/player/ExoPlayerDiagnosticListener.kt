@@ -149,7 +149,14 @@ class ExoPlayerDiagnosticListener(
         logger.logAppEvent("AUDIO_SINK_ERROR",
             "type=${audioSinkError.javaClass.simpleName}, " +
             "msg=${audioSinkError.message}, channel=$channelName")
-        onAudioSinkFault?.invoke()
+        // UnexpectedDiscontinuityException = sloppy source timestamps; DefaultAudioSink
+        // self-recovers and playback continues. Triggering the recovery ladder on these
+        // caused an audible re-init + a FULL mid-movie player rebuild on titles that merely
+        // have imperfect muxing (customer report: Meet the Robinsons, dozens of ~200ms
+        // discontinuities). Only escalate genuine sink failures (init/write).
+        if (audioSinkError !is androidx.media3.exoplayer.audio.AudioSink.UnexpectedDiscontinuityException) {
+            onAudioSinkFault?.invoke()
+        }
     }
 
     // Audio renderer was disabled — usually from our own fallback path.

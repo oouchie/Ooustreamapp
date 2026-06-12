@@ -16,7 +16,7 @@ import androidx.leanback.widget.ArrayObjectAdapter
 
 import com.ooustream.iptv.common.DeviceUtils
 import androidx.leanback.widget.ItemBridgeAdapter
-import androidx.leanback.widget.VerticalGridView
+import com.ooustream.iptv.common.TouchGridSetup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -64,7 +64,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         }
 
         val categoriesList = view.findViewById<RecyclerView>(R.id.series_categories_list)
-        val posterGrid = view.findViewById<VerticalGridView>(R.id.series_grid)
+        val posterGrid = view.findViewById<RecyclerView>(R.id.series_grid)
         val navHints = view.findViewById<TextView>(R.id.series_nav_hints)
 
         // Header search
@@ -115,9 +115,11 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         // values-sw320dp bucket (2 cols), which outranks the -television qualifier.
         val posterColumns = if (DeviceUtils.isTV(requireContext())) 4
                             else resources.getInteger(R.integer.poster_columns)
-        posterGrid.setNumColumns(posterColumns)
-        posterGrid.setHorizontalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing))
-        posterGrid.setVerticalSpacing(resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing))
+        TouchGridSetup.configure(
+            posterGrid, posterColumns,
+            resources.getDimensionPixelSize(R.dimen.poster_grid_h_spacing),
+            resources.getDimensionPixelSize(R.dimen.poster_grid_v_spacing)
+        )
         val posterAdapter = ArrayObjectAdapter(PosterPresenter())
 
         // Show shimmer skeletons while loading
@@ -127,8 +129,15 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
         // Build real poster bridge adapter with click listeners
         val posterBridgeAdapter = ItemBridgeAdapter(posterAdapter)
+        val isPhone = !DeviceUtils.isTV(requireContext())
         posterBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                // Phone: strip focusability so a finger-tap clicks on the FIRST tap (the XML
+                // focusableInTouchMode is for D-pad on TV; on touch it makes the first tap only focus).
+                if (isPhone) {
+                    viewHolder.itemView.isFocusable = false
+                    viewHolder.itemView.isFocusableInTouchMode = false
+                }
                 viewHolder.itemView.setOnClickListener {
                     val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0) return@setOnClickListener
@@ -228,11 +237,11 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                         val restorePos = viewModel.savedGridPosition
                         posterGrid.post {
                             val maxPos = (posterAdapter.size() - 1).coerceAtLeast(0)
-                            posterGrid.selectedPosition = (if (restorePos >= 0) restorePos else 0).coerceIn(0, maxPos)
+                            TouchGridSetup.setSelected(posterGrid, if (restorePos >= 0) restorePos else 0, posterAdapter.size())
                             viewModel.savedGridPosition = -1
-                            // Restore the CURSOR, not just the scroll position — without this,
-                            // back-nav focus lands elsewhere and the gold cursor is invisible.
-                            if (restorePos >= 0) posterGrid.requestFocus()
+                            // Restore the CURSOR (TV only). On a phone there's no cursor and
+                            // requestFocus would pop the soft keyboard / steal scroll on entry.
+                            if (restorePos >= 0 && DeviceUtils.isTV(requireContext())) posterGrid.requestFocus()
                         }
                     }
                     // Empty-state (watch-audit): a category that resolves empty used to leave the
@@ -271,7 +280,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateSeriesList(posterAdapter: ArrayObjectAdapter) {
-        val grid = view?.findViewById<VerticalGridView>(R.id.series_grid) ?: return
+        val grid = view?.findViewById<RecyclerView>(R.id.series_grid) ?: return
         if (grid.isComputingLayout) {
             if (!updatePending) {
                 updatePending = true
@@ -285,14 +294,14 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         updateSeriesListInternal(posterAdapter, grid)
     }
 
-    private fun updateSeriesListInternal(posterAdapter: ArrayObjectAdapter, grid: VerticalGridView) {
+    private fun updateSeriesListInternal(posterAdapter: ArrayObjectAdapter, grid: RecyclerView) {
         val series = viewModel.seriesList.value
         filteredSeries = if (searchFilter.isEmpty()) {
             series
         } else {
             series.filter { it.name.lowercase().contains(searchFilter) }
         }
-        val savedPos = grid.selectedPosition
+        val savedPos = TouchGridSetup.currentPosition(grid)
         val newItems = filteredSeries.map { s ->
             PosterItem(
                 id = s.seriesId,
@@ -314,7 +323,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         // or the posted/parent layout can win the race and still observe -1.
         if (newItems.isNotEmpty()) {
             val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, newItems.size - 1)
-            try { grid.selectedPosition = target } catch (_: Exception) { }
+            try { TouchGridSetup.setSelected(grid, target, newItems.size) } catch (_: Exception) { }
         }
     }
 
@@ -339,8 +348,8 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
     override fun onDestroyView() {
         // Save focus positions for restoration on back navigation
-        view?.findViewById<VerticalGridView>(R.id.series_grid)?.let {
-            viewModel.savedGridPosition = it.selectedPosition
+        view?.findViewById<RecyclerView>(R.id.series_grid)?.let {
+            viewModel.savedGridPosition = TouchGridSetup.currentPosition(it)
         }
         view?.findViewById<RecyclerView>(R.id.series_categories_list)?.let {
             viewModel.savedCategoryPosition =

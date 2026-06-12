@@ -194,6 +194,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // 2 = FFmpeg rebuild tried. Reset per content. AUDIO_STALL / AUDIO_SINK_ERROR used to be
     // log-only — a silent dropout was never recovered until the user backed out.
     private var audioStallRecoveryStage = 0
+    // One-shot alternate-container retry for VOD/Series whose server bytes no extractor
+    // recognizes (provider listed the wrong containerExtension, or serves an HTML error body
+    // with HTTP 200). Reset per content. Customer report: Kung Fu Panda — 6 blind retries of
+    // the same dead source (~50s of spinner) before the error dialog.
+    private var containerExtRetryAttempted = false
     // Media3 1.9.0 MatroskaExtractor is stricter about EBML varints than 1.2.1.
     // Some IPTV-transcoded MKVs break mid-stream. On first hit, retry from position 0.
     private var mkvVarintRecoveryAttempted = false
@@ -478,13 +483,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             viewLifecycleOwner.lifecycleScope.launch {
                 val resumePos = viewModel.getResumePositionSync().coerceAtLeast(0L)
                 val p = player ?: return@launch
-                p.setMediaItem(MediaItem.fromUri(viewModel.streamUrl), resumePos)
+                setPlayerSource(viewModel.streamUrl, resumePos)
                 p.prepare()
                 p.play()
                 if (resumePos > 0) viewModel.hasResumed = true
             }
         } else {
-            player?.setMediaItem(MediaItem.fromUri(viewModel.streamUrl))
+            setPlayerSource(viewModel.streamUrl)
             player?.prepare()
             player?.play()
             if (forceBeginningArg) viewModel.hasResumed = true
@@ -1153,6 +1158,57 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                     return
                 }
+                // Deterministic source failure: the server returned bytes no extractor can read
+                // (typically an HTML/error body served with HTTP 200, or a file whose real
+                // container doesn't match its listed extension). Replaying the same URL can
+                // never succeed, so don't burn the 6-retry ladder on it. Try the alternate
+                // container extension ONCE (wrong containerExtension in provider listings is
+                // common), then fail fast with an honest message.
+                if ((isUnrecognizedContainerError(error) || isDeterministicHttpError(error)) &&
+                    viewModel.contentType != ContentType.LIVE
+                ) {
+                    val failFastMessage =
+                        if (isDeterministicHttpError(error)) friendlyErrorMessage(error)
+                        else "This title appears to be broken or missing on your provider's server. " +
+                            "Please try a different title or contact your provider."
+                    if (!containerExtRetryAttempted) {
+                        containerExtRetryAttempted = true
+                        retryJob?.cancel()
+                        retryJob = viewLifecycleOwner.lifecycleScope.launch {
+                            showBufferingOverlay(true, immediate = true)
+                            // Prefer the AUTHORITATIVE extension from get_vod_info — panels only
+                            // serve a file at its exact extension and the heuristic swap can't
+                            // guess exotic ones (Kung Fu Panda = .m2ts). Heuristic is the
+                            // offline/API-failure fallback.
+                            val currentExt = viewModel.streamUrl.substringAfterLast('.', "").lowercase()
+                            val realExt = viewModel.fetchRealVodExtension()
+                            val altUrl = when {
+                                realExt != null && !realExt.equals(currentExt, ignoreCase = true) ->
+                                    viewModel.streamUrl.substringBeforeLast('.') + ".$realExt"
+                                else -> alternateContainerUrl(viewModel.streamUrl)
+                            }
+                            if (altUrl == null) {
+                                streamDiagnosticLogger.logAppEvent("UNPLAYABLE_SOURCE",
+                                    "extRetryTried=false, noAlt=true, channel=${healthMonitor?.channelName ?: "unknown"}")
+                                showFriendlyError(failFastMessage)
+                                return@launch
+                            }
+                            streamDiagnosticLogger.logAppEvent("CONTAINER_EXT_RETRY",
+                                "from=$currentExt, to=${altUrl.substringAfterLast('.')}, " +
+                                "authoritative=${realExt != null}, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            viewModel.streamUrl = altUrl
+                            val p = player ?: return@launch
+                            setPlayerSource(altUrl)   // M2TS-aware (Kung Fu Panda = .m2ts)
+                            p.prepare()
+                            p.play()
+                        }
+                        return
+                    }
+                    streamDiagnosticLogger.logAppEvent("UNPLAYABLE_SOURCE",
+                        "extRetryTried=true, channel=${healthMonitor?.channelName ?: "unknown"}")
+                    showFriendlyError(failFastMessage)
+                    return
+                }
                 val maxRetries = maxRetriesForContent(viewModel.contentType)
                 if (retryCount < maxRetries) {
                     val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
@@ -1548,6 +1604,54 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
         }
         return false
+    }
+
+    /**
+     * Detects "no extractor recognizes these bytes" — UnrecognizedInputFormatException /
+     * ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED. Deterministic per URL: the server is sending
+     * something that isn't the listed media container at all.
+     */
+    private fun isUnrecognizedContainerError(error: PlaybackException): Boolean {
+        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED) return true
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.exoplayer.source.UnrecognizedInputFormatException) return true
+            cause = cause.cause
+        }
+        return false
+    }
+
+    /**
+     * Deterministic HTTP failures: 4xx (except 408 timeout / 429 throttle) and 551 (Xtream
+     * "stream unavailable / not in package"). Retrying the same URL can't succeed — but a 404
+     * CAN be a wrong listed container extension, so these share the alternate-ext retry.
+     */
+    private fun isDeterministicHttpError(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        var depth = 0
+        while (cause != null && depth < 6) {
+            if (cause.javaClass.name == "androidx.media3.datasource.HttpDataSource\$InvalidResponseCodeException") {
+                val code = runCatching {
+                    cause!!.javaClass.getField("responseCode").getInt(cause)
+                }.getOrNull() ?: return false
+                return (code in 400..499 && code != 408 && code != 429) || code == 551
+            }
+            cause = cause.cause
+            depth++
+        }
+        return false
+    }
+
+    /** Swap a VOD/Series URL's container extension (mp4 ↔ mkv, avi → mkv). Null if no sensible swap. */
+    private fun alternateContainerUrl(url: String): String? {
+        val ext = url.substringAfterLast('.', "").lowercase()
+        val alt = when (ext) {
+            "mp4" -> "mkv"
+            "mkv" -> "mp4"
+            "avi" -> "mkv"
+            else -> return null
+        }
+        return url.substringBeforeLast('.') + ".$alt"
     }
 
     /**
@@ -2602,7 +2706,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             if (!isAdded || isDetached) return@post
             try {
-                AlertDialog.Builder(act)
+                val builder = AlertDialog.Builder(act)
                     .setTitle(R.string.error_stream)
                     .setMessage(message)
                     .setPositiveButton(R.string.retry) { _, _ ->
@@ -2624,8 +2728,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     .setNegativeButton(R.string.cancel) { _, _ ->
                         act.onBackPressedDispatcher.onBackPressed()
                     }
-                    .setCancelable(false)
-                    .show()
+                // VOD/Series escape hatch: some providers deliver a title in a container/transport
+                // ExoPlayer can't open (e.g. M2TS via a single-connection live-redirect — plays in
+                // FFmpeg-based players like VLC/MX). Offer to hand off if such a player is installed.
+                val externalPlayers = ExternalPlayerLauncher.getAvailablePlayers(act)
+                    .filter { it != ExternalPlayerLauncher.Player.SYSTEM }
+                if (viewModel.contentType != ContentType.LIVE && externalPlayers.isNotEmpty()) {
+                    builder.setNeutralButton(R.string.open_in_external_player) { _, _ ->
+                        val launched = ExternalPlayerLauncher.launch(
+                            act, externalPlayers.first(), viewModel.streamUrl, viewModel.streamName
+                        )
+                        streamDiagnosticLogger.logAppEvent("EXTERNAL_PLAYER_HANDOFF",
+                            "player=${externalPlayers.first().displayName}, launched=$launched")
+                        if (!launched) Toast.makeText(act, "Couldn't open external player", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                builder.setCancelable(false).show()
                 streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_SHOWN", "msg=$message")
             } catch (e: Exception) {
                 streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_FAILED", "err=${e.message}")
@@ -2648,6 +2766,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         audioFallbackAttempted = false
         audioDisabledByFallback = false
         audioStallRecoveryStage = 0
+        containerExtRetryAttempted = false
         userTrackOverrideActive = false
         mtkMultichannelFfmpegApplied = false
         upwardReprobeAttempted = false
@@ -2700,6 +2819,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (coarse) p.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         p.seekTo(target)
         if (coarse) p.setSeekParameters(SeekParameters.DEFAULT)
+    }
+
+    /**
+     * Set the player source for [url] at [positionMs], choosing the M2TS-stripping media source
+     * for .m2ts/.mts VOD (ExoPlayer can't demux 192-byte Blu-ray packets natively) and the normal
+     * MediaItem path for everything else. Centralizes initial-load and retry so both handle M2TS.
+     */
+    private fun setPlayerSource(url: String, positionMs: Long = 0L) {
+        val p = player ?: return
+        if (StreamingDataFactories.isM2tsUrl(url)) {
+            streamDiagnosticLogger.logAppEvent("M2TS_SOURCE", "ext=${url.substringAfterLast('.')}, pos=${positionMs}ms")
+            val dsf = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
+            p.setMediaSource(StreamingDataFactories.buildM2tsMediaSource(url, dsf), positionMs)
+        } else if (positionMs > 0) {
+            p.setMediaItem(MediaItem.fromUri(url), positionMs)
+        } else {
+            p.setMediaItem(MediaItem.fromUri(url))
+        }
     }
 
     /** MediaItem for a queued next episode. mediaId carries the episodeId so

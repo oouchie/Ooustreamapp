@@ -68,9 +68,7 @@
                 android:layout_height="match_parent"
                 android:layout_weight="75">
 
-                <!-- Phone: plain RecyclerView so the grid scrolls by touch. TV uses the
-                     Leanback VerticalGridView variant in layout-television/. -->
-                <androidx.recyclerview.widget.RecyclerView
+                <androidx.leanback.widget.VerticalGridView
                     android:id="@+id/vod_grid"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"

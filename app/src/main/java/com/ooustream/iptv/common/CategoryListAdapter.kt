@@ -74,6 +74,14 @@ class CategoryListAdapter(
             emoji.text = CategoryEmoji.get(cat.name)
             emoji.setTextColor(emojiColor ?: 0xFFFFFFFF.toInt())
 
+            // Phone: strip focusability so a finger-tap selects on the FIRST tap. The XML
+            // focusableInTouchMode is for D-pad on TV; on a touchscreen it makes the first tap
+            // only move focus (the "have to double tap" complaint).
+            if (!DeviceUtils.isTV(root.context)) {
+                root.isFocusable = false
+                root.isFocusableInTouchMode = false
+            }
+
             // Drive the StateListDrawable: selected state handled by framework
             root.isSelected = isSelected
             name.setTextColor(if (isSelected) 0xFFFFC107.toInt() else 0xFF9CA3AF.toInt())

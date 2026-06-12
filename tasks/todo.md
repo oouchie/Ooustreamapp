@@ -1,52 +1,42 @@
-# v4.1.0 — Full-App Cursor/UX Audit + MultiView World-Class Pass
+# Phone touch fixes — IN PROGRESS (paused for Flutter discussion)
 
-Goal: #1 IPTV app; UI/UX at the big-streaming-app bar. Same audit as the Live TV cursor session
-(v4.0.1), applied to EVERY screen, plus a MultiView deep scan.
+Device verified: Samsung Z Fold SM-F966U (arm64, Android 16) over USB (RFCY81PNYGH). USB screencap
+works; wireless (192.168.1.143) screencap returns black (secure inner display).
 
-Audit criteria per screen (the "cursor loop"):
-1. Entry: visible cursor immediately, on a sensible default
-2. Every list/control: cursor visible, incl. on already-"selected" items
-3. Action → BACK: cursor restored to the item you acted on
-4. No D-pad dead ends / invisible focus
-5. Polish vs Netflix bar (feedback, labels, transitions)
+## ROOT CAUSE (confirmed on-device)
+Leanback `VerticalGridView`/`HorizontalGridView` are D-pad widgets: they DON'T touch-scroll (snap
+content back to keep the "selected" item aligned), and their items are `focusableInTouchMode=true`
+so the first tap only moves focus → "have to double tap".
 
-## Device walkthrough (AFTKRT 192.168.1.84)
-- [x] Home — FOUND: (a) BACK from playback → cursor lands invisibly on hero (saveFocusState ran at
-      onDestroyView when findFocus()==null → restore defaulted to hero); (b) hero Play/More Info focused
-      state too subtle (gold glow on gold button); (c) More Info UNREACHABLE by D-pad (LEFT/RIGHT always
-      rotated the featured item); (d) CW row reorders after playback so position-restore points at the
-      wrong card (accepted for now — cursor is visible, played item is at front)
-- [x] Movies/Series/Favorites/Guide — covered by code sweep (same missing-requestFocus class)
-- [x] Search/Settings/detail screens — verified OK by sweep (entry focus present)
-- [ ] MultiView device test (after agent fixes land — incl. QUAD soak on Media3 1.10.0/mt8696)
+## DONE + DEVICE-CONFIRMED (all phone-gated via DeviceUtils.isTV; TV byte-identical via layout-television/)
+- **Grid touch-scroll fix**: swapped Leanback VerticalGridView → plain RecyclerView+GridLayoutManager
+  on phone for Movies (vod_grid), Series (series_grid), Live TV (channels_list). New helper
+  `common/TouchGridSetup.kt` (configure/setSelected/currentPosition/stripItemFocusForTouch +
+  GridSpacingDecoration). layout-television/ copies keep the VerticalGridView for TV. Favorites already
+  used a plain RecyclerView. CONFIRMED on device: Movies + Live TV channel lists scroll by finger.
+- **Single-tap fix** (strip item focusable on phone, keep clickable): Movies/Series poster onBind,
+  Live TV channel onBind, **CategoryListAdapter** (covers ALL category lists — user confirmed they all
+  double-tapped), all 10 Home row onBinds, Home hero Play/More Info buttons. Movies single-tap CONFIRMED
+  by user. Categories/Home just installed — NOT yet user-confirmed.
+- requestFocus cursor-restore gating to isTV (7 sites); EPG chip 48dp; hero buttons 48dp. (earlier)
 
-## Code audits (parallel agents)
-- [x] Focus sweep: P1 missing-requestFocus on VodFragment:252, SeriesFragment:231, LiveTvFragment:358,
-      EpgGridFragment (initialFetchDone gate), FavoritesFragment (saved but never restored).
-      Q2 styling: ALL CLEAN after v4.0.1. QuickSidebar/MultiView popups/detail screens OK.
-- [x] MultiView review: 20 verified findings. P0: players keep decoding in background (no onStop);
-      seed auto-fill dead (categoryId=null); onPlayerError bypasses recovery ladder (flash-loop);
-      swapSlots leaves stall monitoring on wrong slots. P1: no slot logo bridge (black until first
-      frame), audio-switch feedback weak, top-bar GONE = DPAD_UP dead key race, 500ms×N stagger slow,
-      720p focused decode wasteful in QUAD, layout AutoTransition over SurfaceViews. P2: 8-9sp labels,
-      exit-confirm friction, 60s keep-alive micro-rebuffer, EPG ticker never uses real EPG, scrim sized
-      to full screen, 15s active watchdog.
+## STILL TODO (touch)
+- Home HORIZONTAL rows (Continue Watching/Top 10/etc. = Leanback HorizontalGridView): left/right finger
+  scroll likely broken (same Leanback issue). These rows are built programmatically in HomeFragment via
+  ItemBridgeAdapter into HorizontalGridViews — harder than the vertical-grid swap. Vertical scroll on
+  Home works (NestedScrollView).
+- Search results (HorizontalGridView in fragment_search_aurora) — same.
+- EPG Guide rows (VerticalGridView guide_rows) — same; has custom drag-pan already.
+- Favorites scores row (HorizontalGridView) — minor.
+- Verify categories + Home single-tap on device.
 
-## Fixes (this release)
-- [x] requestFocus restores: VodFragment, SeriesFragment, LiveTvFragment (2nd site), EpgGridFragment
-      onResume, FavoritesFragment (restore + ViewModel default -1)
-- [x] Home: saveFocusState() moved to onPause (focus still alive there); hero white focus ring on
-      Play/More Info; hero LEFT/RIGHT now traverses Play↔More Info and only rotates at the edges
-- [ ] MultiView fixes 1-7 (agent in flight): onStop pause, seed categoryId resolve, error→ladder,
-      label sizes, double-back exit, slot logo bridge, audio-switch border flash
-- [ ] DEFERRED (documented, next pass): MultiView mode-aware tier gating + 540p QUAD cap + stagger
-      tuning + real-EPG ticker + keep-alive edge check + scrim sizing + swap re-monitoring + layout
-      transition exclusion; Home CW reorder-aware restore; ParentalSettings focus restore
+## Files touched (uncommitted): common/TouchGridSetup.kt (new), common/CategoryListAdapter.kt,
+vod/VodFragment.kt, series/SeriesFragment.kt, livetv/LiveTvFragment.kt, home/HomeFragment.kt,
+epg/guide/EpgGridFragment.kt, favorites/FavoritesFragment.kt + ViewModel, res/values/ids.xml,
+res/layout/{fragment_vod,fragment_series,fragment_live_tv,fragment_home,fragment_epg_grid}.xml,
+res/layout-television/{fragment_vod,fragment_series,fragment_live_tv}.xml (new).
+NOTE: also still-uncommitted Kung Fu Panda / player-robustness work from an earlier session.
 
-## Verify / Release
-- [ ] compileDebugKotlin + assembleDebug/Release clean
-- [ ] On-device verification (Home loop, Movies/Series loop, Guide back-return, MultiView open/audio/exit)
-- [ ] v4.1.0 release (bump 87, update.json, CLAUDE.md, gh release)
-
-## Review
-(at the end)
+## DECISION PENDING: user wants to build a SEPARATE Flutter phone app (Android+iOS), keeping Kotlin for
+Fire TV. If we go Flutter-for-phone, the remaining Leanback-on-touch fixes here become throwaway — only
+finish them if phones will keep running this Kotlin build in the interim.

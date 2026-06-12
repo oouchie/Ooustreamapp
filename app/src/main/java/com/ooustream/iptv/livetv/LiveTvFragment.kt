@@ -38,6 +38,7 @@ import com.ooustream.iptv.common.ChannelDisplayHelper
 import com.ooustream.iptv.epg.ChannelNameParser
 import com.ooustream.iptv.epg.EpgSource
 import com.ooustream.iptv.common.ChannelPresenter
+import com.ooustream.iptv.common.TouchGridSetup
 import com.ooustream.iptv.common.ChannelSkeletonPresenter
 import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.safeReplaceAll
@@ -102,7 +103,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         }
 
         val categoriesList = view.findViewById<RecyclerView>(R.id.categories_list)
-        val channelsList = view.findViewById<VerticalGridView>(R.id.channels_list)
+        val channelsList = view.findViewById<RecyclerView>(R.id.channels_list)
         val previewPlayerView = view.findViewById<PlayerView>(R.id.preview_player_view)
         val previewPlaceholder = view.findViewById<TextView>(R.id.preview_placeholder)
         val previewContainer = view.findViewById<FrameLayout>(R.id.preview_container)
@@ -193,12 +194,17 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         categoriesList.adapter = categoryAdapter
 
         // Channels VerticalGridView (Leanback - handles 5000+ items)
-        channelsList.setNumColumns(1)
-        channelsList.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE)
-        channelsList.setWindowAlignmentOffsetPercent(40f)
-        channelsList.setItemAlignmentOffsetPercent(50f)
-        // Speed up rapid D-pad scrolling: disable child layout animation
-        channelsList.setAnimateChildLayout(false)
+        // TV: Leanback alignment/animation tuning. Phone: a LinearLayoutManager so the list
+        // touch-scrolls (Leanback VerticalGridView doesn't scroll by finger).
+        (channelsList as? VerticalGridView)?.apply {
+            setNumColumns(1)
+            setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE)
+            setWindowAlignmentOffsetPercent(40f)
+            setItemAlignmentOffsetPercent(50f)
+            setAnimateChildLayout(false)
+        } ?: run {
+            channelsList.layoutManager = LinearLayoutManager(requireContext())
+        }
         channelsList.itemAnimator = null
         val channelPresenter = ChannelPresenter(epgResolver = { ch ->
             val categoryName = viewModel.categories.value
@@ -309,6 +315,10 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         val channelBridgeAdapter = ItemBridgeAdapter(channelAdapter)
         channelBridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                if (!DeviceUtils.isTV(requireContext())) {
+                    viewHolder.itemView.isFocusable = false
+                    viewHolder.itemView.isFocusableInTouchMode = false
+                }
                 viewHolder.itemView.setOnClickListener {
                     val pos = viewHolder.bindingAdapterPosition
                     if (pos < 0 || pos >= filteredChannels.size) return@setOnClickListener
@@ -355,11 +365,12 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         // Restore focus position on back navigation
                         if (viewModel.savedChannelPosition >= 0) {
                             channelsList.post {
-                                channelsList.safeSetSelectedPosition(viewModel.savedChannelPosition, channelAdapter.size())
+                                TouchGridSetup.setSelected(channelsList, viewModel.savedChannelPosition, channelAdapter.size())
                                 viewModel.savedChannelPosition = -1
-                                // Restore the CURSOR too — scroll alone leaves focus elsewhere
-                                // and the gold cursor invisible (v4.0.1 bug family).
-                                channelsList.requestFocus()
+                                // Restore the CURSOR too (TV only) — scroll alone leaves focus
+                                // elsewhere and the gold cursor invisible (v4.0.1 bug family). On a
+                                // phone requestFocus would pop the keyboard / steal scroll.
+                                if (DeviceUtils.isTV(requireContext())) channelsList.requestFocus()
                             }
                         }
                     } else if (skeletonSwapped && channels.isNotEmpty()) {
@@ -368,7 +379,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                         // beginning instead of whatever scroll position the prior category
                         // happened to be at.
                         channelsList.post {
-                            channelsList.safeSetSelectedPosition(0, channelAdapter.size())
+                            TouchGridSetup.setSelected(channelsList, 0, channelAdapter.size())
                         }
                     }
                 }
@@ -385,7 +396,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         }
 
         // Channel selection listener - load EPG on focus + debounced preview
-        channelsList.addOnChildViewHolderSelectedListener(object : OnChildViewHolderSelectedListener() {
+        (channelsList as? VerticalGridView)?.addOnChildViewHolderSelectedListener(object : OnChildViewHolderSelectedListener() {
             override fun onChildViewHolderSelected(
                 parent: RecyclerView,
                 child: RecyclerView.ViewHolder?,
@@ -433,7 +444,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     if (programs.isEmpty()) {
                         // No server EPG — ask SmartEpgFiller for an inferred "now on" blurb
                         // for the currently focused channel so the panel isn't just empty.
-                        val focusedChannel = filteredChannels.getOrNull(channelsList.selectedPosition)
+                        val focusedChannel = filteredChannels.getOrNull(TouchGridSetup.currentPosition(channelsList))
                         val emptyText = if (focusedChannel != null) {
                             val categoryName = viewModel.categories.value
                                 .find { it.categoryId == viewModel.selectedCategoryId.value }
@@ -487,7 +498,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                     }
 
                     // Update focused channel card with EPG text (real or inferred)
-                    val selectedPos = channelsList.selectedPosition
+                    val selectedPos = TouchGridSetup.currentPosition(channelsList)
                     if (selectedPos >= 0 && selectedPos < filteredChannels.size) {
                         val channel = filteredChannels[selectedPos]
                         val itemView = channelsList.findViewHolderForAdapterPosition(selectedPos)?.itemView
@@ -671,7 +682,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     private var filteredChannels: List<LiveStream> = emptyList()
 
     private fun updateChannelList(channelAdapter: ArrayObjectAdapter) {
-        val grid = view?.findViewById<VerticalGridView>(R.id.channels_list)
+        val grid = view?.findViewById<RecyclerView>(R.id.channels_list)
         val channels = viewModel.channels.value
         filteredChannels = if (searchFilter.isEmpty()) {
             channels
@@ -683,11 +694,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         // on the empty->populated transition (category switch) mFocusPosition can be left at
         // NO_POSITION (-1) and the layout calls createItem(-1). Force a valid, in-bounds focus
         // index SYNCHRONOUSLY after setItems so the channels grid never lays out against -1.
-        val savedPos = grid?.selectedPosition ?: -1
+        val savedPos = if (grid != null) TouchGridSetup.currentPosition(grid) else -1
         channelAdapter.setItems(filteredChannels, null)
         if (filteredChannels.isNotEmpty() && grid != null) {
             val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, filteredChannels.size - 1)
-            try { grid.selectedPosition = target } catch (_: Exception) { }
+            try { TouchGridSetup.setSelected(grid, target, filteredChannels.size) } catch (_: Exception) { }
         }
     }
 
@@ -851,13 +862,14 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         // to the first focusable view (the category list), where the selected category's
         // styling masks the focus ring — the user sees no cursor anywhere and has to blindly
         // press D-pad to find it.
-        val channelsList = view?.findViewById<VerticalGridView>(R.id.channels_list)
+        val channelsList = view?.findViewById<RecyclerView>(R.id.channels_list)
         channelsList?.post {
             val listIndex = filteredChannels.indexOfFirst { it.streamId == channel.streamId }
             if (listIndex >= 0) {
-                channelsList.selectedPosition = listIndex
+                TouchGridSetup.setSelected(channelsList, listIndex, filteredChannels.size)
             }
-            channelsList.requestFocus()
+            // Cursor restore is TV-only; on a phone this would pop the keyboard / steal scroll.
+            if (DeviceUtils.isTV(requireContext())) channelsList.requestFocus()
         }
         viewModel.loadEpg(channel.streamId)
     }
@@ -911,8 +923,8 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
 
     override fun onDestroyView() {
         // Save focus positions for restoration on back navigation
-        view?.findViewById<VerticalGridView>(R.id.channels_list)?.let {
-            viewModel.savedChannelPosition = it.selectedPosition
+        view?.findViewById<RecyclerView>(R.id.channels_list)?.let {
+            viewModel.savedChannelPosition = TouchGridSetup.currentPosition(it)
         }
         view?.findViewById<RecyclerView>(R.id.categories_list)?.let {
             viewModel.savedCategoryPosition =

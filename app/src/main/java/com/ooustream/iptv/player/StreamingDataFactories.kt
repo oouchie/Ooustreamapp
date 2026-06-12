@@ -63,4 +63,45 @@ object StreamingDataFactories {
         return OkHttpDataSource.Factory(okHttpClient)
             .setUserAgent(userAgent)
     }
+
+    /** True if the URL is an M2TS/BDAV container ExoPlayer can't demux without prefix-stripping. */
+    fun isM2tsUrl(url: String): Boolean {
+        val ext = url.substringAfterLast('.', "").substringBefore('?').lowercase()
+        return ext == "m2ts" || ext == "mts"
+    }
+
+    /**
+     * Build a progressive media source that strips M2TS 192-byte prefixes (see
+     * [M2tsExtractingDataSource]) so ExoPlayer's TsExtractor can read Blu-ray-style VOD.
+     * The wrapper is self-gating (passes through non-M2TS bytes), so this is safe even if the
+     * server ends up serving plain TS after the redirect.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun buildM2tsMediaSource(
+        url: String,
+        upstreamFactory: androidx.media3.datasource.DataSource.Factory
+    ): androidx.media3.exoplayer.source.MediaSource {
+        val m2tsFactory = M2tsExtractingDataSource.Factory(upstreamFactory)
+        // SINGLE TsExtractor (not the 20-way DefaultExtractorsFactory): multi-extractor sniffing
+        // makes ExoPlayer open the source, peek, then RE-OPEN to extract — and this provider's
+        // single-use-token `/live/play/` redirect rejects the 2nd concurrent connection with 416.
+        // One extractor → no sniff re-open → one connection (how IJKPlayer plays it). CBR seeking
+        // off for the same reason (length probing = extra opens).
+        val extractors = androidx.media3.extractor.ExtractorsFactory {
+            arrayOf(
+                androidx.media3.extractor.ts.TsExtractor(
+                    androidx.media3.extractor.ts.TsExtractor.MODE_SINGLE_PMT,
+                    androidx.media3.common.util.TimestampAdjuster(0L),
+                    androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory(
+                        androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+                    )
+                )
+            )
+        }
+        return androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(
+            m2tsFactory, extractors
+        ).createMediaSource(
+            androidx.media3.common.MediaItem.fromUri(url)
+        )
+    }
 }

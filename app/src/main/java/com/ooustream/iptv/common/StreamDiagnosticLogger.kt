@@ -346,7 +346,13 @@ class StreamDiagnosticLogger @Inject constructor(
     private fun maskUrl(url: String): String {
         return try {
             val uri = Uri.parse(url)
-            "${uri.scheme}://${uri.host}:${uri.port}/***"
+            // Omit the port when unspecified (Uri.port == -1) — the old format printed a
+            // misleading ":-1" that read like a malformed URL in customer reports. Keep the
+            // LAST path segment (streamId.ext) — it identifies the title + container without
+            // leaking the username/password segments of an Xtream URL.
+            val port = if (uri.port >= 0) ":${uri.port}" else ""
+            val tail = uri.lastPathSegment?.let { "/$it" } ?: ""
+            "${uri.scheme}://${uri.host}$port/***$tail"
         } catch (_: Exception) { "***" }
     }
 

@@ -29,6 +29,7 @@
     <string name="retry">Retry</string>
     <string name="reconnecting">Reconnecting…</string>
     <string name="waiting_for_network">Waiting for network…</string>
+    <string name="open_in_external_player">Open in External Player</string>
     <string name="empty_category_title">Nothing here yet</string>
     <string name="empty_category_hint">This category has no titles. Try another category.</string>
 

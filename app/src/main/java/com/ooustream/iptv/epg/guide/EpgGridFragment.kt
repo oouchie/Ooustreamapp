@@ -133,7 +133,8 @@ class EpgGridFragment : Fragment(), KeyEventHandler {
                     if (rows.isNotEmpty() && !initialFetchDone) {
                         initialFetchDone = true
                         viewModel.onVisibleRangeChanged(0, 12)
-                        grid.requestFocus()
+                        // TV only: phone scrolls by touch and shouldn't have focus grabbed on load.
+                        if (DeviceUtils.isTV(requireContext())) grid.requestFocus()
                     }
                 }
             }
@@ -302,7 +303,8 @@ class EpgGridFragment : Fragment(), KeyEventHandler {
         // Back-return from fullscreen playback: the first-load grid.requestFocus() is gated by
         // initialFetchDone and never re-fires, so focus would land nowhere visible (v4.0.1 bug
         // family). Re-take focus on the grid — selection still points at the row we tuned from.
-        if ((rowAdapter?.itemCount ?: 0) > 0) {
+        // TV only: on a phone there's no cursor and this would steal scroll / pop the keyboard.
+        if ((rowAdapter?.itemCount ?: 0) > 0 && DeviceUtils.isTV(requireContext())) {
             gridView?.requestFocus()
         }
     }

@@ -20,7 +20,6 @@
         android:paddingBottom="@dimen/overscan_margin"
         android:paddingTop="@dimen/screen_top_clearance">
 
-        <!-- 2-Panel Content -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -29,7 +28,7 @@
 
             <!-- Categories Sidebar (25%) - Glass Card -->
             <LinearLayout
-                android:id="@+id/vod_sidebar"
+                android:id="@+id/series_sidebar"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="25"
@@ -41,7 +40,7 @@
                 android:clipChildren="false">
 
                 <EditText
-                    android:id="@+id/vod_category_search"
+                    android:id="@+id/series_category_search"
                     android:layout_width="match_parent"
                     android:layout_height="36dp"
                     android:layout_marginBottom="4dp"
@@ -56,7 +55,7 @@
                     android:visibility="gone" />
 
                 <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/vod_categories_list"
+                    android:id="@+id/series_categories_list"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:clipToPadding="false" />
@@ -68,17 +67,15 @@
                 android:layout_height="match_parent"
                 android:layout_weight="75">
 
-                <!-- Phone: plain RecyclerView so the grid scrolls by touch. TV uses the
-                     Leanback VerticalGridView variant in layout-television/. -->
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/vod_grid"
+                <androidx.leanback.widget.VerticalGridView
+                    android:id="@+id/series_grid"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:clipToPadding="false"
                     android:clipChildren="false" />
 
                 <LinearLayout
-                    android:id="@+id/vod_empty_state"
+                    android:id="@+id/series_empty_state"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
@@ -107,7 +104,7 @@
 
         <!-- Navigation Hints - Aurora styled -->
         <TextView
-            android:id="@+id/vod_nav_hints"
+            android:id="@+id/series_nav_hints"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
@@ -172,7 +169,7 @@
             android:layout_marginStart="8dp"
             android:layout_marginEnd="8dp"
             android:background="@drawable/bg_input_rounded"
-            android:hint="Search movies..."
+            android:hint="Search series..."
             android:textColorHint="@color/text_muted"
             android:textColor="@color/text_primary"
             android:textSize="13sp"
@@ -194,6 +191,6 @@
             android:focusableInTouchMode="true"
             android:clickable="true"
             android:contentDescription="Search"
-            android:nextFocusDown="@+id/vod_grid" />
+            android:nextFocusDown="@+id/series_grid" />
     </LinearLayout>
 </FrameLayout>

@@ -707,6 +707,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(sectionObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = sectionObjectAdapter.get(position)
@@ -749,6 +750,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(trendingObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = trendingObjectAdapter.get(position)
@@ -794,6 +796,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(trendingSeriesObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = trendingSeriesObjectAdapter.get(position)
@@ -858,6 +861,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(top10ObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val top10 = top10ObjectAdapter.get(position) as? Top10Item ?: return@setOnClickListener
@@ -984,6 +988,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
             val bridge = ItemBridgeAdapter(objectAdapter)
             bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
                 override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                     val position = viewHolder.bindingAdapterPosition
                     viewHolder.itemView.setOnClickListener {
                         val item = objectAdapter.get(position) as? com.ooustream.iptv.common.PosterItem ?: return@setOnClickListener
@@ -1015,6 +1020,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(cwObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = cwObjectAdapter.get(position)
@@ -1152,6 +1158,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(pickUpObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     when (val item = pickUpObjectAdapter.get(position)) {
@@ -1212,6 +1219,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(forYouObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = forYouObjectAdapter.get(position)
@@ -1312,6 +1320,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
             val bridge = ItemBridgeAdapter(objectAdapter)
             bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
                 override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                     val position = viewHolder.bindingAdapterPosition
                     viewHolder.itemView.setOnClickListener {
                         val item = objectAdapter.get(position)
@@ -1335,6 +1344,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val bridgeAdapter = ItemBridgeAdapter(forYouLiveObjectAdapter)
         bridgeAdapter.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
             override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
                 val position = viewHolder.bindingAdapterPosition
                 viewHolder.itemView.setOnClickListener {
                     val item = forYouLiveObjectAdapter.get(position)
@@ -1724,6 +1734,14 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
 
     private fun setupHeroClickListener() {
+        // Phone: strip focusability so the hero buttons click on the first tap (XML sets
+        // focusableInTouchMode=true for D-pad on TV → first tap only focuses on touch).
+        if (!DeviceUtils.isTV(requireContext())) {
+            heroWatchNow.isFocusable = false
+            heroWatchNow.isFocusableInTouchMode = false
+            heroMoreInfo.isFocusable = false
+            heroMoreInfo.isFocusableInTouchMode = false
+        }
         heroWatchNow.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 if (DeviceUtils.isTV(requireContext())) {

@@ -224,6 +224,22 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Authoritative container extension for the current VOD title, from get_vod_info.
+     * Several play surfaces default to "mp4" when their listing item lost the extension —
+     * but panels only serve a file at its EXACT extension (customer report: Kung Fu Panda
+     * is .m2ts; .mp4/.mkv requests got HTTP 551). Null on failure / non-VOD.
+     */
+    suspend fun fetchRealVodExtension(): String? {
+        if (contentType != ContentType.VOD) return null
+        val id = streamId.toIntOrNull() ?: return null
+        return try {
+            contentRepository.getVodInfo(id).movieData?.containerExtension?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun buildLiveUrl(stream: LiveStream): String {
         return contentRepository.buildLiveStreamUrl(stream.streamId)
     }

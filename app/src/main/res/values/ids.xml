@@ -5,4 +5,5 @@
     <item name="focus_bracket_drawable" type="id"/>
     <item name="focus_effect_job" type="id"/>
     <item name="for_you_live_row" type="id"/>
+    <item name="tag_grid_spacing_added" type="id"/>
 </resources>

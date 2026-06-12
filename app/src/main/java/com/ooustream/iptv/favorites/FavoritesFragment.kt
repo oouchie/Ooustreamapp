@@ -270,7 +270,9 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
                                 viewModel.savedFocusPosition = -1
                                 favoritesGrid.post {
                                     favoritesGrid.scrollToPosition(restorePos.coerceIn(0, items.size - 1))
-                                    favoritesGrid.requestFocus()
+                                    // Cursor restore is TV-only; on a phone requestFocus would pop
+                                    // the keyboard / steal scroll on back-return.
+                                    if (DeviceUtils.isTV(requireContext())) favoritesGrid.requestFocus()
                                 }
                             }
                         }
