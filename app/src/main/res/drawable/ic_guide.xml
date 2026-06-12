@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV-guide grid glyph: channel column + program cells -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3,5h4v4h-4z M9,5h12v4h-12z M3,11h4v4h-4z M9,11h7v4h-7z M18,11h3v4h-3z M3,17h4v4h-4z M9,17h10v4h-10z" />
+</vector>

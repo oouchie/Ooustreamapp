@@ -43,6 +43,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -147,6 +148,26 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var trackSelector: DefaultTrackSelector? = null
     private var isAudioOnly = false
     private var bingeShown = false
+    // Gapless binge (v4.0.0): next episode resolved at the 15s mark and queued on the live player as
+    // playlist item index 1 so ExoPlayer pre-buffers it; the boundary advances via playlist transition
+    // instead of setMediaItem→prepare→play (no black/frozen gap).
+    // INVARIANT: non-null ⇔ player.mediaItemCount == 2 (current item is index 0).
+    // Cleared by: onMediaItemTransition (consumed), binge Cancel (removed), any player rebuild
+    // (dropped — rebuilds setMediaItem a single item, boundary falls back to legacy advance),
+    // and onDestroyView.
+    private var pendingNextEpisode: NextEpisodeResult? = null
+    // Duration of the CURRENT episode, refreshed by the 1s binge poll. By the time
+    // onMediaItemTransition fires the player already reports the NEW item's duration, so the
+    // previous episode's 100% progress save needs this remembered value.
+    private var lastKnownDurationMs = 0L
+    // Playlist pre-buffer is gated to HIGH/MID tiers — LOW/ULTRA_LOW (mt8695-class) keep the legacy
+    // single-item advance; a second open stream is least safe exactly where rebuilds are most likely.
+    private var preBufferEnabled = false
+    // Coalesced D-pad seeking (watch-audit): rapid LEFT/RIGHT taps accumulate into ONE committed
+    // seek ~300ms after the last tap, instead of a network seek per tap. The seekbar and the
+    // seek-feedback overlay update optimistically per tap, so the UI still feels instant.
+    private var pendingSeekTargetMs = -1L
+    private var pendingSeekJob: Job? = null
 
     // Custom controls bar (replaces Leanback default controls)
     private var controlsBar: PlayerControlsBar? = null
@@ -158,6 +179,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var mediaSession: MediaSession? = null
     private var bufferingOverlay: View? = null
     private var bufferingArt: ImageView? = null      // poster/channel art shown behind the spinner
+    private var bufferingLabel: TextView? = null     // optional status copy ("Reconnecting…") under the spinner
     private var bufferingShowJob: Job? = null        // debounce: delays the spinner so sub-second dips don't flash
     private val BUFFER_SPINNER_DEBOUNCE_MS = 600L    // mid-playback rebuffers under this never flash a spinner
     private var hasRenderedFirstFrame = false        // once true, the loading backdrop can hold the last frame
@@ -168,6 +190,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var lastRenderedFrameCount: Int = -1
     private var audioFallbackAttempted = false
     private var audioDisabledByFallback = false // Stage 2 disabled audio — don't re-enable in onTracksChanged
+    // Mid-stream audio dropout recovery (watch-audit): 0 = untried, 1 = renderer re-init tried,
+    // 2 = FFmpeg rebuild tried. Reset per content. AUDIO_STALL / AUDIO_SINK_ERROR used to be
+    // log-only — a silent dropout was never recovered until the user backed out.
+    private var audioStallRecoveryStage = 0
     // Media3 1.9.0 MatroskaExtractor is stricter about EBML varints than 1.2.1.
     // Some IPTV-transcoded MKVs break mid-stream. On first hit, retry from position 0.
     private var mkvVarintRecoveryAttempted = false
@@ -282,6 +308,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val deviceTier = DeviceTierDetector.tier(requireContext())
         streamDiagnosticLogger.logAppEvent("DEVICE_TIER", DeviceTierDetector.describe(requireContext()))
         AudioLogger.log("Device tier: ${DeviceTierDetector.describe(requireContext())}")
+        // Gapless binge pre-buffer only on tiers with headroom for a second open stream.
+        preBufferEnabled = deviceTier == DeviceTier.HIGH || deviceTier == DeviceTier.MID
 
         // Apply tier-appropriate video resolution cap. ULTRA_LOW/LOW: cap at 1080p
         // to block 4K variants (rare on IPTV but a safety net). 1080p AVC hardware
@@ -328,6 +356,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // Hold CPU+WiFi awake while playing/buffering — without this the radio can
+            // power-save mid-stall and turn a recoverable dip into a long rebuffer.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         // Audio focus: ExoPlayer handles pause/duck/resume automatically
@@ -368,6 +399,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             hasRenderedFirstFrame = true
             showBufferingOverlay(false)
         }
+        diagnosticListener!!.onAudioSinkFault = { recoverFromAudioStall("sink_error") }
         player!!.addListener(diagnosticListener!!)
         player!!.addAnalyticsListener(diagnosticListener!!)
         // Initial play is a guaranteed black moment — show the title art immediately.
@@ -392,6 +424,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         healthMonitor = PlaybackHealthMonitor(streamDiagnosticLogger, lifecycleScope).apply {
             channelName = initialContentName
             this.bandwidthMeter = bandwidthMeter
+            onAudioStall = { recoverFromAudioStall("audio_stall") }
             start(player!!)
         }
 
@@ -503,37 +536,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
-            binge.onPlayNext = {
-                viewLifecycleOwner.lifecycleScope.launch {
-                    viewModel.markCompleted()
-                    val next = viewModel.resolveNextEpisode()
-                    if (next != null) {
-                        viewModel.streamUrl = next.url
-                        viewModel.streamId = next.episodeId
-                        viewModel.streamName = next.name
-                        viewModel.seasonNum = next.season
-                        viewModel.episodeNum = next.episodeNum
-                        bingeShown = false
-
-                        resetTrackStateForNewContent()
-                        // Hold the last frame of this episode over the load gap instead of a black cut.
-                        showBufferingOverlay(true, immediate = true)
-                        player?.setMediaItem(MediaItem.fromUri(next.url))
-                        player?.prepare()
-                        player?.play()
-                        glue?.title = next.name
-                        controlsBar?.bindSeries(
-                            viewModel.streamName, viewModel.streamIcon,
-                            viewModel.seasonNum, viewModel.episodeNum
-                        )
-
-                        Toast.makeText(requireContext(), next.name, Toast.LENGTH_SHORT).show()
-                    } else {
-                        seriesCompleteOverlay?.show(viewModel.streamName)
-                    }
+            binge.onPlayNext = { advanceToNextEpisode("binge_overlay") }
+            binge.onCancel = {
+                // Cancel = "no autoplay". A queued playlist item would silently auto-advance at
+                // the natural end, violating the user's explicit choice — remove it so the episode
+                // ends to STATE_ENDED exactly like the legacy flow.
+                val p = player
+                if (pendingNextEpisode != null && p != null && p.mediaItemCount > 1) {
+                    p.removeMediaItem(p.mediaItemCount - 1)
+                    streamDiagnosticLogger.logAppEvent("PREBUFFER_REMOVED", "reason=user_cancel")
                 }
+                pendingNextEpisode = null
             }
-            binge.onCancel = { /* Stay on current episode */ }
             bingeOverlay = binge
 
             // Series Complete overlay
@@ -784,9 +798,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
+            // The SubtitleView was added before this bar, so the bar painted over captions
+            // (watch-audit P2). Captions belong above the controls scrim.
+            subtitleView?.bringToFront()
             controlsManager = PlayerControlsManager(bar, viewModel.contentType)
             controlsManager?.onVisibilityChanged = { visible ->
                 if (visible) bar.requestFocusOnPlayPause()
+                // Lift captions out of the controls band while the bar is up (8% → 22% of
+                // screen height from the bottom), back down when it hides.
+                subtitleView?.let { sv ->
+                    val screenH = resources.displayMetrics.heightPixels
+                    val frac = if (visible) 0.22f else 0.08f
+                    sv.setPadding(0, 0, 0, (screenH * frac).toInt())
+                }
                 // Toggle whether the (invisible alpha=0) Leanback dock children can
                 // receive focus. When our bar is showing, block them — otherwise
                 // DPAD navigation from a bar button finds the invisible Pause/Audio/etc.
@@ -813,22 +837,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     bar.updatePlayPauseIcon(p.isPlaying)
                 }
             }
-            bar.onSeekBack = {
-                player?.let { p ->
-                    val newPos = (p.currentPosition - 10_000).coerceAtLeast(0)
-                    p.seekTo(newPos)
-                    seekFeedback?.showSeek(-10_000)
-                    bar.updatePosition(newPos, p.duration)
-                }
-            }
-            bar.onSeekForward = {
-                player?.let { p ->
-                    val newPos = p.currentPosition + 10_000
-                    p.seekTo(newPos)
-                    seekFeedback?.showSeek(10_000)
-                    bar.updatePosition(newPos, p.duration)
-                }
-            }
+            bar.onSeekBack = { requestDpadSeek(-10_000) }
+            bar.onSeekForward = { requestDpadSeek(10_000) }
             bar.onAspectRatio = { cycleAspectRatio() }
             bar.onRestart = {
                 // Play from the beginning — the in-player "start over" (resume is now silent).
@@ -865,15 +875,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                 }
             }
-            bar.onDpadSeek = { deltaMs ->
-                player?.let { p ->
-                    val newPos = (p.currentPosition + deltaMs).coerceAtLeast(0)
-                    p.seekTo(newPos)
-                    seekFeedback?.showSeek(deltaMs)
-                    bar.updatePosition(newPos, p.duration)
-                    controlsManager?.resetAutoHideTimer()
-                }
-            }
+            bar.onDpadSeek = { deltaMs -> requestDpadSeek(deltaMs) }
 
             // Live TV specific callbacks
             bar.onPrevChannel = {
@@ -1032,10 +1034,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     val p = player ?: continue
                     val dur = p.duration
                     val pos = p.currentPosition
+                    if (dur > 0) lastKnownDurationMs = dur
                     if (dur > 0 && pos > 0 && (dur - pos) < 15_000 && !bingeShown) {
                         bingeShown = true
                         val nextInfo = viewModel.resolveNextEpisode()
                         if (nextInfo != null) {
+                            // Gapless fast path: queue the next episode on the playlist so it
+                            // pre-buffers over the remaining 15s. A blank episodeId can't be
+                            // disambiguated in onMediaItemTransition (initial items have the
+                            // default "" mediaId) — those stay on the legacy advance.
+                            if (preBufferEnabled && pendingNextEpisode == null &&
+                                !rebuildInProgress && p.mediaItemCount == 1 &&
+                                nextInfo.episodeId.isNotBlank()
+                            ) {
+                                pendingNextEpisode = nextInfo
+                                p.addMediaItem(buildNextMediaItem(nextInfo))
+                                streamDiagnosticLogger.logAppEvent("PREBUFFER_QUEUED",
+                                    "next=${nextInfo.name}, s${nextInfo.season}e${nextInfo.episodeNum}")
+                            }
                             bingeOverlay?.show(nextInfo.name, 10)
                         } else {
                             seriesCompleteOverlay?.show(viewModel.streamName)
@@ -1239,6 +1255,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
             }
 
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val pending = pendingNextEpisode ?: return
+                // PLAYLIST_CHANGED fires on every setMediaItem (channel tune, rebuild, legacy
+                // advance) and must never run the gapless bookkeeping. AUTO = natural end /
+                // seek-past-end clamp; SEEK = seekToNextMediaItem (Watch Next button, skip
+                // button, KEYCODE_MEDIA_NEXT via MediaSession) — both need identical handling.
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    reason != Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
+                ) return
+                if (mediaItem?.mediaId != pending.episodeId) return
+                handleGaplessEpisodeTransition(pending, reason)
+            }
+
             override fun onTracksChanged(tracks: Tracks) {
                 AudioLogger.logTrackSelection(tracks)
                 // Cache video codec/mime before any player rebuild loses this info —
@@ -1409,7 +1438,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             networkMonitor.state.collect { netState ->
                 if (!netState.isConnected && previouslyConnected) {
                     previouslyConnected = false
-                    showBufferingOverlay(true)
+                    showBufferingOverlay(true, label = getString(R.string.waiting_for_network))
                 } else if (netState.isConnected && !previouslyConnected) {
                     previouslyConnected = true
                     val p = player ?: return@collect
@@ -1439,6 +1468,53 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val p = player ?: return
         p.removeListener(listener) // prevent double-registration
         p.addListener(listener)
+    }
+
+    /**
+     * Two-stage recovery for a mid-stream audio dropout (AUDIO_STALL from the health monitor or
+     * AUDIO_SINK_ERROR from the diagnostic listener). Stage 1: disable→re-enable the audio track
+     * type, forcing the audio renderer + sink to re-init without touching video. Stage 2 (if a
+     * second stall fires on the same content): rebuild with the FFmpeg-preferred audio factory.
+     * Capped per content via [audioStallRecoveryStage]; skipped when audio is deliberately off.
+     */
+    private fun recoverFromAudioStall(trigger: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val p = player ?: return@launch
+            if (audioDisabledByFallback || isAudioOnly || rebuildInProgress) return@launch
+            when (audioStallRecoveryStage) {
+                0 -> {
+                    audioStallRecoveryStage = 1
+                    streamDiagnosticLogger.logAppEvent("AUDIO_STALL_RECOVERY",
+                        "stage=1_renderer_reinit, trigger=$trigger")
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+                    delay(250)
+                    val p2 = player ?: return@launch
+                    p2.trackSelectionParameters = p2.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
+                }
+                1 -> {
+                    audioStallRecoveryStage = 2
+                    if (AudioLogger.isFfmpegAvailable) {
+                        streamDiagnosticLogger.logAppEvent("AUDIO_STALL_RECOVERY",
+                            "stage=2_ffmpeg_rebuild, trigger=$trigger")
+                        rebuildPlayerWithFfmpegPreferred()
+                    } else {
+                        streamDiagnosticLogger.logAppEvent("AUDIO_STALL_RECOVERY",
+                            "stage=2_skipped_no_ffmpeg, trigger=$trigger")
+                    }
+                }
+                else -> { /* both stages spent for this content — leave it to the error paths */ }
+            }
+        }
+    }
+
+    /** Invalidate a queued gapless next episode (rebuilds replace the playlist with a single item). */
+    private fun dropPendingNextEpisode() {
+        if (pendingNextEpisode != null) {
+            pendingNextEpisode = null
+            streamDiagnosticLogger.logAppEvent("PREBUFFER_DROPPED", "reason=player_rebuild")
+        }
     }
 
     /** Safely releases a player instance, catching exceptions from stuck decoders (e.g. MTK). */
@@ -1543,6 +1619,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
                     retryCount++
                     retryJob?.cancel()
+                    // Past the first silent escalation, tell the user we're actively reconnecting
+                    // instead of leaving an unlabeled spinner over the held frame.
+                    if (retryCount > 1) {
+                        showBufferingOverlay(true, immediate = true, label = getString(R.string.reconnecting))
+                    }
                     p.stop()
                     delay(delayMs)
                     p.prepare()
@@ -1586,6 +1667,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // are rebuffer recovery issues, not decoder incompatibility. Don't escalate to SW.
             var hwDecoderProvenGood = false
             var watchdogOverlayShown = false
+            var consecutiveSlideshowPolls = 0
             // HEVC slideshow detection: SW HEVC decoder renders frames but too slowly (8fps)
             val isLowMemory = run {
                 val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -1841,14 +1923,32 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             AudioLogger.log("Frame watchdog: HW decoder proven good ($framesDelta frames in ${FRAME_WATCHDOG_INTERVAL_MS}ms)")
                         }
                     }
-                    // v3.7.0: HEVC slideshow detector removed. Prior behavior: sustained
-                    // <30fps on MTK HEVC triggered a libVLC swap because OMX.google.hevc at
-                    // 1080p is too slow. With FFmpeg video extension in EXTENSION_RENDERER_MODE_ON,
-                    // ExoPlayer will prefer the FFmpeg renderer over OMX.google software for HEVC,
-                    // and if that also slideshows we'll drop through the frozen-frame path above
-                    // and hit the HEVC-Main-10 friendly error or SW+720p cap. If playback is
-                    // genuinely low-framerate content (stop-motion, etc.) the watchdog leaves
-                    // it alone now instead of misdiagnosing and tearing down the player.
+                    // v4.0.0 slideshow guard (watch-audit): a software decoder "playing" at ~3-8fps
+                    // advances frames forever without tripping the frozen-frame path — the user is
+                    // stranded in an unwatchable slideshow with NO error (mt8695 + HEVC Main 10 via
+                    // FFmpeg). Only armed on the software-decoder paths we escalated to; genuine
+                    // low-fps content on a healthy HW decoder is left alone.
+                    if (usingSoftwareVideoDecoder && framesDelta in 1 until SLIDESHOW_MIN_FRAMES_PER_POLL) {
+                        consecutiveSlideshowPolls++
+                        if (consecutiveSlideshowPolls >= SLIDESHOW_POLLS_GIVE_UP) {
+                            val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
+                            val fps = framesDelta * 1000f / FRAME_WATCHDOG_INTERVAL_MS
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_SLIDESHOW_GIVE_UP",
+                                "fps=$fps, polls=$consecutiveSlideshowPolls, ff=$usingFfmpegVideoDecoder, " +
+                                "codecs=$codecs, mime=$cachedVideoMime, channel=${healthMonitor?.channelName ?: "unknown"}")
+                            val isMain10 = cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_H265 &&
+                                (codecs.startsWith("hvc1.2") || codecs.startsWith("hev1.2"))
+                            withContext(Dispatchers.Main) {
+                                showFriendlyError(
+                                    if (isMain10) "This title is 10-bit HDR video, which this device can't play smoothly."
+                                    else "This content uses a video format this device can't play smoothly."
+                                )
+                            }
+                            return@launch
+                        }
+                    } else {
+                        consecutiveSlideshowPolls = 0
+                    }
                     lastRenderedFrameCount = currentFrames
                     // Only reset recovery ladder after SUSTAINED playback (3 polls = 6s of frames)
                     // Prevents single-frame renders from resetting the ladder (MTK bug: 1 frame then black)
@@ -1890,6 +1990,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      */
     private fun rebuildPlayerWithSoftwareDecoder() {
         val p = player ?: return
+        dropPendingNextEpisode()   // rebuild setMediaItems a single item — boundary falls back to legacy advance
         val currentPosition = p.currentPosition
         rebuildInProgress = true   // suppress progress saves until position is restored
         showBufferingOverlay(true, immediate = true)   // show art over the rebuild gap (silent — no toast)
@@ -1928,6 +2029,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setTrackSelector(trackSelector!!)
             .setLoadControl(swLoadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // Hold CPU+WiFi awake while playing/buffering — without this the radio can
+            // power-save mid-stall and turn a recoverable dip into a long rebuffer.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         player!!.setAudioAttributes(
@@ -2012,6 +2116,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      */
     private fun rebuildPlayerWithFfmpegVideoDecoder() {
         val p = player ?: return
+        dropPendingNextEpisode()   // rebuild setMediaItems a single item — boundary falls back to legacy advance
         val currentPosition = p.currentPosition
         rebuildInProgress = true   // suppress progress saves until position is restored
         showBufferingOverlay(true, immediate = true)   // show art over the rebuild gap (silent — no toast)
@@ -2050,6 +2155,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // Hold CPU+WiFi awake while playing/buffering — without this the radio can
+            // power-save mid-stall and turn a recoverable dip into a long rebuffer.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         player!!.setAudioAttributes(
@@ -2107,6 +2215,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      */
     private fun rebuildPlayerWithFfmpegPreferred() {
         val p = player ?: return
+        dropPendingNextEpisode()   // rebuild setMediaItems a single item — boundary falls back to legacy advance
         val currentPosition = p.currentPosition
         rebuildInProgress = true   // suppress progress saves until position is restored
         showBufferingOverlay(true, immediate = true)   // show art over the rebuild gap (silent — no toast)
@@ -2140,6 +2249,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // Hold CPU+WiFi awake while playing/buffering — without this the radio can
+            // power-save mid-stall and turn a recoverable dip into a long rebuffer.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         player!!.setAudioAttributes(
@@ -2240,13 +2352,24 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER
             )
         }
+        val label = TextView(ctx).apply {
+            setTextColor(0xCCFFFFFF.toInt())
+            textSize = 14f
+            setShadowLayer(6f, 0f, 2f, 0xCC000000.toInt())
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER
+            ).apply { topMargin = (72 * resources.displayMetrics.density).toInt() }
+            visibility = View.GONE
+        }
         container.addView(art)
         container.addView(scrim)
         container.addView(spinner)
+        container.addView(label)
         container.visibility = View.GONE
         (view as? ViewGroup)?.addView(container)
         bufferingOverlay = container
         bufferingArt = art
+        bufferingLabel = label
     }
 
     /** Load the current title/channel art into the buffering backdrop (already-cached from the row). */
@@ -2307,15 +2430,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      * rebuffer never flashes a spinner. Dismissed on onRenderedFirstFrame / STATE_READY (fail-safe: a 6s
      * timeout also clears it so it can never permanently cover the video).
      */
-    private fun showBufferingOverlay(show: Boolean, immediate: Boolean = false) {
+    private fun showBufferingOverlay(show: Boolean, immediate: Boolean = false, label: String? = null) {
         if (show) {
             bufferingShowJob?.cancel()
             if (immediate) {
-                revealBufferingOverlay()
+                revealBufferingOverlay(label)
             } else {
                 bufferingShowJob = viewLifecycleOwner.lifecycleScope.launch {
                     delay(BUFFER_SPINNER_DEBOUNCE_MS)
-                    revealBufferingOverlay()
+                    revealBufferingOverlay(label)
                 }
             }
         } else {
@@ -2332,9 +2455,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
     }
 
-    private fun revealBufferingOverlay() {
+    private fun revealBufferingOverlay(label: String? = null) {
         ensureBufferingOverlay()
         captureLastFrame()   // hold the last frame if we have one, else the poster backdrop
+        bufferingLabel?.apply {
+            text = label ?: ""
+            visibility = if (label.isNullOrBlank()) View.GONE else View.VISIBLE
+        }
         bufferingOverlay?.let { ov ->
             ov.alpha = 1f
             ov.visibility = View.VISIBLE
@@ -2520,6 +2647,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private fun resetTrackStateForNewContent() {
         audioFallbackAttempted = false
         audioDisabledByFallback = false
+        audioStallRecoveryStage = 0
         userTrackOverrideActive = false
         mtkMultichannelFfmpegApplied = false
         upwardReprobeAttempted = false
@@ -2534,7 +2662,126 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             ?.build() ?: return
     }
 
-    private fun skipToNextEpisode() {
+    /**
+     * Accumulate a D-pad / FF-RW / on-screen-button seek. [deltaMs] is signed. The target is
+     * clamped to [0, duration]; the actual player.seekTo happens once, ~300ms after the last tap.
+     */
+    private fun requestDpadSeek(deltaMs: Long) {
+        val p = player ?: return
+        val dur = p.duration
+        val base = if (pendingSeekTargetMs >= 0) pendingSeekTargetMs else p.currentPosition
+        var target = base + deltaMs
+        if (target < 0) target = 0
+        if (dur > 0 && target > dur) target = dur
+        pendingSeekTargetMs = target
+        // Optimistic UI — feedback overlay (cumulative delta + absolute landing time) and seekbar.
+        seekFeedback?.showSeek(deltaMs, target)
+        controlsBar?.updatePosition(target, dur)
+        controlsManager?.resetAutoHideTimer()
+        pendingSeekJob?.cancel()
+        pendingSeekJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(300)
+            commitPendingSeek()
+        }
+    }
+
+    /** Commit the accumulated seek target (if any). Safe to call from onPause. */
+    private fun commitPendingSeek() {
+        pendingSeekJob?.cancel()
+        pendingSeekJob = null
+        val target = pendingSeekTargetMs
+        pendingSeekTargetMs = -1L
+        if (target < 0) return
+        val p = player ?: return
+        // Coarse scrubs land on the nearest keyframe — much faster than a frame-exact seek when
+        // the target is outside the buffer. The three messages are processed in order on the
+        // playback thread, so EXACT semantics are restored for later resume/chapter jumps.
+        val coarse = kotlin.math.abs(target - p.currentPosition) > 30_000
+        if (coarse) p.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        p.seekTo(target)
+        if (coarse) p.setSeekParameters(SeekParameters.DEFAULT)
+    }
+
+    /** MediaItem for a queued next episode. mediaId carries the episodeId so
+     *  onMediaItemTransition can unambiguously recognize our queued item (initial
+     *  items built via MediaItem.fromUri keep the default "" mediaId). */
+    private fun buildNextMediaItem(next: NextEpisodeResult): MediaItem =
+        MediaItem.Builder().setUri(next.url).setMediaId(next.episodeId).build()
+
+    /**
+     * Single entry point for "go to the next episode" (binge Watch Next button, countdown
+     * auto-fire, DPAD_UP skip). If the next episode is pre-buffered on the playlist, advance
+     * instantly via seekToNextMediaItem() — all bookkeeping then happens in
+     * onMediaItemTransition (reason=SEEK). Otherwise fall back to the legacy
+     * setMediaItem→prepare→play flow (identical to pre-v4.0.0 behavior).
+     */
+    private fun advanceToNextEpisode(source: String) {
+        val p = player
+        if (pendingNextEpisode != null && p != null && p.mediaItemCount > 1 &&
+            p.currentMediaItemIndex < p.mediaItemCount - 1
+        ) {
+            streamDiagnosticLogger.logAppEvent("TRANSITION_REQUEST", "source=$source, mode=playlist")
+            p.seekToNextMediaItem()
+        } else {
+            streamDiagnosticLogger.logAppEvent("TRANSITION_FALLBACK", "source=$source")
+            legacyAdvanceToNextEpisode(source)
+        }
+    }
+
+    /**
+     * Bookkeeping for a gapless playlist advance into [next]. Runs exactly once per queued
+     * episode, from onMediaItemTransition. The previous episode is finalized using the
+     * pre-swap ViewModel fields; the identity swap is SYNCHRONOUS (main thread) so the 5s
+     * checkpoint loop can never attribute the new item's position to the old streamId.
+     * Deliberately no buffering overlay / captureLastFrame here — there is no gap to cover;
+     * if the new item briefly rebuffers, STATE_BUFFERING already holds the last frame.
+     */
+    private fun handleGaplessEpisodeTransition(next: NextEpisodeResult, reason: Int) {
+        pendingNextEpisode = null
+        // 1. Finalize the PREVIOUS episode (ViewModel fields still hold it). player.duration
+        //    is already the new item's — use the remembered duration of the old one.
+        if (lastKnownDurationMs > 0) {
+            viewModel.saveProgress(lastKnownDurationMs, lastKnownDurationMs, 1.0f)
+        }
+        viewModel.markCompleted()
+        // 2. Swap identity — synchronous, before any suspend point.
+        viewModel.streamUrl = next.url
+        viewModel.streamId = next.episodeId
+        viewModel.streamName = next.name
+        viewModel.seasonNum = next.season
+        viewModel.episodeNum = next.episodeNum
+        // 3. Continue Watching row for the now-current episode (parity with the STATE_ENDED path).
+        viewModel.queueUpNextRow(next)
+        // 4. Per-episode state resets (superset of the legacy advance's resets).
+        bingeShown = false
+        lastSavedPositionMs = 0L
+        lastKnownDurationMs = 0L
+        retryCount = 0
+        mkvVarintRecoveryAttempted = false
+        bufferStormCount = 0
+        bufferStormWindowStart = 0L
+        ffmpegRebuildAttemptedForBufferStorm = false
+        resetTrackStateForNewContent()
+        // 5. UI / diagnostics identity swap. dismiss() also cancels a still-running countdown
+        //    timer, so a natural-end transition can't be followed by a late onPlayNext.
+        bingeOverlay?.dismiss()
+        glue?.title = next.name
+        controlsBar?.bindSeries(
+            viewModel.streamName, viewModel.streamIcon,
+            viewModel.seasonNum, viewModel.episodeNum
+        )
+        diagnosticListener?.channelName = next.name
+        healthMonitor?.channelName = next.name
+        viewModel.recordPlayStart()
+        context?.let { Toast.makeText(it, next.name, Toast.LENGTH_SHORT).show() }
+        streamDiagnosticLogger.logAppEvent(
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) "TRANSITION_AUTO" else "TRANSITION_SEEK",
+            "to=${next.name}, s${next.season}e${next.episodeNum}"
+        )
+    }
+
+    /** Legacy single-item advance — the universal fallback when nothing is pre-buffered. */
+    private fun legacyAdvanceToNextEpisode(source: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.markCompleted()
             val next = viewModel.resolveNextEpisode()
@@ -2545,6 +2792,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 viewModel.seasonNum = next.season
                 viewModel.episodeNum = next.episodeNum
                 bingeShown = false
+                lastSavedPositionMs = 0L
+                lastKnownDurationMs = 0L
+                retryCount = 0
 
                 resetTrackStateForNewContent()
                 // Hold the last frame of this episode over the load gap instead of a black cut.
@@ -2557,8 +2807,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     viewModel.streamName, viewModel.streamIcon,
                     viewModel.seasonNum, viewModel.episodeNum
                 )
+                diagnosticListener?.channelName = next.name
+                healthMonitor?.channelName = next.name
+                viewModel.recordPlayStart()
 
                 Toast.makeText(requireContext(), next.name, Toast.LENGTH_SHORT).show()
+            } else if (source == "binge_overlay") {
+                seriesCompleteOverlay?.show(viewModel.streamName)
             } else {
                 Toast.makeText(requireContext(), R.string.no_more_episodes, Toast.LENGTH_SHORT).show()
             }
@@ -2806,6 +3061,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         retryCount = 0
         audioFallbackAttempted = false
         audioDisabledByFallback = false
+        audioStallRecoveryStage = 0
         mkvVarintRecoveryAttempted = false
         userTrackOverrideActive = false
         subtitleSelfTestRan = false
@@ -3192,6 +3448,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (viewModel.contentType == ContentType.LIVE) {
             watchSessionLogger.onPlayerExit()
         }
+        // Land any accumulated D-pad seek first (seekTo masks position immediately, so the
+        // checkpoint below records where the user actually scrubbed to).
+        commitPendingSeek()
         // ExoPlayer progress save on exit (gated — see checkpointProgress)
         checkpointProgress()
         player?.pause()
@@ -3250,15 +3509,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 audioOnlyOverlay?.dismiss()
             }
         }
-        g.onSeekForward = { deltaMs ->
-            seekFeedback?.showSeek(deltaMs)
-            player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
-        }
-        g.onSeekBackward = { deltaMs ->
-            seekFeedback?.showSeek(-deltaMs)
-            player?.let { p -> controlsBar?.updatePosition(p.currentPosition, p.duration) }
-        }
-        g.onNextEpisode = { skipToNextEpisode() }
+        // v4.0.0: the glue no longer seeks directly — these callbacks own the seek via the
+        // coalescer (one committed seekTo per burst of taps, optimistic seekbar/feedback UI).
+        g.onSeekForward = { deltaMs -> requestDpadSeek(deltaMs) }
+        g.onSeekBackward = { deltaMs -> requestDpadSeek(-deltaMs) }
+        g.onNextEpisode = { advanceToNextEpisode("skip_button") }
         // v3.7.0: any modal overlay should make the glue pass keys through (was only
         // track picker before). Otherwise OK on binge "Watch Next" etc. just shows
         // controls instead of clicking the button.
@@ -3338,6 +3593,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Cancel async jobs
         retryJob?.cancel()
         channelSwitchJob?.cancel()
+        pendingSeekJob?.cancel()
+        pendingSeekJob = null
+        pendingSeekTargetMs = -1L
         // Stop diagnostic health monitor
         healthMonitor?.stop()
         healthMonitor = null
@@ -3391,6 +3649,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         audioStatusOverlay = null
         bufferingOverlay = null
         bufferingArt = null
+        bufferingLabel = null
         bufferingShowJob?.cancel()
         bufferingShowJob = null
         stallDetectorJob?.cancel()
@@ -3411,6 +3670,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         corePlayerListener = null
         diagnosticListener = null
+        pendingNextEpisode = null
         player = null
         trackSelector = null
         glue = null
@@ -3632,6 +3892,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Require 3 consecutive polls with new frames (6s) before resetting recovery ladder
         // Prevents MTK single-frame-then-black from resetting watchdogResetCount
         private const val SUSTAINED_PLAYBACK_POLLS = 3
+        // Slideshow guard: <10fps (20 frames per 2s poll) for 5 consecutive polls (10s) on a
+        // software decoder → unwatchable, give up with a friendly error instead of stranding.
+        private const val SLIDESHOW_MIN_FRAMES_PER_POLL = 20
+        private const val SLIDESHOW_POLLS_GIVE_UP = 5
         // Buffer storm detection: rapid BUFFERING→READY cycling (amlogic HEVC+EAC3)
         private const val BUFFER_STORM_THRESHOLD = 5
         private const val BUFFER_STORM_WINDOW_MS = 30_000L

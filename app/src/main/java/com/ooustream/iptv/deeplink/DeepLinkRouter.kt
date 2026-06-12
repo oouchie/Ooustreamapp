@@ -10,6 +10,7 @@ sealed class DeepLinkTarget {
     object Home : DeepLinkTarget()
     object LiveTv : DeepLinkTarget()
     object Favorites : DeepLinkTarget()
+    object Guide : DeepLinkTarget()
 }
 
 object DeepLinkRouter {
@@ -62,6 +63,7 @@ object DeepLinkRouter {
             "home" -> DeepLinkTarget.Home
             "livetv" -> DeepLinkTarget.LiveTv
             "favorites" -> DeepLinkTarget.Favorites
+            "guide" -> DeepLinkTarget.Guide
             else -> null
         }
     }

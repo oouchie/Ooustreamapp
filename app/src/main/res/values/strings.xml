@@ -27,6 +27,19 @@
     <string name="loading">Loading…</string>
     <string name="error_stream">Unable to play stream</string>
     <string name="retry">Retry</string>
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="waiting_for_network">Waiting for network…</string>
+    <string name="empty_category_title">Nothing here yet</string>
+    <string name="empty_category_hint">This category has no titles. Try another category.</string>
+
+    <!-- EPG Grid Guide -->
+    <string name="guide_title">TV Guide</string>
+    <string name="guide_hints">◄ ► Programs · ▲ ▼ Channels · ⏩ ⏪ ±2 hours · OK Watch / Details</string>
+    <string name="guide_hints_touch">Drag timeline to scroll · Tap a program to watch or see details</string>
+    <string name="guide_watch_channel">Watch Channel</string>
+    <string name="guide_close">Close</string>
+    <string name="guide_pick_category">Choose Category</string>
+    <string name="guide_all_channels">All Channels</string>
 
     <!-- Favorites -->
     <string name="added_to_favorites">Added to Favorites</string>

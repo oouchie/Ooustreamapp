@@ -90,33 +90,45 @@ class PlayerViewModel @Inject constructor(
 
     fun saveProgress(position: Long, duration: Long, percent: Float) {
         if (contentType == ContentType.LIVE) return
+        // Snapshot identity SYNCHRONOUSLY at call time. The gapless binge advance swaps the
+        // identity fields right after finalizing the previous episode — a coroutine that reads
+        // the fields lazily would attribute the old episode's 100% save to the new one.
+        val entity = WatchProgressEntity(
+            streamId = streamId,
+            type = if (contentType == ContentType.VOD) "vod" else "series",
+            name = streamName,
+            icon = streamIcon.ifBlank { null },
+            position = position,
+            duration = duration,
+            progressPercent = percent,
+            extra = streamUrl.ifBlank { null },
+            seriesId = if (contentType == ContentType.SERIES && seriesId > 0) seriesId else null,
+            seasonNum = if (contentType == ContentType.SERIES) seasonNum else null,
+            episodeNum = if (contentType == ContentType.SERIES) episodeNum else null,
+            completed = percent >= 0.95f
+        )
+        val trackSeries = contentType == ContentType.SERIES && seriesId > 0 && seasonNum > 0
+        val snapSeriesId = seriesId
+        val snapSeason = seasonNum
+        val snapEpisode = episodeNum
+        val snapEpisodeId = streamId.toIntOrNull() ?: 0
+        val snapTitle = streamName.substringBefore(" - ").trim()
+        val snapPoster = streamIcon.ifBlank { null }
         viewModelScope.launch {
             withContext(NonCancellable) {
-                watchProgressRepository.saveProgress(
-                    WatchProgressEntity(
-                        streamId = streamId,
-                        type = if (contentType == ContentType.VOD) "vod" else "series",
-                        name = streamName,
-                        icon = streamIcon.ifBlank { null },
-                        position = position,
-                        duration = duration,
-                        progressPercent = percent,
-                        extra = streamUrl.ifBlank { null },
-                        seriesId = if (contentType == ContentType.SERIES && seriesId > 0) seriesId else null,
-                        seasonNum = if (contentType == ContentType.SERIES) seasonNum else null,
-                        episodeNum = if (contentType == ContentType.SERIES) episodeNum else null,
-                        completed = percent >= 0.95f
-                    )
-                )
+                watchProgressRepository.saveProgress(entity)
                 // Upsert series tracking for new episode detection
-                if (contentType == ContentType.SERIES && seriesId > 0 && seasonNum > 0) {
-                    upsertSeriesTracking()
+                if (trackSeries) {
+                    upsertSeriesTracking(snapSeriesId, snapSeason, snapEpisode, snapEpisodeId, snapTitle, snapPoster)
                 }
             }
         }
     }
 
-    private suspend fun upsertSeriesTracking() {
+    private suspend fun upsertSeriesTracking(
+        seriesId: Int, seasonNum: Int, episodeNum: Int,
+        episodeId: Int, seriesTitle: String, posterUrl: String?
+    ) {
         val existing = seriesTrackingDao.getTracking(seriesId)
         val now = System.currentTimeMillis()
         if (existing != null) {
@@ -128,7 +140,7 @@ class PlayerViewModel @Inject constructor(
                     existing.copy(
                         lastWatchedSeason = seasonNum,
                         lastWatchedEpisode = episodeNum,
-                        lastWatchedEpisodeId = streamId.toIntOrNull() ?: 0,
+                        lastWatchedEpisodeId = episodeId,
                         lastWatchedAt = now
                     )
                 )
@@ -140,11 +152,11 @@ class PlayerViewModel @Inject constructor(
             seriesTrackingDao.upsert(
                 SeriesTrackingEntity(
                     seriesId = seriesId,
-                    seriesTitle = streamName.substringBefore(" - ").trim(),
-                    posterUrl = streamIcon.ifBlank { null },
+                    seriesTitle = seriesTitle,
+                    posterUrl = posterUrl,
                     lastWatchedSeason = seasonNum,
                     lastWatchedEpisode = episodeNum,
-                    lastWatchedEpisodeId = streamId.toIntOrNull() ?: 0,
+                    lastWatchedEpisodeId = episodeId,
                     lastWatchedAt = now
                 )
             )
@@ -153,9 +165,10 @@ class PlayerViewModel @Inject constructor(
 
     fun markCompleted() {
         if (contentType == ContentType.LIVE) return
+        val id = streamId   // snapshot — see saveProgress comment
         viewModelScope.launch {
             withContext(NonCancellable) {
-                watchProgressRepository.markCompleted(streamId)
+                watchProgressRepository.markCompleted(id)
             }
         }
     }
@@ -168,6 +181,12 @@ class PlayerViewModel @Inject constructor(
         if (contentType != ContentType.SERIES || seriesId == 0) return
         watchProgressRepository.markCompleted(streamId)
         val next = resolveNextEpisode() ?: return
+        insertUpNextRow(next)
+    }
+
+    /** Insert an "Up Next" watch_progress row for [next] so it appears in Continue Watching. */
+    suspend fun insertUpNextRow(next: NextEpisodeResult) {
+        if (contentType != ContentType.SERIES || seriesId == 0) return
         watchProgressRepository.saveProgress(
             WatchProgressEntity(
                 streamId = next.episodeId,
@@ -184,6 +203,13 @@ class PlayerViewModel @Inject constructor(
                 completed = false
             )
         )
+    }
+
+    /** Fire-and-forget [insertUpNextRow] — survives view teardown (NonCancellable, viewModelScope). */
+    fun queueUpNextRow(next: NextEpisodeResult) {
+        viewModelScope.launch {
+            withContext(NonCancellable) { insertUpNextRow(next) }
+        }
     }
 
     fun recordPlayStart(categoryId: String? = null) {

@@ -24,6 +24,9 @@ class ExoPlayerDiagnosticListener(
     /** Invoked on the first rendered video frame — the fragment uses it to crossfade out the art backdrop. */
     var onFirstFrame: (() -> Unit)? = null
 
+    /** Invoked on a non-fatal audio sink fault — the fragment routes it into audio-stall recovery. */
+    var onAudioSinkFault: (() -> Unit)? = null
+
     private var lastBufferingStart = 0L
     private var lastBandwidthLogTime = 0L
 
@@ -146,6 +149,7 @@ class ExoPlayerDiagnosticListener(
         logger.logAppEvent("AUDIO_SINK_ERROR",
             "type=${audioSinkError.javaClass.simpleName}, " +
             "msg=${audioSinkError.message}, channel=$channelName")
+        onAudioSinkFault?.invoke()
     }
 
     // Audio renderer was disabled — usually from our own fallback path.

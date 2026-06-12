@@ -1,48 +1,79 @@
-# v3.9.1 — the 4 deferred watch-experience items (highest-risk; device-test before release)
+# v4.0.0 — Seamless Binge + EPG Grid Guide + Watch-Polish Sweep
 
-Baseline: v3.9.0 (c047dfe) shipped, builds clean. Each item compile-verified individually + graceful fallback.
+Plan: ~/.claude/plans/zesty-discovering-mountain.md (approved 2026-06-11)
+Baseline: v3.9.3 (versionCode 84), main @ 2159773.
 
-## A — #9 Silent resume + in-player Restart (product decision: silent)
-- [ ] ResumePlaybackHelper.showIfNeeded → resume silently (no modal), still honoring an explicit "start over".
-- [ ] Add a "Restart" (play from beginning) action button to the VOD/Series player controls → seekTo(0).
-- [ ] Brief "Resuming from H:MM" toast/chip on silent resume so the user knows.
+## Workstream 1 — Gapless Binge Pre-Buffer (player core)
+- [x] 1.1 New state: pendingNextEpisode / lastKnownDurationMs / preBufferEnabled (HIGH|MID tier gate) + buildNextMediaItem(mediaId=episodeId)
+- [x] 1.2 Queue at 15s binge mark (addMediaItem + PREBUFFER_QUEUED log; blank-episodeId guard)
+- [x] 1.3 Binge Cancel removes queued item (PREBUFFER_REMOVED)
+- [x] 1.4 onMediaItemTransition handler (handleGaplessEpisodeTransition): finalize prev → swap identity → Up Next row → per-episode resets → UI/diag swap
+- [x] 1.5 PlayerViewModel.insertUpNextRow() extracted + queueUpNextRow (NonCancellable); saveProgress/markCompleted now SNAPSHOT identity at call time (race fix — lazily-read fields would attribute prev episode's 100% save to the new episode after the synchronous swap)
+- [x] 1.6 advanceToNextEpisode(source) consolidation (playlist fast path + legacy fallback); rewired onPlayNext + glue onNextEpisode; skipToNextEpisode removed
+- [x] 1.7 Rebuild interplay: dropPendingNextEpisode() in all 3 rebuilds (PREBUFFER_DROPPED)
+- [x] 1.8 Cleanup in onDestroyView; compileDebugKotlin clean
 
-## B — #2 Last-frame hold (PixelCopy)
-- [ ] Before stop()/rebuild/zap, PixelCopy the SurfaceView's current frame into the art-backdrop ImageView
-      (so recovery shows a frozen frame, not the poster). Graceful fallback to poster art if capture fails.
+## Workstream 2 — Watch-Polish Sweep
+- [x] 2.1 WAKE_MODE_NETWORK — main player ×4 + MultiView ×2 (decorative players skipped: hero trailer/splash/muted preview)
+- [x] 2.2 Reconnect label on buffering overlay ("Waiting for network…" on loss, "Reconnecting…" past first stall retry)
+- [x] 2.3 Subtitles bringToFront above controls bar + 8%→22% bottom padding while controls visible
+- [x] 2.4 Seek coalescer: requestDpadSeek/commitPendingSeek (300ms idle), CLOSEST_SYNC for >30s scrubs (DEFAULT restored), glue/bar/buttons all delegate; commit-on-pause
+- [x] 2.5 Absolute landing timecode in SeekFeedbackOverlay (gold line under delta)
+- [x] 2.6 Hide phantom Up-Next progress bar (ContinueWatchingPresenter isUpNext)
+- [x] 2.7 Empty-category empty-state (Vod/SeriesFragment + layouts; 2.5s confirm so initial empty emission doesn't flash)
+- [x] 2.8 Slideshow guard: SW/FFmpeg decoder <10fps × 5 polls → friendly error (HDR-specific copy for Main 10). DEVIATION: upfront ULTRA_LOW fast-fail NOT restored — v3.7.9 customer evidence (allinone) shows mt8695 HW does decode Main 10; the guard catches the stranded case without regressing working devices
+- [x] 2.9 Audio-stall recovery: PlaybackHealthMonitor.onAudioStall + diagnosticListener.onAudioSinkFault → 2-stage ladder (renderer re-init → FFmpeg rebuild), capped per content
+- [x] 2.10 BufferConfigs.forLowMemory LIVE minBuffer 3s→6s
+- [x] 2.11 Deep-link Live: real channel name/icon + full channel list seeded for zapping; deleted dead TrackSelectionHelper.kt
 
-## C — #4 Mid-title upward HW re-probe
-- [ ] In the watchdog "sustained playback confirmed" branch: after sustained-good polls, if capped/SW,
-      clear cap + rebuild ONCE with the HW factory at current position; if it re-stalls within a window,
-      mark confirmed-bad and never re-probe again (oscillation guard). Skip for mt8695/mt8167.
+## Workstream 3 — EPG Grid Guide (new feature, epg/guide/)
+- [ ] 3.1 API: getShortEpg limit param threaded through ContentRepository/EpgCacheRepository (NOT DONE YET — see note)
+- [x] 3.2 GuideModels: GuideProgram/GuideRowData + GuideEpgNormalizer (clip/sort/gap-fill >5min holes, hour-aligned synthetic blocks)
+- [x] 3.3 EpgGridViewModel: category-scoped channels (favorites→first-category fallback), viewport fetch (Semaphore(3), job cancel, ±3 buffer), memoized synthetic lanes, combined `rows` flow on Default dispatcher
+- [x] 3.4 GuideTimelineController (2h shared window, NOW ticker, virtual focusAnchorMs) + GuideProgramLaneView (Canvas cells, source-styled text, gold virtual focus, NOW line) + GuideTimeHeaderView (30-min ruler)
+- [x] 3.5 EpgGridFragment (KeyEventHandler: LEFT/RIGHT program walk, FF/REW ±2h, OK via row click → tune-or-details) + GuideRowAdapter (ListAdapter+DiffUtil, EPG payload) + fragment/item layouts + android.app.AlertDialog details
+- [x] 3.6 Entry points: header_guide_icon in Live TV (gold-ring focus, category-scoped), MainActivity.navigateToEpgGuide, ooustream://guide deep link
+- [x] 3.7 Phone touch: lane drag pans shared timeline, tap = OK on tapped cell, touch hint copy
+- [x] 3.8 compileDebugKotlin + assembleDebug clean
 
-## D — #6 Next-episode pre-buffer (riskiest — binge flow change)
-- [ ] At the 15s binge mark, addMediaItem(next) so ExoPlayer pre-buffers it.
-- [ ] Advance via seekToNextMediaItem() when pre-buffered (instant), else setMediaItem fallback.
-- [ ] onMediaItemTransition updates metadata (streamId/controlsBar/glue) + resetTrackStateForNewContent +
-      markCompleted(prev) for BOTH auto-advance and seek-advance. Series-complete only when no next item.
-- [ ] Show art immediately on the transition gap regardless (safe interim).
+## Post-plan additions (user feedback during the session)
+- [x] TV Guide card on Home, placed right after Live TV (user request) — SectionItem("guide") → navigateToEpgGuide
+- [x] In-guide category switcher (user caught the gap) — focusable "Category ▾" chip in the guide header,
+      UP-at-row-0 hands focus to it (Leanback swallows UP at the grid edge — explicit requestFocus in onKeyEvent),
+      single-choice picker (Favorites + all live categories), switchCategory clears per-row EPG state + reloads
+- [x] Deep-link defer fix — handleDeepLink(deferToStartupFlow) so the splash flow can't clobber deep-link nav
+- [x] Favorites-fallback label fix — guide chip says "Favorites" instead of "All Channels"
 
-## Verify
-- [x] compileDebugKotlin per item (A+B clean; C+D verifying). Then assembleDebug.
+## Verify / Release
+- [x] assembleDebug + assembleRelease clean (19MB arm64 / 18MB arm32)
+- [x] AFTKRT (192.168.1.84) on-device verification (screenshots + run-as diagnostic log):
+      • Guide: opens from Home card + deep link, real EPG lanes + italic inferred fill, logos + initials
+        fallback, NOW line, time-aligned UP/DOWN, RIGHT walks programs, OK-now → tunes with working CH± zap,
+        OK-future → details dialog → Watch Channel works, category picker switches (Favorites → FIFA),
+        channel numbers shown
+      • Binge: PREBUFFER_QUEUED → TRANSITION_REQUEST mode=playlist → TRANSITION_SEEK in ~190ms (gapless,
+        Sofia S1E2→S1E3); silent resume + Restart button present; last-episode → Series Complete overlay;
+        completed episode drops from CW; new episode tracks progress (S1E3 "20m left" in CW)
+      • Polish: 75-tap seek burst coalesced (landed 41:43, no per-tap network seeks); DEVICE_TIER=MID logged
+      • NOT separately device-tested (low-risk, build-verified): reconnect label (needs a wifi-drop),
+        subtitle z-order (needs CC content), audio-stall recovery (needs a sink fault), slideshow guard
+        (needs mt8695 + Main 10), empty-category state, phone touch pan
+- [x] Bumped 4.0.0/85, update.json (3 URLs + changelog), CLAUDE.md (version, inventory, release history)
+- [x] Commit, push, gh release v4.0.0 with both ABI APKs
 
-## Review — the 4 deferred items: 2 done in full, 2 done to their SAFE part (riskiest sub-parts held)
-- **A (#9) Silent resume + Restart — DONE FULL.** `ResumePlaybackHelper` resumes silently with a
-  "Resuming from H:MM" toast (no modal); new `ic_restart_24` + "Restart" action button on VOD/Series
-  controls (`onRestart` → seekTo(0)+play). All 3 call sites unchanged (shared helper).
-- **B (#2) Last-frame hold — DONE FULL (best-effort).** `captureLastFrame()` PixelCopies the SurfaceView's
-  current frame into the loading backdrop on every stop/rebuild/zap/rebuffer, so recovery freezes the frame
-  instead of cutting to the poster. API24+; on ANY miss (old API / invalid surface / not-yet-rendered)
-  falls back to the poster backdrop, so it can never be worse than v3.9.0. `hasRenderedFirstFrame` gates it.
-- **C (#4) Quality — SAFE PART DONE.** Mid-title resolution-cap re-probe: clears `clearVideoSizeConstraints()`
-  ONCE after sustained-good playback (`upwardReprobeAttempted`, reset per channel/episode). **Held blind:**
-  the SW→HW *decoder*-swap re-probe — HW-decode failures are usually a permanent codec/chip limit, so a
-  mid-title HW rebuild (a ~110-line clone of the SW rebuild) would almost always glitch then fall back. Low
-  reward, real oscillation risk → device-verified follow-up.
-- **D (#6) Binge — SAFE PART DONE.** Both episode transitions now hold the last frame over the load gap
-  (`showBufferingOverlay(immediate)` → frozen frame, no black cut) + the v3.9.0 series-info cache already
-  removed the boundary network round-trip. **Held blind:** the TRUE seamless ExoPlayer playlist pre-buffer
-  (`addMediaItem`/auto-advance/`onMediaItemTransition`) — a significant rewrite of the working binge flow
-  that conflicts with the single-item rebuild machinery → device-verified follow-up.
+## Review — v4.0.0 shipped
+All three planned workstreams landed plus 4 user-feedback items mid-session. The two headline features
+(gapless binge, EPG grid guide) are device-verified end-to-end with screenshot + diagnostic-log evidence.
+One audit deviation (documented in CLAUDE.md): the ULTRA_LOW HEVC Main-10 upfront fast-fail was NOT
+restored — v3.7.9 customer evidence contradicts it; the new <10fps slideshow guard covers the stranded
+case instead. One critical latent bug found & fixed beyond the plan: PlayerViewModel saveProgress/
+markCompleted read identity fields inside launched coroutines (post-swap misattribution); both now
+snapshot at call time. Deferred (next release candidates): preview→fullscreen warm handoff, stream-host
+preconnect, ComponentCallbacks2 buffer tightening, SW→HW decoder re-probe, guide past-programs horizon
+(needs get_simple_data_table), warm-app deep-link multi-instance quirk (standard launchMode).
 
-NOT version-bumped / released — per the plan, sideload v3.9.0+these on a stick first, THEN cut v3.9.1.
+---
+## Archive — v3.9.1 deferred-items review (shipped)
+- A (#9) Silent resume + Restart — DONE FULL. B (#2) Last-frame hold — DONE FULL (best-effort).
+- C (#4) safe part (resolution-cap re-probe) done; SW→HW decoder-swap re-probe still held.
+- D (#6) safe part (frozen-frame over gap) done; true playlist pre-buffer → being implemented NOW in v4.0.0 WS1.

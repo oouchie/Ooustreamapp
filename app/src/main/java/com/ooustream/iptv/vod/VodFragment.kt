@@ -235,6 +235,7 @@ class VodFragment : Fragment(), KeyEventHandler {
         }
 
         // Observe movies
+        var emptyStateJob: kotlinx.coroutines.Job? = null
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.movies.collect { movies ->
@@ -252,6 +253,25 @@ class VodFragment : Fragment(), KeyEventHandler {
                                 viewModel.savedGridPosition = -1
                             }
                         }
+                    }
+                    // Empty-state (watch-audit): a category that resolves empty used to leave the
+                    // shimmer skeletons up forever (or a blank grid). The StateFlow's initial
+                    // emission is also empty, so confirm it STAYS empty before declaring it.
+                    val emptyView = view.findViewById<View>(R.id.vod_empty_state)
+                    emptyStateJob?.cancel()
+                    if (movies.isEmpty()) {
+                        emptyStateJob = viewLifecycleOwner.lifecycleScope.launch {
+                            kotlinx.coroutines.delay(2_500)
+                            if (viewModel.movies.value.isEmpty()) {
+                                if (!skeletonSwapped) {
+                                    posterGrid.adapter = posterBridgeAdapter
+                                    skeletonSwapped = true
+                                }
+                                emptyView?.visibility = View.VISIBLE
+                            }
+                        }
+                    } else {
+                        emptyView?.visibility = View.GONE
                     }
                 }
             }

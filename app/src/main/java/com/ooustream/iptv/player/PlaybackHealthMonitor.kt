@@ -26,6 +26,14 @@ class PlaybackHealthMonitor(
     var channelName: String = "unknown"
     var bandwidthMeter: DefaultBandwidthMeter? = null
 
+    /**
+     * Fired (on the monitor's coroutine) when the audio renderer has produced no new buffers
+     * for AUDIO_STALL_THRESHOLD_MS while audio is selected and audible — i.e. a real mid-stream
+     * dropout, not a mute or a buffering pause. The fragment uses it to attempt recovery
+     * (watch-audit: AUDIO_STALL used to be log-only, so dropouts were never recovered).
+     */
+    var onAudioStall: (() -> Unit)? = null
+
     // Black screen detection
     private var lastRenderedFrameCount: Int = 0
     private var blackSince: Long = 0L
@@ -215,6 +223,7 @@ class PlaybackHealthMonitor(
                     "silent=${stalledMs}ms, mime=${fmt?.sampleMimeType}, " +
                     "ch=${fmt?.channelCount}, rate=${fmt?.sampleRate}, " +
                     "channel=$channelName")
+                onAudioStall?.invoke()
             }
         } else {
             if (audioStallLogged) {

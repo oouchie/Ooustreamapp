@@ -77,9 +77,9 @@ class ContentRepository @Inject constructor(
         return getApi().getSeriesInfo(creds.username, creds.password, seriesId = seriesId)
     }
 
-    suspend fun getShortEpg(streamId: Int): EpgResponse {
+    suspend fun getShortEpg(streamId: Int, limit: Int? = null): EpgResponse {
         val creds = getCreds()
-        return getApi().getShortEpg(creds.username, creds.password, streamId = streamId)
+        return getApi().getShortEpg(creds.username, creds.password, streamId = streamId, limit = limit)
     }
 
     suspend fun search(query: String): SearchResults = coroutineScope {

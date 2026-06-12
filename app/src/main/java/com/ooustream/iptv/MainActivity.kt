@@ -77,7 +77,10 @@ class MainActivity : FragmentActivity() {
 
         setupSidebar()
         setupBottomNavigation()
-        handleDeepLink(intent)
+        // Fresh creation runs the splash flow, whose replace(main_container, splash) +
+        // navigateToHome() used to clobber an immediate deep-link navigation — defer the
+        // target via pendingDeepLink so navigateToHome() consumes it after startup.
+        handleDeepLink(intent, deferToStartupFlow = savedInstanceState == null)
 
         if (savedInstanceState == null) {
             // Start with intro splash
@@ -344,12 +347,14 @@ class MainActivity : FragmentActivity() {
         intent?.let { handleDeepLink(it) }
     }
 
-    private fun handleDeepLink(intent: Intent) {
+    private fun handleDeepLink(intent: Intent, deferToStartupFlow: Boolean = false) {
         val target = DeepLinkRouter.parse(intent.data) ?: return
 
-        // If user is not authenticated yet, save for after login
+        // Defer when not authenticated (consumed after login) OR when the splash/auto-login
+        // startup flow is about to run (it replaces main_container and would wipe an
+        // immediate navigation) — navigateToHome() consumes pendingDeepLink either way.
         val hasCredentials = credentialStore.load() != null
-        if (!hasCredentials) {
+        if (!hasCredentials || deferToStartupFlow) {
             pendingDeepLink = target
             return
         }
@@ -378,20 +383,39 @@ class MainActivity : FragmentActivity() {
                     .addToBackStack(null)
                     .commit()
             }
+            is DeepLinkTarget.Guide -> navigateToEpgGuide(null, null)
             is DeepLinkTarget.Live -> {
                 val streamId = target.streamId.toIntOrNull() ?: return
                 val streamUrl = contentRepository.buildLiveStreamUrl(streamId)
-                val fragment = OoustreamPlaybackFragment.newInstance(
-                    streamUrl = streamUrl,
-                    contentType = ContentType.LIVE,
-                    streamId = target.streamId,
-                    streamName = "Channel ${target.streamId}"
-                )
-                val tx = supportFragmentManager.beginTransaction()
-                FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
-                tx.replace(R.id.main_container, fragment)
-                    .addToBackStack(null)
-                    .commit()
+                // Resolve the real channel name/logo and seed the full channel list so
+                // CH+/- zapping works after a deep-link tune-in (previously a placeholder
+                // "Channel 1234" with a dead zap list).
+                lifecycleScope.launch {
+                    val allChannels = try {
+                        contentRepository.getLiveStreams()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    val idx = allChannels.indexOfFirst { it.streamId == streamId }
+                    val channel = allChannels.getOrNull(idx)
+                    if (channel != null) {
+                        com.ooustream.iptv.player.ChannelListHolder.channels = allChannels
+                        com.ooustream.iptv.player.ChannelListHolder.currentIndex = idx
+                    }
+                    val fragment = OoustreamPlaybackFragment.newInstance(
+                        streamUrl = streamUrl,
+                        contentType = ContentType.LIVE,
+                        streamId = target.streamId,
+                        streamName = channel?.name ?: "Channel ${target.streamId}",
+                        streamIcon = channel?.streamIcon ?: ""
+                    )
+                    if (supportFragmentManager.isStateSaved) return@launch
+                    val tx = supportFragmentManager.beginTransaction()
+                    FragmentTransitions.apply(tx, TransitionDirection.PLAYER)
+                    tx.replace(R.id.main_container, fragment)
+                        .addToBackStack(null)
+                        .commit()
+                }
             }
             is DeepLinkTarget.Vod -> {
                 val streamId = target.streamId.toIntOrNull() ?: return
@@ -460,6 +484,18 @@ class MainActivity : FragmentActivity() {
         val tx = supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
         tx.replace(R.id.main_container, MultiViewFragment.newInstance(seedChannel, streamUrl))
+            .addToBackStack(null)
+            .commit()
+    }
+
+    /** Open the EPG grid guide, scoped to [categoryId] (null → favorites/first category). */
+    fun navigateToEpgGuide(categoryId: String?, categoryName: String?) {
+        val tx = supportFragmentManager.beginTransaction()
+        FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
+        tx.replace(
+            R.id.main_container,
+            com.ooustream.iptv.epg.guide.EpgGridFragment.newInstance(categoryId, categoryName)
+        )
             .addToBackStack(null)
             .commit()
     }

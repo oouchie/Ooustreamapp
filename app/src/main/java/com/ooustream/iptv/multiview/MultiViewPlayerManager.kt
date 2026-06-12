@@ -118,6 +118,8 @@ class MultiViewPlayerManager(
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setPlaybackLooper(thread.looper)
+            // Keep CPU+WiFi awake while live slots buffer (radio power-save mid-stall otherwise)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         player.setAudioAttributes(
@@ -455,6 +457,8 @@ class MultiViewPlayerManager(
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setPlaybackLooper(thread.looper)
+            // Keep CPU+WiFi awake while live slots buffer (radio power-save mid-stall otherwise)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         player.setAudioAttributes(

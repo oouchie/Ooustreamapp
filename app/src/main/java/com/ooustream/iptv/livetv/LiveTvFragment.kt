@@ -222,6 +222,28 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             }
         }
 
+        // TV Guide icon in header — opens the EPG grid scoped to the selected category
+        val guideIcon = view.findViewById<ImageView>(R.id.header_guide_icon)
+        guideIcon.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                v.animate().scaleX(1.3f).scaleY(1.3f).setDuration(200).start()
+                v.background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setStroke(2, 0xFFFFC107.toInt())
+                    setColor(0x14FFD700)
+                }
+            } else {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
+                v.background = null
+            }
+        }
+        guideIcon.setOnClickListener {
+            val categoryId = viewModel.selectedCategoryId.value
+            val categoryName = viewModel.categories.value
+                .find { it.categoryId == categoryId }?.categoryName
+            (activity as? com.ooustream.iptv.MainActivity)?.navigateToEpgGuide(categoryId, categoryName)
+        }
+
         // MultiView toggle icon in header
         val multiviewIcon = view.findViewById<ImageView>(R.id.header_multiview_icon)
         if (userPlanManager.isDeviceCapable()) {

@@ -254,6 +254,22 @@
             android:contentDescription="Search"
             android:nextFocusDown="@+id/channels_list"
             android:nextFocusLeft="@+id/header_clock"
+            android:nextFocusRight="@+id/header_guide_icon" />
+
+        <ImageView
+            android:id="@+id/header_guide_icon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="12dp"
+            android:padding="2dp"
+            android:src="@drawable/ic_guide"
+            android:scaleType="centerInside"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true"
+            android:contentDescription="TV Guide"
+            android:nextFocusDown="@+id/channels_list"
+            android:nextFocusLeft="@+id/header_search_icon"
             android:nextFocusRight="@+id/header_multiview_icon" />
 
         <ImageView
@@ -269,6 +285,6 @@
             android:clickable="true"
             android:contentDescription="MultiView"
             android:nextFocusDown="@+id/channels_list"
-            android:nextFocusLeft="@+id/header_search_icon" />
+            android:nextFocusLeft="@+id/header_guide_icon" />
     </LinearLayout>
 </FrameLayout>

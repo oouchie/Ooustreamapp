@@ -19,14 +19,20 @@ class EpgCacheRepository @Inject constructor(
     private val gson = Gson()
     private val epgListType = object : TypeToken<List<EpgProgram>>() {}.type
 
-    suspend fun getEpg(streamId: Int): List<EpgProgram> {
+    /**
+     * Cached EPG for a stream. [minPrograms] > 0 (EPG grid guide) re-fetches with the Xtream
+     * `limit` param when the cached entry is too short — a player-path fetch caches only the
+     * server-default ~4 listings, which covers the banner but not a multi-hour guide lane.
+     */
+    suspend fun getEpg(streamId: Int, minPrograms: Int = 0): List<EpgProgram> {
         // Check cache first — cached programs are already decoded
         val cached = epgCacheDao.get(streamId)
         if (cached != null && !isExpired(cached.fetchedAt)) {
-            return deserializePrograms(cached.programs)
+            val programs = deserializePrograms(cached.programs)
+            if (minPrograms <= 0 || programs.size >= minPrograms) return programs
         }
 
-        return fetchAndCache(streamId)
+        return fetchAndCache(streamId, if (minPrograms > 0) minPrograms else null)
     }
 
     /**
@@ -37,11 +43,11 @@ class EpgCacheRepository @Inject constructor(
         return fetchAndCache(streamId)
     }
 
-    private suspend fun fetchAndCache(streamId: Int): List<EpgProgram> {
+    private suspend fun fetchAndCache(streamId: Int, limit: Int? = null): List<EpgProgram> {
         // Fetch from network and decode Base64 title/description
         val startMs = System.currentTimeMillis()
         val programs = try {
-            (contentRepository.getShortEpg(streamId).epgListings ?: emptyList()).map { p ->
+            (contentRepository.getShortEpg(streamId, limit).epgListings ?: emptyList()).map { p ->
                 p.copy(
                     title = decodeBase64(p.title),
                     description = decodeBase64(p.description)

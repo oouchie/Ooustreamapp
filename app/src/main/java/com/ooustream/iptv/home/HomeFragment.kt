@@ -1900,6 +1900,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun navigateToSection(section: SectionItem) {
+        if (section.id == "guide") {
+            // EPG grid guide — opens unscoped (favorites → first category fallback)
+            (activity as? com.ooustream.iptv.MainActivity)?.navigateToEpgGuide(null, null)
+            return
+        }
         val fragment = when (section.id) {
             "live" -> LiveTvFragment()
             "movies" -> VodFragment()

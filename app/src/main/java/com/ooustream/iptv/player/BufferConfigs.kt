@@ -55,8 +55,10 @@ object BufferConfigs {
 
     /** Capped buffers for low-RAM devices (<=128MB heap) to prevent OOM in video decoder. */
     fun forLowMemory(type: ContentType): DefaultLoadControl = when (type) {
+        // LIVE minBuffer raised 3s→6s (watch-audit): a 3s floor on the 1GB stick re-stalled on
+        // every throughput wobble. 6s/8s of TS at typical IPTV bitrates is still only a few MB.
         ContentType.LIVE -> DefaultLoadControl.Builder()
-            .setBufferDurationsMs(3_000, 8_000, 500, 1_000)
+            .setBufferDurationsMs(6_000, 8_000, 500, 1_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         ContentType.VOD, ContentType.SERIES -> DefaultLoadControl.Builder()

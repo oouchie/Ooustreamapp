@@ -216,6 +216,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
             }
         }
 
+        var emptyStateJob: kotlinx.coroutines.Job? = null
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.seriesList.collect { series ->
@@ -230,6 +231,25 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                             posterGrid.selectedPosition = (if (restorePos >= 0) restorePos else 0).coerceIn(0, maxPos)
                             viewModel.savedGridPosition = -1
                         }
+                    }
+                    // Empty-state (watch-audit): a category that resolves empty used to leave the
+                    // shimmer skeletons up forever (or a blank grid). The StateFlow's initial
+                    // emission is also empty, so confirm it STAYS empty before declaring it.
+                    val emptyView = view.findViewById<View>(R.id.series_empty_state)
+                    emptyStateJob?.cancel()
+                    if (series.isEmpty()) {
+                        emptyStateJob = viewLifecycleOwner.lifecycleScope.launch {
+                            kotlinx.coroutines.delay(2_500)
+                            if (viewModel.seriesList.value.isEmpty()) {
+                                if (!skeletonSwapped) {
+                                    posterGrid.adapter = posterBridgeAdapter
+                                    skeletonSwapped = true
+                                }
+                                emptyView?.visibility = View.VISIBLE
+                            }
+                        }
+                    } else {
+                        emptyView?.visibility = View.GONE
                     }
                 }
             }

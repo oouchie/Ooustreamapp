@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 3.9.3 (versionCode 84)
+- **Current Version**: 4.0.0 (versionCode 85)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -372,7 +372,7 @@ Conventions for interpreting the exported debug report so customer reports aren'
 37. `home/WatchItAgainPresenter.kt` — Watch It Again row presenter with checkmark badge
 38. `recommendation/NewEpisodeSyncWorker.kt` — periodic new episode detection worker
 
-## Source File Inventory (208 Kotlin files, 58 XML layouts)
+## Source File Inventory (214 Kotlin files, 60 XML layouts)
 
 ### By Package
 | Package | Files | Key Components |
@@ -390,13 +390,14 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `data/repository/` | 9 | AuthRepository, ContentRepository, ContentCacheRepository, CredentialStore, EpgCacheRepository, FavoriteRepository, PredictivePreFetcher, SearchIndexRepository, WatchAnalyticsRepository |
 | `di/` | 3 | AppModule, DatabaseModule, NetworkModule |
 | `epg/` | 2 | ChannelNameParser, SmartEpgFiller |
+| `epg/guide/` | 7 | EpgGridFragment, EpgGridViewModel, GuideModels (GuideProgram/GuideRowData/GuideEpgNormalizer), GuideTimelineController, GuideProgramLaneView, GuideTimeHeaderView, GuideRowAdapter |
 | `favorites/` | 2 | FavoritesFragment, FavoritesViewModel |
 | `home/` | 10 | HomeFragment, HomeViewModel, ContinueWatchingPresenter, ForYouPresenter, ForYouLivePresenter, MultiViewHeroPresenter, PaletteExtractor, SectionCardPresenter, NewEpisodesPresenter, WatchItAgainPresenter |
 | `livetv/` | 2 | LiveTvFragment, LiveTvViewModel |
 | `multiview/` | 14 | MultiViewFragment, MultiViewViewModel, MultiViewPlayerManager, MultiViewSlotView, MultiViewStallDetector, PlaybackHealth, SlotActionPopup, MultiViewAutoFillUseCase, MultiViewTopBarController, MultiViewBottomBarController, MultiViewLockedPopup, ChannelPickerDialogFragment, QrUpgradeDialogFragment, QrCodeGenerator |
 | `onboarding/` | 1 | OnboardingOverlay |
 | `parental/` | 7 | ParentalControlManager, ParentalPinFragment, ParentalViewModel, ContentFilterManager, AdultCategoryDetector, ParentalSettingsFragment, ParentalSettingsViewModel, CategoryToggleAdapter |
-| `player/` | 21 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, TrackSelectionHelper, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor |
+| `player/` | 20 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor (TrackSelectionHelper deleted in v4.0.0 — dead code) |
 | `recommendation/` | 7 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker, VodCastBackfillWorker |
 | `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
 | `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
@@ -407,9 +408,9 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `vod/` | 4 | VodFragment, VodViewModel, VodDetailFragment, VodDetailViewModel |
 | Root | 2 | MainActivity, OoustreamApp |
 
-## Layout Files (58 XML)
-- **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail
-- **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_for_you, item_for_you_live, item_hero_multiview_card, item_new_episode, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_again, item_watch_next_card, item_zap_channel
+## Layout Files (60 XML)
+- **Fragments**: activity_main, fragment_account_dashboard, fragment_home, fragment_live_tv, fragment_login, fragment_multiview, fragment_search_aurora, fragment_series, fragment_series_detail, fragment_speed_test, fragment_vod, fragment_vod_detail, fragment_epg_grid
+- **Items**: item_category, item_channel, item_channel_skeleton, item_channel_picker, item_continue_watching, item_episode_card, item_epg_program, item_guide_row, item_for_you, item_for_you_live, item_hero_multiview_card, item_new_episode, item_poster_card, item_poster_skeleton, item_search_chip, item_search_section_header, item_section_card, item_sidebar_shortcut, item_trending_rank, item_watch_again, item_watch_next_card, item_zap_channel
 - **Overlays**: overlay_audio_only, overlay_binge_countdown, overlay_channel_banner, overlay_channel_zap, overlay_content_info, overlay_onboarding_step, overlay_player_controls, overlay_quick_sidebar, overlay_remote_hints, overlay_series_complete, overlay_stream_stats, overlay_track_picker, overlay_watch_next
 - **Dialogs**: dialog_channel_picker, dialog_qr_upgrade
 - **MultiView**: view_multiview_top_bar, view_multiview_bottom_bar
@@ -451,6 +452,81 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.0.0** — TV Guide + Gapless Binge + Watch-Polish Sweep (versionCode 85). Major release, three
+  workstreams, **device-verified on AFTKRT (192.168.1.84) before release** (screenshots + diagnostic log).
+  **(1) Gapless binge pre-buffer** — at the 15s binge mark the next episode is `addMediaItem`'d onto the
+  live player (playlist pre-buffer); advance goes through `seekToNextMediaItem()`; ALL bookkeeping lives
+  in ONE choke point, `onMediaItemTransition` (reason AUTO|SEEK + `mediaId == pendingNextEpisode.episodeId`
+  guard) → `handleGaplessEpisodeTransition()`: finalize prev (100% save via `lastKnownDurationMs` snapshot
+  + markCompleted BEFORE the synchronous identity swap), swap ViewModel fields, `queueUpNextRow`,
+  per-episode resets (binge/seek/retry/buffer-storm flags + `resetTrackStateForNewContent`), UI/diag swap
+  (glue title, controlsBar, diagnosticListener+healthMonitor channelName), `recordPlayStart`. Consolidated
+  `advanceToNextEpisode(source)` (playlist fast path → `legacyAdvanceToNextEpisode` fallback = old flow);
+  binge Cancel REMOVES the queued item (Cancel = "no autoplay"); all 3 `rebuildPlayerWith*` drop the queued
+  item (`PREBUFFER_DROPPED` → legacy advance at the boundary — rebuilds are exactly where a 2nd stream is
+  least safe). Gated `preBufferEnabled = tier HIGH|MID` (ULTRA_LOW/LOW keep legacy; AFTKRT=MID exercises it).
+  Diagnostic events: PREBUFFER_QUEUED/REMOVED/DROPPED, TRANSITION_REQUEST/AUTO/SEEK/FALLBACK. **On-device
+  proof**: `PREBUFFER_QUEUED → TRANSITION_REQUEST mode=playlist → TRANSITION_SEEK` in 190ms (Sofia the
+  First S1E2→S1E3, truly gapless); last-episode path correctly shows Series Complete; completed episode
+  drops from CW and the new episode tracks progress. **CRITICAL race fixed while implementing**:
+  `PlayerViewModel.saveProgress`/`markCompleted` used to read identity fields INSIDE their launched
+  coroutines — after the synchronous swap they'd attribute the prev episode's 100% save to the NEW episode.
+  Both now SNAPSHOT state at call time (also hardens the pre-existing legacy-advance paths).
+  **(2) EPG Grid Guide (new feature, `epg/guide/`)** — classic TV-guide: fixed 180dp channel column
+  (logo via ChannelDisplayHelper + number + name) + Canvas-drawn program lanes (`GuideProgramLaneView`,
+  no nested RecyclerViews) sharing ONE 2h window via `GuideTimelineController`; 30-min ruler
+  (`GuideTimeHeaderView`) + gold NOW line; horizontal focus is VIRTUAL (`focusAnchorMs` — UP/DOWN stays
+  time-aligned, LEFT/RIGHT walks programs and auto-scrolls, FF/REW ±2h); vertical axis = Leanback
+  VerticalGridView (real focus, recycling). UP at row 0 hands focus to the **category chip** → in-guide
+  category picker (Favorites + all live categories; switching clears per-row EPG state and reloads —
+  added after user caught the missing switcher). OK on now-airing → tune fullscreen with the guide's
+  channel list seeded into ChannelListHolder (CH± zapping works — device-verified); OK on future →
+  details dialog (android.app.AlertDialog, title/time/desc + Watch Channel). Data: category-scoped,
+  viewport-driven `get_short_epg` ONLY for visible rows ±3 (400ms scroll-settle debounce, Semaphore(3),
+  jobs cancelled for departed rows); new Xtream `limit` param (guide passes minPrograms=20 → 8-12h
+  horizon; `EpgCacheRepository.getEpg(streamId, minPrograms)` re-fetches when a player-path ~4-listing
+  cache entry is too short); lanes never blank — `GuideEpgNormalizer` clips/sorts real EPG and gap-fills
+  >5min holes with hour-aligned `SmartEpgFiller.inferRuleBased` blocks (memoized per channel; styling:
+  real=white, pattern=italic blue, rule=italic dim 47%). v1 horizon = NOW forward only (get_short_epg
+  returns no past). Entry points: **TV Guide card on Home right after Live TV** (user-requested
+  placement, `SectionItem("guide")`), guide icon in the Live TV header (category-scoped), `ooustream://guide`
+  deep link. Phone: lane drag pans the timeline, tap = OK. Layouts: fragment_epg_grid, item_guide_row;
+  drawable ic_guide.
+  **(3) Watch-polish sweep** (remaining audit P2/P3s, all verified-open against HEAD first):
+  WAKE_MODE_NETWORK on main player ×4 + MultiView ×2 (radio power-save mid-stall fix); buffering-overlay
+  status label ("Waiting for network…" on loss / "Reconnecting…" past first stall retry); SubtitleView
+  bringToFront above the controls bar + 8%→22% bottom padding while controls visible; **seek coalescer**
+  — `requestDpadSeek`/`commitPendingSeek` accumulate rapid D-pad/FF/RW/button taps into ONE `seekTo`
+  ~300ms after the last tap (optimistic seekbar + feedback UI; glue no longer seeks directly — callbacks
+  delegate; commit-on-pause so the checkpoint saves the scrubbed position), `SeekParameters.CLOSEST_SYNC`
+  for >30s coarse scrubs (DEFAULT restored after — message ordering on the playback thread); absolute
+  landing timecode line in SeekFeedbackOverlay (device-verified: 75 rapid taps coalesced, landed at
+  41:43); phantom Up-Next progress bar hidden (ContinueWatchingPresenter isUpNext); empty-category
+  empty-state on Vod/Series (2.5s confirm so the initial empty StateFlow emission can't flash it);
+  **slideshow guard** — SW/FFmpeg decoder <10fps for 5 consecutive watchdog polls → friendly error
+  (`WATCHDOG_SLIDESHOW_GIVE_UP`, HDR-specific copy for HEVC Main 10) — DEVIATION from audit: the upfront
+  ULTRA_LOW Main-10 fast-fail was NOT restored because v3.7.9 customer evidence shows mt8695 HW *does*
+  decode Main 10; the guard catches the stranded-slideshow case without regressing working devices;
+  **audio-stall recovery** — `PlaybackHealthMonitor.onAudioStall` + `ExoPlayerDiagnosticListener.onAudioSinkFault`
+  → two-stage ladder (audio renderer re-init via TRACK_TYPE_AUDIO disable/enable → `rebuildPlayerWithFfmpegPreferred`),
+  capped per content via `audioStallRecoveryStage` (reset in resetTrackStateForNewContent + tuneToChannel);
+  `BufferConfigs.forLowMemory` LIVE minBuffer 3s→6s; deep-link Live now resolves the real channel
+  name/icon and seeds the FULL channel list for zapping (was placeholder "Channel 1234" + dead zap);
+  deleted dead `player/TrackSelectionHelper.kt`. **Deep-link fix**: `handleDeepLink(intent,
+  deferToStartupFlow = savedInstanceState == null)` — on fresh creation the splash flow's
+  replace+navigateToHome used to clobber an immediate deep-link navigation; deferred targets are consumed
+  by navigateToHome (pre-existing bug affecting ALL deep links while logged in). **Deferred to next
+  release** (deliberate): preview→fullscreen warm handoff, stream-host preconnect on focus,
+  ComponentCallbacks2 dynamic buffer tightening, SW→HW decoder-swap re-probe (permanent-codec-limit
+  rationale stands). Files (main): `player/OoustreamPlaybackFragment.kt`, `player/PlayerViewModel.kt`,
+  `player/OoustreamPlaybackGlue.kt`, `player/SeekFeedbackOverlay.kt`, `player/PlaybackHealthMonitor.kt`,
+  `player/ExoPlayerDiagnosticListener.kt`, `player/BufferConfigs.kt`, new `epg/guide/*` (7 files),
+  `data/remote/XtreamApiService.kt`, `data/repository/ContentRepository.kt`,
+  `data/repository/EpgCacheRepository.kt`, `home/HomeViewModel.kt`, `home/HomeFragment.kt`,
+  `home/ContinueWatchingPresenter.kt`, `livetv/LiveTvFragment.kt`, `vod/VodFragment.kt`,
+  `series/SeriesFragment.kt`, `multiview/MultiViewPlayerManager.kt`, `MainActivity.kt`,
+  `deeplink/DeepLinkRouter.kt`; deleted `player/TrackSelectionHelper.kt`.
 
 - **v3.9.3** — Movies/Series grid 2-columns-on-TV fix (versionCode 84). Bug: the Movies and Series
   poster grids rendered only 2 columns on Fire TV (wasting ~half the content area) instead of 4. Root

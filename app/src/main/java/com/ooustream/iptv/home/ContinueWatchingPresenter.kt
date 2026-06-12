@@ -39,11 +39,19 @@ class ContinueWatchingPresenter : Presenter() {
         val timeLeft = root.findViewById<TextView>(R.id.cw_time_left)
 
         title.text = progress.name
-        progressBar.progress = (progress.progressPercent * 100).toInt()
 
         // Series subtitle: "S1 E2 · Up Next" or "S1 E2 · Resume"
         val isSeries = progress.type == "series" && progress.seasonNum != null
         val isUpNext = isSeries && progress.position == 0L
+
+        // "Up Next" rows are queued, not watched — their stored 6% is only there to clear the
+        // Continue Watching filter. Showing it as a progress bar reads as phantom progress.
+        if (isUpNext) {
+            progressBar.visibility = View.GONE
+        } else {
+            progressBar.visibility = View.VISIBLE
+            progressBar.progress = (progress.progressPercent * 100).toInt()
+        }
         if (isSeries) {
             resumeText.text = if (isUpNext) {
                 "S${progress.seasonNum} E${progress.episodeNum} \u00B7 Up Next"

@@ -85,6 +85,9 @@ interface XtreamApiService {
         @Query("username") username: String,
         @Query("password") password: String,
         @Query("action") action: String = "get_short_epg",
-        @Query("stream_id") streamId: Int
+        @Query("stream_id") streamId: Int,
+        // Standard Xtream param: number of listings to return (server default ~4 ≈ 1.5-3h).
+        // The EPG grid guide passes ~20 for an 8-12h forward horizon. Null = omitted.
+        @Query("limit") limit: Int? = null
     ): EpgResponse
 }

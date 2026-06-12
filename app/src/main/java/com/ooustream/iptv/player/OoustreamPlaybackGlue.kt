@@ -72,7 +72,9 @@ class OoustreamPlaybackGlue(
     var onDismissTrackPicker: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
 
-    // Seek/navigation callbacks (wired by fragment)
+    // Seek/navigation callbacks (wired by fragment). v4.0.0: the glue no longer calls
+    // playerAdapter.seekTo() itself — the fragment owns seeking via a coalescer that
+    // accumulates rapid taps into ONE committed network seek (~300ms after the last tap).
     var onSeekForward: ((Long) -> Unit)? = null
     var onSeekBackward: ((Long) -> Unit)? = null
     var onNextEpisode: (() -> Unit)? = null
@@ -118,15 +120,14 @@ class OoustreamPlaybackGlue(
         when (action) {
             ffAction -> {
                 if (contentType != ContentType.LIVE) {
-                    playerAdapter.seekTo(playerAdapter.currentPosition + 10_000)
                     onSeekForward?.invoke(10_000)
+                        ?: emitNoHandler("onSeekForward", "ff_action")
                 }
             }
             rwAction -> {
                 if (contentType != ContentType.LIVE) {
-                    val newPos = (playerAdapter.currentPosition - 10_000).coerceAtLeast(0)
-                    playerAdapter.seekTo(newPos)
                     onSeekBackward?.invoke(10_000)
+                        ?: emitNoHandler("onSeekBackward", "rw_action")
                 }
             }
             audioTrackAction -> onAudioTrackClicked?.invoke()
@@ -238,17 +239,16 @@ class OoustreamPlaybackGlue(
             // FF/RW media buttons: seek + show controls
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                 if (contentType != ContentType.LIVE) {
-                    playerAdapter.seekTo(playerAdapter.currentPosition + 10_000)
                     onSeekForward?.invoke(10_000)
+                        ?: emitNoHandler("onSeekForward", "media_ff")
                 }
                 customControlsManager?.show()
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_REWIND -> {
                 if (contentType != ContentType.LIVE) {
-                    val newPos = (playerAdapter.currentPosition - 10_000).coerceAtLeast(0)
-                    playerAdapter.seekTo(newPos)
                     onSeekBackward?.invoke(10_000)
+                        ?: emitNoHandler("onSeekBackward", "media_rw")
                 }
                 customControlsManager?.show()
                 return true
@@ -258,9 +258,8 @@ class OoustreamPlaybackGlue(
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 if (contentType != ContentType.LIVE) {
                     val delta = seekDeltaForRepeat(event?.repeatCount ?: 0)
-                    val newPos = (playerAdapter.currentPosition - delta).coerceAtLeast(0)
-                    playerAdapter.seekTo(newPos)
                     onSeekBackward?.invoke(delta)
+                        ?: emitNoHandler("onSeekBackward", "dpad_left")
                     if (controlsHidden) customControlsManager?.show()
                     else customControlsManager?.resetAutoHideTimer()
                     return true
@@ -269,8 +268,8 @@ class OoustreamPlaybackGlue(
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                 if (contentType != ContentType.LIVE) {
                     val delta = seekDeltaForRepeat(event?.repeatCount ?: 0)
-                    playerAdapter.seekTo(playerAdapter.currentPosition + delta)
                     onSeekForward?.invoke(delta)
+                        ?: emitNoHandler("onSeekForward", "dpad_right")
                     if (controlsHidden) customControlsManager?.show()
                     else customControlsManager?.resetAutoHideTimer()
                     return true

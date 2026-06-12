@@ -63,13 +63,44 @@
             </LinearLayout>
 
             <!-- Content Area (75%) -->
-            <androidx.leanback.widget.VerticalGridView
-                android:id="@+id/vod_grid"
+            <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="75"
-                android:clipToPadding="false"
-                android:clipChildren="false" />
+                android:layout_weight="75">
+
+                <androidx.leanback.widget.VerticalGridView
+                    android:id="@+id/vod_grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:clipChildren="false" />
+
+                <LinearLayout
+                    android:id="@+id/vod_empty_state"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/empty_category_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/empty_category_hint"
+                        android:textColor="@color/text_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </FrameLayout>
         </LinearLayout>
 
         <!-- Navigation Hints - Aurora styled -->
