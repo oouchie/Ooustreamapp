@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.0.1 (versionCode 86)
+- **Current Version**: 4.1.0 (versionCode 87)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -452,6 +452,43 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.1.0** — Full-App Cursor Audit + MultiView Upgrade (versionCode 87). The v4.0.1 Live TV cursor
+  audit applied to EVERY screen (on-device walkthrough + a parallel code sweep of all fragments), plus
+  the MultiView world-class pass. **Cursor fixes (all the same v4.0.1 defect class — scroll-position
+  restored but `requestFocus()` missing, so back-nav left the gold cursor invisible):** `VodFragment` +
+  `SeriesFragment` grid restore, `LiveTvFragment` second restore site (skeleton-swap block),
+  `EpgGridFragment` (new `onResume` re-focus — the first-load `requestFocus` was gated by
+  `initialFetchDone` and never re-fired on back-return), `FavoritesFragment` (`savedFocusPosition` was
+  written by both navigate-away paths but never consumed; restore added in the `displayItems` submitList
+  callback; ViewModel default 0→-1). **Home (3 device-found defects):** (1) `saveFocusState()` ran only
+  at `onDestroyView`, when the incoming fragment already held focus → `findFocus()==null` → restore
+  always defaulted to the hero; now also called from `onPause()` while focus is alive (null-focus
+  early-return prevents the later onDestroyView call from clobbering it). (2) Hero Play/More Info
+  focused state was a gold glow on a gold button — invisible from 10ft; added a 2.5dp WHITE foreground
+  ring (`heroFocusRing()`). (3) More Info was UNREACHABLE by D-pad — `onKeyEvent` rotated the featured
+  item on every LEFT/RIGHT; now LEFT/RIGHT traverses Play↔More Info and only rotates at the edges.
+  **MultiView (from a 20-finding audit; 7 implemented):** P0 background-decode leak fixed — new
+  `onStop`/`onStart` with `MultiViewPlayerManager.pauseAll()/resumeAll()` (4 decoders used to keep
+  running after Home press); P0 seed auto-fill fixed — `loadSeedChannel` built the seed with
+  `categoryId=null` so the same-category fill NEVER ran; now resolves the real channel via
+  ContentRepository before auto-fill; P0 `onPlayerError` rerouted through
+  `MultiViewStallDetector.reportExternalError()` (was unconditional HARD_RESET every error → fade-mask
+  flash-loop, no cooldown/ladder/signal-lost); slot channel-logo bridge (Coil logo + spinner via the
+  recovery-mask machinery, dismissed by the same onRenderedFirstFrame signal) instead of black-until-
+  first-frame; audio-switch gold border flash (600ms) on the target slot; slot labels 8-9sp→11sp;
+  exit confirmation dialog replaced with double-Back-to-exit (2s window + toast). Also: stale "COMING
+  SOON" badge on the Home MultiView card → "LIVE SPORTS". **Device-verified on AFTKRT:** hero ring +
+  Play↔More Info traversal, Home BACK-restore into the CW row, MultiView picker→slot fill (~2s to live
+  video, focus auto-advances to next empty slot), double-back exit, readable labels. **Deferred
+  (documented in tasks/todo.md):** MultiView mode-aware tier gating (DUAL on LOW), 540p focused cap in
+  QUAD, stagger tuning, real-EPG ticker, keep-alive live-edge check, swapSlots stall-monitor
+  re-pointing, layout-transition SurfaceView exclusion, scrim sizing; Home CW reorder-aware restore;
+  ParentalSettings focus restore; on-device QUAD soak (Media3 1.10.0 multi-decoder regression
+  re-check on mt8696). Files: home/HomeFragment.kt, vod/VodFragment.kt, series/SeriesFragment.kt,
+  livetv/LiveTvFragment.kt, favorites/FavoritesFragment.kt + FavoritesViewModel.kt,
+  epg/guide/EpgGridFragment.kt, multiview/{MultiViewFragment, MultiViewPlayerManager,
+  MultiViewStallDetector, MultiViewSlotView}.kt, res/layout/item_hero_multiview_card.xml.
 
 - **v4.0.1** — Live TV Cursor Fix (versionCode 86). Two cursor-visibility bugs on the Live TV screen,
   found by navigating the screen on-device (user request: "cursor functionality on the live tv screen"),

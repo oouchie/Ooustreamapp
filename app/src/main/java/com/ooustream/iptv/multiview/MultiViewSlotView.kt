@@ -16,6 +16,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.media3.ui.PlayerView
+import coil.load
+import coil.transform.CircleCropTransformation
 import com.ooustream.iptv.R
 import com.ooustream.iptv.data.model.LiveStream
 
@@ -46,6 +48,12 @@ class MultiViewSlotView @JvmOverloads constructor(
     private val healthDot: View
     private val recoveryFadeMask: View
     private val recoverySpinner: ProgressBar
+
+    // Channel logo shown while waiting for first frame on a new channel (Fix 6)
+    private val channelLogoImage: ImageView
+
+    // Border-flash animator for audio switch feedback (Fix 7)
+    private var audioFlashAnimator: ValueAnimator? = null
 
     // Pulsing animation for LIVE dot
     private var livePulseAnimator: ObjectAnimator? = null
@@ -97,7 +105,7 @@ class MultiViewSlotView @JvmOverloads constructor(
         }
 
         channelNameText = TextView(context).apply {
-            textSize = 9f
+            textSize = 11f  // bumped from 9f for 10-foot legibility
             setTextColor(Color.WHITE)
             maxLines = 1
         }
@@ -114,7 +122,7 @@ class MultiViewSlotView @JvmOverloads constructor(
 
         liveText = TextView(context).apply {
             text = "LIVE"
-            textSize = 8f
+            textSize = 11f  // bumped from 8f for 10-foot legibility
             setTextColor(Color.WHITE)
             letterSpacing = 0.06f
         }
@@ -136,7 +144,7 @@ class MultiViewSlotView @JvmOverloads constructor(
 
         val audioText = TextView(context).apply {
             text = "AUDIO"
-            textSize = 9f
+            textSize = 11f  // bumped from 9f for 10-foot legibility
             setTextColor(0xFFFFD700.toInt())
             letterSpacing = 0.03f
         }
@@ -245,6 +253,20 @@ class MultiViewSlotView @JvmOverloads constructor(
         }
         addView(recoverySpinner)
 
+        // Channel logo — centered ~48dp ImageView shown while waiting for first video frame after
+        // a channel is assigned. Same recovery-mask z-order: sits above the mask so it's visible
+        // during the load gap. Dismissed by hideChannelLogo(), called from hideRecoveryMask()
+        // so both share the same onRenderedFirstFrame signal. (Fix 6)
+        channelLogoImage = ImageView(context).apply {
+            layoutParams = LayoutParams(dp(48), dp(48)).also {
+                it.gravity = Gravity.CENTER
+            }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            alpha = 0f
+            visibility = GONE
+        }
+        addView(channelLogoImage)
+
         updateSlotNumber()
     }
 
@@ -257,8 +279,47 @@ class MultiViewSlotView @JvmOverloads constructor(
         emptyIcon.visibility = GONE
         emptyText.visibility = GONE
 
+        // Show channel logo + spinner while waiting for first frame on this channel. (Fix 6)
+        // hideRecoveryMask() (called on onRenderedFirstFrame) will dismiss both.
+        showRecoveryMask(withSpinner = true)
+        showChannelLogo(channel.streamIcon)
+
         // Start LIVE dot pulsing
         startLivePulse()
+    }
+
+    /**
+     * Loads the channel logo into the centered ImageView shown during initial buffering.
+     * Falls back to showing only the spinner on load failure.
+     */
+    private fun showChannelLogo(iconUrl: String?) {
+        if (iconUrl.isNullOrBlank()) {
+            // No logo URL — spinner alone is sufficient
+            channelLogoImage.visibility = GONE
+            return
+        }
+        channelLogoImage.visibility = VISIBLE
+        channelLogoImage.alpha = 0f
+        channelLogoImage.load(iconUrl) {
+            transformations(CircleCropTransformation())
+            crossfade(true)
+            listener(
+                onSuccess = { _, _ ->
+                    channelLogoImage.animate().alpha(1f).setDuration(200).start()
+                },
+                onError = { _, _ ->
+                    channelLogoImage.visibility = GONE
+                }
+            )
+        }
+    }
+
+    private fun hideChannelLogo() {
+        channelLogoImage.animate()
+            .alpha(0f)
+            .setDuration(150)
+            .withEndAction { channelLogoImage.visibility = GONE }
+            .start()
     }
 
     fun clearChannel() {
@@ -276,6 +337,27 @@ class MultiViewSlotView @JvmOverloads constructor(
             .withStartAction { if (active) audioIndicator.visibility = VISIBLE }
             .withEndAction { if (!active) audioIndicator.visibility = GONE }
             .start()
+
+        // Flash the slot border gold for ~600ms when audio moves to this slot,
+        // even if the slot isn't currently focused — immediate switch feedback. (Fix 7)
+        if (active) {
+            audioFlashAnimator?.cancel()
+            setBackgroundResource(R.drawable.bg_multiview_slot_focused)
+            // After 600ms restore the neutral background. setSlotFocused() will
+            // correct it again on the next real focus event if needed.
+            audioFlashAnimator = ValueAnimator.ofInt(0, 1).apply {
+                duration = 600
+                addListener(object : android.animation.Animator.AnimatorListener {
+                    override fun onAnimationEnd(a: android.animation.Animator) {
+                        setBackgroundResource(R.drawable.bg_multiview_slot)
+                    }
+                    override fun onAnimationStart(a: android.animation.Animator) {}
+                    override fun onAnimationCancel(a: android.animation.Animator) {}
+                    override fun onAnimationRepeat(a: android.animation.Animator) {}
+                })
+                start()
+            }
+        }
     }
 
     fun setSlotFocused(focused: Boolean) {
@@ -369,10 +451,12 @@ class MultiViewSlotView @JvmOverloads constructor(
 
     /**
      * Hide fade mask after first frame renders (smooth reveal).
+     * Also dismisses the channel logo shown during initial buffering (Fix 6).
      * @param durationMs fade out duration (200ms for hard reset, 300ms for nuclear)
      */
     fun hideRecoveryMask(durationMs: Long = 200) {
         recoverySpinner.visibility = GONE
+        hideChannelLogo()
         recoveryFadeMask.animate()
             .alpha(0f)
             .setDuration(durationMs)
@@ -407,5 +491,7 @@ class MultiViewSlotView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         stopLivePulse()
+        audioFlashAnimator?.cancel()
+        audioFlashAnimator = null
     }
 }

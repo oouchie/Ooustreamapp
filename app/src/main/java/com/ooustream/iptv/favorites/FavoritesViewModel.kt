@@ -96,8 +96,8 @@ class FavoritesViewModel @Inject constructor(
     val totalCount: StateFlow<Int> = favoriteRepository.getCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    /** Saved focus position for restoration after returning from playback */
-    var savedFocusPosition: Int = 0
+    /** Saved focus position for restoration after returning from playback. -1 = nothing saved. */
+    var savedFocusPosition: Int = -1
 
     /** Entity cache for undo support */
     private var lastRemovedEntity: FavoriteEntity? = null

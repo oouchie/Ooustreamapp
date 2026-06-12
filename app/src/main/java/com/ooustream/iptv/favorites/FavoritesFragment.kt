@@ -262,6 +262,17 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
                     viewModel.displayItems.collect { items ->
                         favoritesAdapter.submitList(items) {
                             favoritesAdapter.markFirstLoadComplete()
+                            // Restore the CURSOR on back-nav: savedFocusPosition was written by
+                            // the navigate-away paths but never consumed — focus landed elsewhere
+                            // and the gold cursor was invisible (v4.0.1 bug family).
+                            val restorePos = viewModel.savedFocusPosition
+                            if (restorePos >= 0 && items.isNotEmpty()) {
+                                viewModel.savedFocusPosition = -1
+                                favoritesGrid.post {
+                                    favoritesGrid.scrollToPosition(restorePos.coerceIn(0, items.size - 1))
+                                    favoritesGrid.requestFocus()
+                                }
+                            }
                         }
                         emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
                         favoritesGrid.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE

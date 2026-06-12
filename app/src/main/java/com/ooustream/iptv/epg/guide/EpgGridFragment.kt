@@ -297,6 +297,16 @@ class EpgGridFragment : Fragment(), KeyEventHandler {
             .commit()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Back-return from fullscreen playback: the first-load grid.requestFocus() is gated by
+        // initialFetchDone and never re-fires, so focus would land nowhere visible (v4.0.1 bug
+        // family). Re-take focus on the grid — selection still points at the row we tuned from.
+        if ((rowAdapter?.itemCount ?: 0) > 0) {
+            gridView?.requestFocus()
+        }
+    }
+
     override fun onDestroyView() {
         viewportJob?.cancel()
         viewportJob = null

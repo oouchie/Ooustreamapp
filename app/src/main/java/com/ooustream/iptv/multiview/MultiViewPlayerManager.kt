@@ -501,6 +501,32 @@ class MultiViewPlayerManager(
     }
 
     /**
+     * Pauses all active players (playWhenReady=false). Keeps players, threads, and surfaces alive
+     * so resume is instant. Call from onStop().
+     */
+    fun pauseAll() {
+        for (i in 0 until 4) {
+            players[i]?.playWhenReady = false
+        }
+        AudioLogger.log("MultiView: all players paused (onStop)")
+    }
+
+    /**
+     * Resumes playback on all occupied slots. Call from onStart().
+     */
+    fun resumeAll() {
+        for (i in 0 until 4) {
+            players[i]?.playWhenReady = true
+        }
+        AudioLogger.log("MultiView: all players resumed (onStart)")
+    }
+
+    /**
+     * Returns true if any player slot is currently occupied.
+     */
+    fun hasOccupiedSlots(): Boolean = players.any { it != null }
+
+    /**
      * Releases all players and threads. Call in fragment onDestroyView.
      */
     fun releaseAll() {

@@ -251,6 +251,9 @@ class VodFragment : Fragment(), KeyEventHandler {
                                 val maxPos = (posterAdapter.size() - 1).coerceAtLeast(0)
                                 posterGrid.selectedPosition = viewModel.savedGridPosition.coerceIn(0, maxPos)
                                 viewModel.savedGridPosition = -1
+                                // Restore the CURSOR, not just the scroll position — without this,
+                                // back-nav focus lands elsewhere and the gold cursor is invisible.
+                                posterGrid.requestFocus()
                             }
                         }
                     }

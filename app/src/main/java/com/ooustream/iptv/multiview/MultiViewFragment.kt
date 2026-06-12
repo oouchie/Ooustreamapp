@@ -12,6 +12,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Toast
 
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -63,6 +64,10 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
     // Double-press detection for fullscreen toggle
     private var lastOkUpTimestamp = 0L
     private val DOUBLE_PRESS_WINDOW_MS = 400L
+
+    // Double-back-to-exit: first Back shows toast; second Back within 2s pops fragment
+    private var lastBackPressedMs = 0L
+    private val BACK_EXIT_WINDOW_MS = 2_000L
 
     // Layout references
     private lateinit var gridContainer: ConstraintLayout
@@ -168,10 +173,12 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
         val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val isLowMemory = am.memoryClass <= 128
         playerManager = MultiViewPlayerManager(requireContext(), okHttpClient, isLowMemory).apply {
-            onPlayerError = { slotIndex, _ ->
-                // Catch errors that fire before stall detector monitoring starts
-                AudioLogger.log("MultiView slot $slotIndex: early error caught, triggering recovery")
-                handleRecoveryAction(slotIndex, RecoveryAction.HARD_RESET)
+            onPlayerError = { slotIndex, error ->
+                // Route through the stall detector so RECOVERY_COOLDOWN_MS and the escalation
+                // ladder (soft → hard → nuclear → signal lost) apply. A raw unconditional
+                // HARD_RESET here caused flash-loop of the recovery mask on persistent failures.
+                AudioLogger.log("MultiView slot $slotIndex: error routed to stall detector: ${error.errorCodeName}")
+                stallDetector?.reportExternalError(slotIndex)
             }
         }
         if (isLowMemory) {
@@ -724,8 +731,8 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                         true
                     }
                     else -> {
-                        // Show exit confirmation
-                        showExitDialog()
+                        // Double-back-to-exit (no dialog — too much friction on TV)
+                        handleBackToExit()
                         true
                     }
                 }
@@ -770,7 +777,9 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
         val streamUrl = arguments?.getString(ARG_SEED_STREAM_URL)
             ?: contentRepository.buildLiveStreamUrl(channelId)
 
-        val seedChannel = LiveStream(
+        // Stub channel for immediate slot assignment — categoryId is null here because the
+        // argument bundle carries only id+name+url, not the full LiveStream.
+        val stubChannel = LiveStream(
             num = null, name = channelName, streamType = "live",
             streamId = channelId, streamIcon = null,
             epgChannelId = null, added = null, categoryId = null,
@@ -778,11 +787,21 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
             tvArchiveDuration = null
         )
 
-        setSlotChannel(0, seedChannel, streamUrl)
+        setSlotChannel(0, stubChannel, streamUrl)
 
-        // Auto-fill remaining slots from same category (staggered to avoid decoder overload)
+        // Auto-fill remaining slots. Resolve the real LiveStream (with categoryId) from the
+        // API first so autoFill's same-category fill path is not silently skipped due to null
+        // categoryId on the stub above.
         viewLifecycleOwner.lifecycleScope.launch {
-            val fillChannels = autoFillUseCase.autoFill(seedChannel, viewModel.visibleSlotCount)
+            val resolvedSeed = try {
+                contentRepository.getLiveStreams()
+                    .firstOrNull { it.streamId == channelId }
+                    ?: stubChannel // fallback: categoryId stays null, cross-category fill kicks in
+            } catch (_: Exception) {
+                stubChannel
+            }
+
+            val fillChannels = autoFillUseCase.autoFill(resolvedSeed, viewModel.visibleSlotCount)
             fillChannels.forEachIndexed { index, channel ->
                 val slotIndex = index + 1
                 if (slotIndex < viewModel.visibleSlotCount) {
@@ -1075,15 +1094,21 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
         return contentRepository.buildLiveStreamUrl(channel.streamId)
     }
 
-    private fun showExitDialog() {
-        android.app.AlertDialog.Builder(requireContext())
-            .setTitle("Exit MultiView")
-            .setMessage("Return to Live TV?")
-            .setPositiveButton("Exit") { _, _ ->
-                parentFragmentManager.popBackStack()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+    /**
+     * Double-back-to-exit: first Back shows a Toast and arms a 2s window;
+     * a second Back within that window pops the fragment. Eliminates the
+     * AlertDialog confirmation that required D-pad navigation to dismiss.
+     */
+    private fun handleBackToExit() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressedMs < BACK_EXIT_WINDOW_MS) {
+            // Second press within window — exit
+            parentFragmentManager.popBackStack()
+        } else {
+            // First press — show hint toast and arm window
+            lastBackPressedMs = now
+            Toast.makeText(requireContext(), "Press Back again to exit MultiView", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // ── Layout Helpers ──────────────────────────────────────────────
@@ -1104,6 +1129,25 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────
+
+    override fun onStop() {
+        super.onStop()
+        // Pause all decoders — screen is not visible (Home key, screensaver, etc.).
+        // Do NOT release: surfaces stay alive so onStart resume is instant.
+        playerManager?.pauseAll()
+        // Allow screen to sleep while backgrounded
+        requireActivity().window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Resume playback for all occupied slots
+        playerManager?.resumeAll()
+        // Restore screen-on only if we have active streams
+        if (playerManager?.hasOccupiedSlots() == true) {
+            requireActivity().window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     override fun onDestroyView() {
         // Allow screen to sleep again

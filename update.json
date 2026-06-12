@@ -1,9 +1,9 @@
 {
-  "version_name": "4.0.1",
-  "version_code": 86,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.0.1/app-armeabi-v7a-release.apk",
-  "changelog": "v4.0.1 — Live TV Cursor Fix\n\n• Coming back from fullscreen Live TV now puts the highlight right back on the channel you were watching — no more invisible cursor and blind D-pad presses.\n• The category list highlight is now clearly visible even when it sits on the category that's already selected.\n\nIncludes everything from v4.0.0: the new TV Guide, seamless binge episode transitions, and the playback polish pack.",
+  "version_name": "4.1.0",
+  "version_code": 87,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.1.0/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.1.0/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.1.0/app-armeabi-v7a-release.apk",
+  "changelog": "v4.1.0 — Smoother Navigation + MultiView Upgrade\n\n• The highlight cursor now always returns to the item you were on when backing out of playback or a detail page — on Home, Movies, Series, Favorites, Live TV, and the TV Guide.\n• Home: the hero buttons now show a clear white highlight, and Right/Left moves between Play and More Info (edges still flip through featured titles).\n• MultiView: channels load with their logo while connecting, audio switching flashes the active screen, labels are easier to read from the couch, playback now pauses when you leave the app (battery/heat), exiting is a quick double-press of Back, and auto-fill now picks channels from the same category as your starting channel.\n• MultiView streams that error now recover through the proper ladder instead of flickering.",
   "mandatory": false
 }

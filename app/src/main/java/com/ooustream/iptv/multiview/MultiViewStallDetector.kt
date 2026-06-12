@@ -517,6 +517,19 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         slotStates[slotIndex].autoRetryJob = null
     }
 
+    // ── External Error Reporting ──────────────────────────────────────────────
+
+    /**
+     * Routes an error from outside the stall detector (e.g. the manager's onPlayerError callback)
+     * through the same setHealth/triggerRecovery path. This ensures RECOVERY_COOLDOWN_MS and the
+     * escalation ladder (soft → hard → nuclear → signal lost) apply, rather than an unconditional
+     * hard reset that can flash-loop the recovery mask on a persistently-failing stream.
+     */
+    fun reportExternalError(slotIndex: Int) {
+        AudioLogger.log("MultiView slot $slotIndex: external error routed through stall detector")
+        setHealth(slotIndex, PlaybackHealth.FROZEN)
+    }
+
     // ── Health State Flow ──────────────────────────────────────────────
 
     private fun updateHealthFlow(slotIndex: Int, health: PlaybackHealth) {

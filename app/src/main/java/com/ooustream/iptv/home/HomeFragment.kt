@@ -266,6 +266,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     override fun onPause() {
+        // Capture focus NOW, while the view hierarchy still holds it. By onDestroyView the
+        // incoming fragment has already taken focus, findFocus() returns null, and the
+        // restore defaulted to the hero — the cursor appeared "lost" after every playback
+        // round-trip (full-app cursor audit). saveFocusState() early-returns on null focus,
+        // so the onDestroyView call below can't clobber what we save here.
+        saveFocusState()
         releaseHeroPreview()
         super.onPause()
     }
@@ -409,26 +415,39 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val overlay = onboardingOverlay
         if (overlay != null) return overlay.handleKeyEvent(keyCode)
 
-        // D-pad left/right on hero area switches featured movies
+        // Hero D-pad: LEFT/RIGHT first traverses Play ↔ More Info, and only rotates the
+        // featured item at the edges. The old behavior rotated on EVERY left/right, which
+        // made the More Info button unreachable by D-pad (full-app cursor audit).
         val focused = view?.findFocus()
-        val isHeroFocused = focused?.id == R.id.hero_watch_now || focused?.id == R.id.hero_more_info
-        if (isHeroFocused && featuredItems.size > 1) {
+        if (focused?.id == R.id.hero_watch_now || focused?.id == R.id.hero_more_info) {
             when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    releaseHeroPreview()
-                    heroRotationJob?.cancel()
-                    heroIndex = if (heroIndex <= 0) featuredItems.size - 1 else heroIndex - 1
-                    displayHeroItem(featuredItems[heroIndex], animate = true)
-                    startHeroRotation()
-                    return true
-                }
                 android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    releaseHeroPreview()
-                    heroRotationJob?.cancel()
-                    heroIndex = (heroIndex + 1) % featuredItems.size
-                    displayHeroItem(featuredItems[heroIndex], animate = true)
-                    startHeroRotation()
-                    return true
+                    if (focused.id == R.id.hero_watch_now) {
+                        heroMoreInfo.requestFocus()
+                        return true
+                    }
+                    if (featuredItems.size > 1) {
+                        releaseHeroPreview()
+                        heroRotationJob?.cancel()
+                        heroIndex = (heroIndex + 1) % featuredItems.size
+                        displayHeroItem(featuredItems[heroIndex], animate = true)
+                        startHeroRotation()
+                        return true
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (focused.id == R.id.hero_more_info) {
+                        heroWatchNow.requestFocus()
+                        return true
+                    }
+                    if (featuredItems.size > 1) {
+                        releaseHeroPreview()
+                        heroRotationJob?.cancel()
+                        heroIndex = if (heroIndex <= 0) featuredItems.size - 1 else heroIndex - 1
+                        displayHeroItem(featuredItems[heroIndex], animate = true)
+                        startHeroRotation()
+                        return true
+                    }
                 }
             }
         }
@@ -1696,15 +1715,25 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
     }
 
+    /** High-contrast focus ring for the hero buttons — a soft gold glow on a gold-filled
+     *  button is invisible from 10 feet; the white outline makes the cursor unmistakable. */
+    private fun heroFocusRing(): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 8f * resources.displayMetrics.density
+            setStroke((2.5f * resources.displayMetrics.density).toInt(), 0xFFFFFFFF.toInt())
+        }
+
     private fun setupHeroClickListener() {
         heroWatchNow.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 if (DeviceUtils.isTV(requireContext())) {
                     v.overlay.add(GoldGlowFocusDrawable())
                 }
+                v.foreground = heroFocusRing()
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
             } else {
                 v.overlay.clear()
+                v.foreground = null
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
             }
         }
@@ -1723,9 +1752,11 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 if (DeviceUtils.isTV(requireContext())) {
                     v.overlay.add(GoldGlowFocusDrawable())
                 }
+                v.foreground = heroFocusRing()
                 v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start()
             } else {
                 v.overlay.clear()
+                v.foreground = null
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
             }
         }

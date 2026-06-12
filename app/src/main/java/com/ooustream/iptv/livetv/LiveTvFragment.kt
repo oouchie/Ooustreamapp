@@ -357,6 +357,9 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                             channelsList.post {
                                 channelsList.safeSetSelectedPosition(viewModel.savedChannelPosition, channelAdapter.size())
                                 viewModel.savedChannelPosition = -1
+                                // Restore the CURSOR too — scroll alone leaves focus elsewhere
+                                // and the gold cursor invisible (v4.0.1 bug family).
+                                channelsList.requestFocus()
                             }
                         }
                     } else if (skeletonSwapped && channels.isNotEmpty()) {

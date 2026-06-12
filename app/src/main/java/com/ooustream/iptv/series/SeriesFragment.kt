@@ -230,6 +230,9 @@ class SeriesFragment : Fragment(), KeyEventHandler {
                             val maxPos = (posterAdapter.size() - 1).coerceAtLeast(0)
                             posterGrid.selectedPosition = (if (restorePos >= 0) restorePos else 0).coerceIn(0, maxPos)
                             viewModel.savedGridPosition = -1
+                            // Restore the CURSOR, not just the scroll position — without this,
+                            // back-nav focus lands elsewhere and the gold cursor is invisible.
+                            if (restorePos >= 0) posterGrid.requestFocus()
                         }
                     }
                     // Empty-state (watch-audit): a category that resolves empty used to leave the
