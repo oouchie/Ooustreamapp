@@ -1172,7 +1172,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                 openSeriesDetail(item.seriesId, item.name)
                             } else {
                                 val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
-                                val url = viewModel.buildVodStreamUrl(id, "mp4")
+                                // Reuse the saved stream URL — it carries the corrected container
+                                // extension from a prior play (e.g. Kung Fu Panda = .m2ts). Rebuilding
+                                // with a hardcoded "mp4" makes such a title fail its first attempt here
+                                // before the container-ext retry recovers it (matches the Continue
+                                // Watching path, which already reuses item.extra).
+                                val url = item.extra?.takeIf { it.isNotBlank() }
+                                    ?: viewModel.buildVodStreamUrl(id, "mp4")
                                 playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
                             }
                         }

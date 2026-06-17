@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.0 (versionCode 88)
+- **Current Version**: 4.2.1 (versionCode 89)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -452,6 +452,40 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.1** — Series Playback & Connection Fixes (versionCode 89). Triaged from customer `Repport.docx`
+  exports (`tasks/series-playback-triage-2026-06-16.md`, `tasks/repport-2026-06-12-triage.md`). Series
+  episodes were failing on **4.2.0** with `UnrecognizedInputFormatException` → `CONTAINER_EXT_RETRY from=mkv
+  to=mp4 authoritative=false` → **HTTP 551** → "server is having issues" (customers: rootzbar/AFTKRT,
+  allinone/AFTSS; The Chi, Will Trent, By Blood; while VODs + The Newsroom played — so the engine is fine).
+  Root cause = server-side 551 (Xtream stream-unavailable / **max-connections**), made worse + misdiagnosed by
+  app bugs. Four fixes, all in `player/OoustreamPlaybackFragment.kt` (+ `home/HomeFragment.kt`):
+  **(1) Series never swaps its container extension.** `PlayerViewModel.fetchRealVodExtension()` is VOD-only
+  (returns null for SERIES → `authoritative=false`), so series fell into the `alternateContainerUrl` mkv↔mp4
+  heuristic — but a series episode's extension is ALREADY authoritative (from `get_series_info` →
+  `Episode.containerExtension`), so swapping mkv→mp4 requested a non-existent file → guaranteed 551 + a 2nd
+  streaming connection. Now `viewModel.contentType == ContentType.SERIES -> null` in the `altUrl` when-block
+  (~:1188) → series fail fast with the honest "broken or missing on your provider's server" message and use
+  ONE connection per attempt. (VOD authoritative re-probe + heuristic unchanged.)
+  **(2) Dedicated HTTP 551 message.** `causeChainMessage` mapped 551 via `in 500..599` → generic "server is
+  having issues"; added a `551 ->` branch (before the 5xx catch-all) → "This title is unavailable right now.
+  Your account may have hit its connection limit — close Ooustream on your other devices, then try again."
+  **(3) Gapless binge pre-buffer gated on `maxConnections > 1`.** The pre-buffer `addMediaItem()`s the next
+  episode while the current one streams — a 2nd concurrent connection — which 551s the playing episode on a
+  1-connection account. `preBufferEnabled = (tier HIGH|MID) && userPlanManager.maxConnections.value > 1`
+  (~:317; injected `userPlanManager`, @Singleton, refreshed at launch/login; default 1 → safe legacy fallback).
+  New `PREBUFFER_GATE` diagnostic logs `enabled/tier/maxConnections`.
+  **(4) Watch Next release-before-navigate.** The Watch-Next overlay (the only in-player nav spawning a 2nd
+  player fragment) did `replace().commit()` without releasing the current player — the new player connected
+  before the old fragment's `onDestroyView` released (async transaction) → momentary 2-connection overlap.
+  Added `player?.stop()` before the transaction (ends the MediaSource / closes the socket); mirrors LiveTV's
+  `stopPreview()`-before-commit. Also bundled: the v4.2.x `HomeFragment` "Pick Up & New" fix — reuse the saved
+  `WatchProgressEntity.extra` URL (with its corrected extension) instead of a hardcoded `"mp4"` rebuild, so an
+  `.m2ts` title plays first-try from that rail. Net for connection-limited accounts: the app now holds ONE
+  streaming connection at a time on the series/Watch-Next paths instead of momentarily two; a persisting 551 is
+  then a genuine 2nd device or the provider's slot-release lag (surfaced honestly by fix #2). **NOTE: shipped
+  build-verified (`assembleRelease` clean), NOT on-device-verified at release time** — surgical defensive
+  changes to the core player path; treat any playback regression report with that in mind.
 
 - **v4.1.0** — Full-App Cursor Audit + MultiView Upgrade (versionCode 87). The v4.0.1 Live TV cursor
   audit applied to EVERY screen (on-device walkthrough + a parallel code sweep of all fragments), plus

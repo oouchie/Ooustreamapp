@@ -103,6 +103,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     @Inject lateinit var watchSessionLogger: WatchSessionLogger
     @Inject lateinit var subtitlePreferences: SubtitlePreferences
     @Inject lateinit var streamDiagnosticLogger: StreamDiagnosticLogger
+    @Inject lateinit var userPlanManager: com.ooustream.iptv.data.UserPlanManager
 
     private val viewModel: PlayerViewModel by viewModels()
     private var player: ExoPlayer? = null
@@ -313,8 +314,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val deviceTier = DeviceTierDetector.tier(requireContext())
         streamDiagnosticLogger.logAppEvent("DEVICE_TIER", DeviceTierDetector.describe(requireContext()))
         AudioLogger.log("Device tier: ${DeviceTierDetector.describe(requireContext())}")
-        // Gapless binge pre-buffer only on tiers with headroom for a second open stream.
-        preBufferEnabled = deviceTier == DeviceTier.HIGH || deviceTier == DeviceTier.MID
+        // Gapless binge pre-buffer needs (a) a tier with headroom for a second open stream AND
+        // (b) an account that allows >1 simultaneous connection. The pre-buffer addMediaItem()s the
+        // next episode while the current one is still playing — a 2nd concurrent stream — which on a
+        // 1-connection account returns HTTP 551 (max connections) and breaks the playing episode.
+        // maxConnections is refreshed at launch/login (MainActivity.refreshPlan / AuthViewModel); it
+        // defaults to 1, so an unknown plan safely falls back to the legacy (non-prebuffered) advance.
+        val maxConnections = userPlanManager.maxConnections.value
+        preBufferEnabled = (deviceTier == DeviceTier.HIGH || deviceTier == DeviceTier.MID) &&
+            maxConnections > 1
+        streamDiagnosticLogger.logAppEvent("PREBUFFER_GATE",
+            "enabled=$preBufferEnabled, tier=$deviceTier, maxConnections=$maxConnections")
 
         // Apply tier-appropriate video resolution cap. ULTRA_LOW/LOW: cap at 1080p
         // to block 4K variants (rare on IPTV but a safety net). 1080p AVC hardware
@@ -746,6 +756,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             watchNext.onMovieSelected = { item ->
                 val ext = item.containerExtension ?: "mp4"
                 val url = viewModel.buildVodStreamUrl(item.streamId, ext)
+                // Free THIS stream's server connection slot BEFORE the next fragment opens its own.
+                // The fragment .replace().commit() below is async, so without this the new player
+                // connects while the current one is still streaming — a momentary 2-connection overlap
+                // that 551s (max connections) on a limited account. stop() ends the current MediaSource
+                // (closes the OkHttp socket); onDestroyView still does the full release shortly after.
+                // Mirrors LiveTvFragment's stopPreview()-before-commit pattern.
+                try { player?.stop() } catch (_: Exception) {}
                 val fragment = newInstance(
                     streamUrl = url,
                     contentType = ContentType.VOD,
@@ -1185,6 +1202,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             val altUrl = when {
                                 realExt != null && !realExt.equals(currentExt, ignoreCase = true) ->
                                     viewModel.streamUrl.substringBeforeLast('.') + ".$realExt"
+                                // SERIES episodes already carry the AUTHORITATIVE container extension
+                                // from get_series_info (e.g. .mkv). fetchRealVodExtension() is VOD-only
+                                // (returns null → authoritative=false), so a series would otherwise fall
+                                // into the mkv↔mp4 heuristic and request a file that doesn't exist →
+                                // HTTP 551. The real failure is a server-side bad/empty body, not a wrong
+                                // extension, so don't swap — fail fast with the honest message instead.
+                                viewModel.contentType == ContentType.SERIES -> null
                                 else -> alternateContainerUrl(viewModel.streamUrl)
                             }
                             if (altUrl == null) {
@@ -2662,6 +2686,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     404 -> return "This title isn't available on the server. Contact your provider."
                     408 -> return "Request timed out. Check your connection and try again."
                     409, 429 -> return "Too many connections on your account. Close Ooustream on your other devices and try again."
+                    // Xtream panels return 551 for "stream unavailable / connection limit reached" —
+                    // give actionable guidance instead of the generic 5xx "server is having issues".
+                    551 -> return "This title is unavailable right now. Your account may have hit its connection limit — close Ooustream on your other devices, then try again."
                     in 500..599 -> return "The server is having issues. Try again in a minute."
                     else -> if (code != null) return "Server returned error $code. Try again or contact your provider."
                 }

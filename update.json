@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.0",
-  "version_code": 88,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.0/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.0/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.0/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.0 — Phone Touch Overhaul + Playback Fixes\n\nPHONE:\n• Movies, Series, and Live TV lists now scroll properly with your finger (they were stuck before).\n• Single tap now opens anything on the first tap — no more double-tapping cards, categories, or the Home buttons.\n• Returning from a video no longer pops the keyboard or jumps you around.\n\nPLAYBACK (all devices):\n• Broken or mislabeled titles now fail fast with a clear message instead of spinning for ~50 seconds, and the app retries with the correct file format automatically.\n• If a title can't play in the built-in player, you can open it in VLC or MX Player when installed.\n• Fixed an audio glitch that could trigger a full mid-movie reload on some movies.\n\nThe Fire TV experience is unchanged.",
+  "version_name": "4.2.1",
+  "version_code": 89,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.1 — Series Playback & Connection Fixes\n\n• Fixed series episodes that failed to play and showed \"server is having issues\": the app no longer retries a series with the wrong file type, and shows an accurate message instead.\n• When your account hits its simultaneous-connection limit, you'll now see a clear \"close Ooustream on your other devices and try again\" message instead of a generic server error.\n• Reduced cases where the app briefly opened a second stream on its own — when retrying a series, choosing \"Watch Next\", or auto-playing the next episode — which could trip your account's connection limit.\n\nApplies to all devices.",
   "mandatory": false
 }
