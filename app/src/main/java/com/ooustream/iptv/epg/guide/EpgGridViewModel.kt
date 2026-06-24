@@ -2,6 +2,7 @@ package com.ooustream.iptv.epg.guide
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ooustream.iptv.data.local.entity.FavoriteEntity
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -63,11 +65,17 @@ class EpgGridViewModel @Inject constructor(
      * each per-row EPG arrival doesn't re-run rule inference for every unfetched channel.
      */
     val rows: StateFlow<List<GuideRowData>> = combine(_channels, _rowEpg) { chans, epg ->
-        chans.map { ch -> GuideRowData(ch, epg[ch.streamId] ?: syntheticLane(ch)) }
+        chans.map { ch -> GuideRowData(ch, epg[ch.streamId] ?: syntheticLane(ch), accentFor(ch)) }
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /** Live favorite ids ("live_<streamId>") — drives the inline hearts + header indicator. */
+    val favoriteIds: StateFlow<Set<String>> = favoriteRepository.getFavoritesByType("live")
+        .map { list -> list.map { it.id }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
+
     private val syntheticCache = HashMap<Int, List<GuideProgram>>()
+    private val accentCache = HashMap<Int, Int>()
 
     @Synchronized
     private fun syntheticLane(ch: LiveStream): List<GuideProgram> =
@@ -76,6 +84,35 @@ class EpgGridViewModel @Inject constructor(
                 horizonStartMs, horizonEndMs, ch.name, categoryName, smartEpgFiller
             )
         }
+
+    /** Genre accent per channel — classification is regex-heavy, so memoize per streamId. */
+    @Synchronized
+    private fun accentFor(ch: LiveStream): Int =
+        accentCache.getOrPut(ch.streamId) {
+            GuideGenrePalette.colorForChannel(ch.name, categoryName)
+        }
+
+    /** Toggle a live channel's favorite state (drives [favoriteIds] reactively). */
+    fun toggleFavorite(channel: LiveStream) {
+        viewModelScope.launch {
+            val id = "live_${channel.streamId}"
+            if (favoriteRepository.isFavorite(id)) {
+                favoriteRepository.removeFavorite(id)
+            } else {
+                favoriteRepository.addFavorite(
+                    FavoriteEntity(
+                        id = id,
+                        streamId = channel.streamId,
+                        type = "live",
+                        name = channel.name,
+                        icon = channel.streamIcon,
+                        categoryId = channel.categoryId,
+                        extra = null
+                    )
+                )
+            }
+        }
+    }
 
     private val fetchJobs = mutableMapOf<Int, Job>()
     private val fetchedRows = mutableSetOf<Int>()
@@ -122,7 +159,15 @@ class EpgGridViewModel @Inject constructor(
                         "live", contentRepository.getLiveStreams(categoryId)
                     ) { it.categoryId }
                 }
-                _channels.value = list
+                // Favorites-first ordering (stable): favorited channels float to the top of the
+                // current scope. Snapshotted at load — toggling a heart updates the icon but does
+                // NOT reorder live (avoids a jarring jump + lost focus position mid-browse).
+                val favStreamIds = try {
+                    favoriteRepository.getFavoritesListByType("live").map { it.streamId }.toSet()
+                } catch (_: Exception) {
+                    emptySet()
+                }
+                _channels.value = list.sortedByDescending { favStreamIds.contains(it.streamId) }
             } catch (_: Exception) {
                 _channels.value = emptyList()
             }
@@ -190,7 +235,7 @@ class EpgGridViewModel @Inject constructor(
         fetchJobs.values.forEach { it.cancel() }
         fetchJobs.clear()
         fetchedRows.clear()
-        synchronized(this) { syntheticCache.clear() }   // categoryName affects rule inference
+        synchronized(this) { syntheticCache.clear(); accentCache.clear() }   // categoryName affects inference
         _rowEpg.value = emptyMap()
         _channels.value = emptyList()
         loadChannels(categoryId, categoryName)

@@ -1,0 +1,1076 @@
+[
+  {
+    "id": "black-screen-no-poster",
+    "title": "Initial load shows a spinner on a black screen \u2014 no poster/backdrop art",
+    "severity": "P1",
+    "symptom": "After pressing play on a movie/episode/channel, the customer sees a black screen with a small centered indeterminate spinner for the entire cold-start window (typically 2-5s on a Fire Stick, longer on weak wifi). It reads as 'the app froze / the stream is broken', not 'content is loading'.",
+    "trigger": "Every press-play (VOD, Series, Live) and every Live channel zap. The Leanback VideoSupportFragment SurfaceView is black until onRenderedFirstFrame, and the only feedback is the bare ProgressBar.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1152",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:3401-3425",
+      "app/src/main/java/com/ooustream/iptv/player/ExoPlayerDiagnosticListener.kt:70-72"
+    ],
+    "rootCause": "showBufferingOverlay() (2151-2169) builds ONLY a bare indeterminate ProgressBar centered via Gravity.CENTER and adds it over the transparent fragment (view background is TRANSPARENT, line 202/207) atop a black SurfaceView. The class extends VideoSupportFragment (line 81) whose SurfaceView stays black until the first decoded frame. streamIcon IS passed to newInstance and stored in viewModel.streamIcon (3401-3425, onCreate 3435) but is never rendered as a backdrop behind the spinner. onRenderedFirstFrame (ExoPlayerDiagnosticListener:70) only logs \u2014 there is no first-frame-driven crossfade because there is no art to cross-fade. Confirmed: zero backdrop/poster ImageView in the player view hierarchy.",
+    "fix": "Add a full-screen ImageView behind the SurfaceView; the instant onViewCreated runs (before prepare()) load viewModel.streamIcon (VOD/Series poster, or channel logo + neutral gradient for Live) via Coil with a subtle dim scrim, keep the spinner on top, and crossfade it out (~200ms) when onRenderedFirstFrame fires. The card art is already in Coil's memory cache from the row the user just clicked, so this is near-free. Makes the same TTFF feel intentional/branded instead of broken.",
+    "benchmark": "Netflix/Disney+/Prime/Hulu always paint the title's key art/backdrop (often with logo + shimmer) during spin-up and only swap to video on first frame \u2014 the customer never sees a lone spinner on black. This applies fully to IPTV (it's a UX layer, independent of single-bitrate streaming).",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as reported. P1 is the correct severity \u2014 this is perceptual, not a TTFF regression; the start itself isn't broken, it just looks broken. The biggest single perceived-quality win in this dimension.",
+    "dimension": "Startup latency (press play \u2192 first frame)"
+  },
+  {
+    "id": "spinner-hides-before-first-frame-paints",
+    "title": "[MISSED] On cold start the spinner is hidden on STATE_READY, before the first frame paints \u2014 a beat of pure black with no spinner",
+    "severity": "P2",
+    "symptom": "On the initial start, right at the end of buffering, the customer can see the spinner vanish a fraction of a second BEFORE any picture appears \u2014 leaving a brief window of totally black screen with no spinner at all (looks even more like a freeze/crash than the spinner did).",
+    "trigger": "Every cold start (VOD/Series/Live). Worse on slow decoders (mt8695/mt8167) where decoder init after STATE_READY adds latency before onRenderedFirstFrame.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1151-1152",
+      "app/src/main/java/com/ooustream/iptv/player/ExoPlayerDiagnosticListener.kt:70-72"
+    ],
+    "rootCause": "showBufferingOverlay(false) is called on Player.STATE_READY (line 1152). STATE_READY means 'enough buffered to start', which fires before onRenderedFirstFrame (decoder still spinning up the first output buffer). Nothing keys the overlay-hide off the actual first frame, so on slow decoders the spinner disappears while the SurfaceView is still black. Compounds black-screen-no-poster \u2014 without a backdrop, this is a black-on-black gap.",
+    "fix": "Keep the buffering overlay (and the proposed backdrop) visible until onRenderedFirstFrame, not until STATE_READY. Wire the diagnostic listener's onRenderedFirstFrame (or add a video AnalyticsListener) to hide/crossfade the overlay. Cheap and removes the worst-feeling micro-window.",
+    "benchmark": "Top platforms only reveal video and dismiss loading art on first decoded frame, never on the 'ready to start' signal \u2014 so there is never a black gap between spinner-gone and picture-shown.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "[MISSED] The auditor's black-screen finding stops at 'spinner on black'. The real code is slightly worse: the spinner is dismissed on STATE_READY (1152), not on first frame, so there's a brief spinner-less black gap on slow Fire Stick decoders. Fixing finding #1 plus this together is the correct scope.",
+    "dimension": "Startup latency (press play \u2192 first frame)"
+  },
+  {
+    "id": "no-stream-prewarm-preconnect",
+    "title": "No stream pre-warm / preconnect \u2014 press-play pays the cold-connection handshake",
+    "severity": "P2",
+    "symptom": "First-frame is slower than necessary on the first play of a session and on channel zaps because DNS\u2192TCP\u2192TLS\u2192302\u2192first-segment happens cold at click time.",
+    "trigger": "First play of a session; each Live channel zap (tuneToChannel re-resolves a possibly-new CDN host).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/data/repository/PredictivePreFetcher.kt:35-54",
+      "app/src/main/java/com/ooustream/iptv/common/ScreenPreWarmer.kt:28-40",
+      "app/src/main/java/com/ooustream/iptv/home/HomeViewModel.kt:213-223",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2632-2636",
+      "app/src/main/java/com/ooustream/iptv/player/StreamingDataFactories.kt:62-65"
+    ],
+    "rootCause": "Both pre-warm paths warm METADATA only: PredictivePreFetcher.prefetchIfNeeded fetches EPG for top channels (43-50); preWarmSection warms category lists (213-223). Neither preconnects to the stream-byte host nor pre-buffers media. So setMediaItem()+prepare() (420-428 / zap 2632-2635) starts cold. The stream DataSource reuses the shared OkHttp client/pool (StreamingDataFactories:62-65) \u2014 which only helps when a connection to that exact host:port was opened recently.",
+    "fix": "Cheap win: on poster/channel focus dwell (reuse ScreenPreWarmer's 500ms debounce) issue an OkHttp preconnect (HEAD or 1-byte ranged GET) to the resolved stream host so DNS+TCP+TLS+302 are warm at click. The adjacent-channel media pre-buffer (second ExoPlayer / Media3 preload) should be MID/HIGH-tier only \u2014 it is unsafe on the 1GB-RAM primary target and would compete with the existing LivePreviewManager. Preconnect alone is near-free and the right 80/20.",
+    "benchmark": "Netflix/YouTube TV preconnect and pre-buffer the likely-next title on hover; YouTube TV pre-tunes adjacent channels. Valid as a UX/network technique even for single-bitrate IPTV \u2014 but the realistic win is the handshake (typically a few hundred ms, occasionally ~1s on slow DNS), NOT 'a noticeable second or more' on every play as the auditor implies.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed: no stream-host preconnect, prewarm is metadata-only. But the auditor OVER-states magnitude and severity. (1) In many Xtream setups the stream-byte host == the API host (flarecoral.com), which Retrofit already keeps warm in the shared pool \u2014 so the cold tax only fully applies when the provider 302-redirects to a separate CDN. (2) The preconnect saves the handshake (hundreds of ms), not the dominant first-segment-download time. (3) The 'pre-buffer adjacent channels' half is risky on 1GB RAM and the auditor under-weights that. Net: real but P2, not P1, and the preconnect (not the pre-buffer) is the part worth doing.",
+    "dimension": "Startup latency (press play \u2192 first frame)"
+  },
+  {
+    "id": "resume-db-query-on-critical-path",
+    "title": "VOD/Series resume re-reads the DB on the press-play critical path (position already known one screen earlier)",
+    "severity": "P3",
+    "symptom": "On a partially-watched movie/episode there's a tiny extra delay before the player even starts connecting, because the resume position is read from Room before setMediaItem/prepare \u2014 and the same value was already queried one screen earlier to drive the resume dialog.",
+    "trigger": "Pressing play on any Continue Watching item (highest-intent content).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:413-424",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:77-83",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1870-1888",
+      "app/src/main/java/com/ooustream/iptv/home/HomeViewModel.kt:197"
+    ],
+    "rootCause": "needsResume (411) launches a coroutine that awaits getResumePositionSync() (418, a Room read in PlayerViewModel:77-83) before setMediaItem(uri, pos)+prepare()+play(). HomeFragment.playVodWithResumeCheck already queried getWatchProgress(streamId) (1871) to decide the resume dialog, but only forceStartFromBeginning (a boolean) is passed into newInstance (1881-1888) \u2014 the resolved position is dropped, so the player re-reads the DB on the latency path.",
+    "fix": "Pass the resolved resume position from playVodWithResumeCheck into newInstance as a long arg; in onCreate/onViewCreated call setMediaItem(uri, resumeArg); prepare(); play() synchronously with no coroutine and no second Room read. Fall back to the async query only for deep-link entry where the position wasn't pre-resolved.",
+    "benchmark": "Netflix/Prime resolve the bookmark from title metadata they already hold and hand it to the player as a parameter \u2014 no DB hop in the press-play\u2192first-frame window.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Code confirmed exactly (redundant read, position not threaded through newInstance). But P2 is inflated to P3: a Room point-read on an indexed single row is ~1-5ms and runs on Dispatchers.IO; it is swamped by network TTFF (hundreds of ms to seconds). It's a real, easy cleanup but the customer does not perceptibly feel it. P3 polish, not P2 friction. The setMediaItem(item, positionMs) resume design itself is correct (no watch-the-logo-then-jump).",
+    "dimension": "Startup latency (press play \u2192 first frame)"
+  },
+  {
+    "id": "spinner-no-debounce-flash",
+    "title": "Buffering spinner has no debounce \u2014 flashes on sub-second mid-movie rebuffers",
+    "severity": "P3",
+    "symptom": "Tiny transient rebuffers and ExoPlayer's BUFFERING\u2192READY cycling (format changes, segment boundaries on poorly-muxed IPTV TS) flash the spinner for a fraction of a second over the held last frame, reading as a momentary blink rather than smooth playback.",
+    "trigger": "Brief network dips, TS segment boundaries, and the rapid BUFFERING\u2192READY cycling the code itself tracks as a 'buffer storm' (1131-1149).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1152",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169"
+    ],
+    "rootCause": "STATE_BUFFERING immediately calls showBufferingOverlay(true) (1129) and STATE_READY immediately hides it (1152) with no minimum-visible / delayed-show debounce. A 200ms rebuffer paints a 200ms spinner flash over the held frame.",
+    "fix": "Debounce: on STATE_BUFFERING post a ~350ms delayed show; on STATE_READY cancel the pending show and hide. Short rebuffers that recover inside the window never paint a spinner. Keep the cold-start spinner immediate (covered by the proposed backdrop). Must NOT debounce the initial start indicator and must not interfere with the frame watchdog's explicit showBufferingOverlay(true) (1577-1580).",
+    "benchmark": "Top platforms hold the last frame and only reveal a buffering indicator after a perceptibility threshold (a few hundred ms), so brief dips recover invisibly.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed: no debounce; immediate show on BUFFERING, immediate hide on READY. P3 is correct \u2014 mid-movie the SurfaceView holds the last frame so it's a spinner-over-frame blink, not breakage, and the stall detector/frame watchdog handle real hangs. Pure polish. Implementer caveat: don't let the debounce swallow the watchdog's own deliberate overlay-show at 1577-1580.",
+    "dimension": "Startup latency (press play \u2192 first frame)"
+  },
+  {
+    "id": "stall-recovery-blanks-screen",
+    "title": "Sustained-stall recovery does a hard player.stop() that black-screens the SurfaceView instead of holding the last frame",
+    "severity": "P1",
+    "symptom": "On a stall that outlasts the timeout, the picture goes fully BLACK with a bare spinner for the retry delay (1s first attempt, escalating 3/5/8/12/15s), then the stream cold-restarts from an empty buffer \u2014 a black void rather than a brief pause-and-resume.",
+    "trigger": "LIVE stays in STATE_BUFFERING for the FULL 15s (or VOD/SERIES 30s) \u2014 e.g. a 15-20s WiFi sag. NOT every dip: a dip shorter than the timeout auto-resumes from STATE_BUFFERING with no stop().",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1499-1508 (startStallDetector p.stop())",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:202,207 (fragment bg forced TRANSPARENT)",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:383 (LeanbackPlayerAdapter on VideoSupportFragment SurfaceView)"
+    ],
+    "rootCause": "startStallDetector() (line 1492) waits delay(stallTimeout) = 15s LIVE / 30s VOD, then if STILL STATE_BUFFERING calls p.stop() (line 1505) which clears the decoder output. Video renders onto Leanback's raw SurfaceView via LeanbackPlayerAdapter (line 383) with the fragment background forced TRANSPARENT (202/207) \u2014 when the decoder stops the surface shows through to black. There is no shutter image and no setKeepContentOnPlayerReset because that is a Media3 PlayerView API and this app uses VideoSupportFragment, not PlayerView. So the recovery is felt as a black screen, not a held frame.",
+    "fix": "Don't p.stop() on the first 1-2 LIVE/VOD stall escalations \u2014 leave the player in STATE_BUFFERING so it refills and resumes from whatever buffer remains (invisible recovery; ExoPlayer auto-resumes with no stop). Only escalate to stop()/prepare() after a longer threshold when the source is genuinely dead. Additionally hold the last frame: capture the last rendered bitmap into an ImageView shown over the SurfaceView during any stop/rebuild, or move the video surface to a Media3 PlayerView with setKeepContentOnPlayerReset(true)+setShutterBackgroundColor.",
+    "benchmark": "Netflix/YouTube TV freeze on the last rendered frame, show a subtle inline spinner only after a grace period, refill in the background, and resume without ever clearing to black or cold-restarting the stream.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity corrected P0->P1. The auditor's framing has two holes: (1) the hard stop() does NOT fire on transient dips \u2014 it only fires after the FULL 15s LIVE / 30s VOD timeout while STILL STATE_BUFFERING (guard at line 1499); dips shorter than that auto-resume natively with no stop and no black screen. The triage rules in CLAUDE.md note that real-world 13-15s sustained refills are customer-side-network-bound, where SOME interruption is unavoidable. (2) The 'fires on every watchdog frozen-frame escalation' claim is WRONG \u2014 watchdog step 1 is a 50ms seek-flush (seekToDefaultPosition), not stop(); stop() only appears in the harder rebuild rungs (e.g. line 1655) which are decoder-fallback cases, not transient-network cases. The genuine, real gap is correct: the recovery that DOES fire produces a felt black void + no last-frame hold + a bare spinner. That is a quality hiccup (P1), not a 'frequently breaks watching' P0, because it is gated to sustained stalls that are mostly genuine network failures.",
+    "dimension": "rebuffering"
+  },
+  {
+    "id": "spinner-flashes-on-micro-rebuffers",
+    "title": "Buffering spinner pops instantly on every STATE_BUFFERING with no debounce, no scrim, and no minimum-show time",
+    "severity": "P1",
+    "symptom": "A bare, unstyled gray indeterminate ProgressBar blinks onto the screen for even sub-second rebuffers and strobes on/off during a buffer storm (BUFFERING->READY->BUFFERING). Makes the app look like it is struggling even when recovery is instant.",
+    "trigger": "Any momentary buffer underrun: a brief WiFi blip on live TV, the first-frame buffer of every channel zap, a format/track change, or rapid BUFFERING/READY cycling on a marginal connection.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1129 (STATE_BUFFERING -> showBufferingOverlay(true) synchronous)",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1152 (STATE_READY -> showBufferingOverlay(false) immediate)",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169 (showBufferingOverlay creates bare ProgressBar)"
+    ],
+    "rootCause": "onPlaybackStateChanged STATE_BUFFERING calls showBufferingOverlay(true) synchronously with zero delay (line 1129); STATE_READY hides it immediately (line 1152). showBufferingOverlay (2151-2169) lazily creates a default android.widget.ProgressBar (indeterminate, WRAP_CONTENT, centered) with no scrim, no theme, no debounce timer and no minimum-visible floor, then just toggles visibility. Short rebuffers therefore flash; storms strobe.",
+    "fix": "Debounce: on STATE_BUFFERING, post showBufferingOverlay(true) with ~700-1000ms delay and cancel it if STATE_READY arrives first, so sub-second rebuffers are invisible. Once shown, enforce a ~500ms minimum on-screen time to stop strobing. Replace the raw ProgressBar with a styled, scrim-backed indicator matching the cinematic theme.",
+    "benchmark": "Top platforms suppress short rebuffers entirely and only reveal a spinner once a stall crosses ~1s, then keep it stable \u2014 the customer never sees a strobing or instantly-flashing indicator.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as described. The v3.6.4 release notes do explicitly defer this 'cycling spinner' fix, and buffer-storm detection (BUFFER_STORM_THRESHOLD=5 over 30s, line 1138) only triggers an FFmpeg rebuild on HEVC \u2014 it does NOT suppress the spinner. One addition worth noting: the watchdog also fires a Toast 'Optimizing video playback...' (line 1581-1583) alongside this spinner on frozen-frame paths, compounding the same 'app is struggling' impression. Severity P1 is correct (felt-quality, not a watch-breaker).",
+    "dimension": "rebuffering"
+  },
+  {
+    "id": "buffer-size-not-adaptive-bad-tier-source",
+    "title": "Pre-buffer is sized once at player creation and never adapts; on the primary 1GB stick it is a fixed thin 3s/8s LIVE buffer",
+    "severity": "P2",
+    "symptom": "On a good-but-jittery connection the app keeps a thin pre-buffer (LIVE 3s min / 8s max on the 1GB Fire Stick) and rebuffers on dips it could have ridden out; on a degrading pipe it never deepens the buffer pre-emptively, so the customer hits repeated buffer->drain->rebuffer cycles instead of one deep refill.",
+    "trigger": "Any session on the primary target (1GB Fire Stick, memoryClass<=192 -> forLowMemory: LIVE 3s/8s, VOD 10s/30s) with intermittent jitter.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:226-230 (LoadControl chosen once at player creation)",
+      "app/src/main/java/com/ooustream/iptv/player/BufferConfigs.kt:57-65 (forLowMemory LIVE 3s/8s)",
+      "app/src/main/java/com/ooustream/iptv/common/QualityPolicy.kt:24-33 (tier from estimatedBandwidthKbps)",
+      "app/src/main/java/com/ooustream/iptv/common/NetworkMonitor.kt:63-68 (estimate = linkDownstreamBandwidthKbps)",
+      "app/src/main/java/com/ooustream/iptv/player/PlaybackHealthMonitor.kt:72-75 (real bitrateEstimate only logged)"
+    ],
+    "rootCause": "The DefaultLoadControl is built once (line 226-230) and DefaultLoadControl can't be resized at runtime, so the pre-buffer is static for the whole session. On the PRIMARY 1GB target the gate at line 226 (memoryClass<=192) sends it to BufferConfigs.forLowMemory = fixed LIVE 3s/8s \u2014 QualityPolicy.tier is BYPASSED there. Only on devices with memoryClass>192 does the buffer come from forContentTypeAndQuality(tier), and that tier (QualityPolicy.kt:24) is derived from NetworkCapabilities.linkDownstreamBandwidthKbps (NetworkMonitor.kt:67), the static, frequently-wrong OS link hint that defaults to MEDIUM. The real per-stream throughput from DefaultBandwidthMeter is read only for diagnostic logging in PlaybackHealthMonitor (line 74) and never fed back to size buffers.",
+    "fix": "Two separable levers. (a) Raise the LIVE minBuffer floor in forLowMemory from 3s to ~6s within the 1GB memory budget so a single short dip doesn't drain to empty (most impactful for the primary device). (b) For higher-memory tiers, drive QualityPolicy from DefaultBandwidthMeter.bitrateEstimate (already measured) rather than the OS link hint, and grow the target buffer on sustained low headroom by recreating the player's load control \u2014 pre-buffer through jitter the way ABR-less players must.",
+    "benchmark": "Netflix/YouTube TV continuously measure real segment throughput and keep a buffer sized to ride out jitter, proactively deepening it as the pipe degrades \u2014 never relying on a static OS link hint.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity corrected P1->P2 and the root cause is PARTIALLY MIS-ROOTED. The auditor pinned this on 'sized from a near-useless OS bandwidth estimate', but on the PRIMARY 1GB Fire Stick (memoryClass<=192) QualityPolicy.tier is BYPASSED \u2014 the buffer is the fixed forLowMemory 3s/8s config, so the bad-tier-signal critique applies only to memoryClass>192 devices, NOT the primary target the summary leads with. The thin-buffer symptom on the 1GB stick is real (via forLowMemory), the static/non-adaptive critique is real, but per the CLAUDE.md triage rules the dominant real-world cause of 13-15s refills is customer-side sustained-throughput collapse that a deeper pre-buffer only PARTIALLY masks (and cannot fix) on single-bitrate IPTV. A bigger buffer raises start latency and memory on a 1GB device, so the win is bounded \u2014 P2, not P1. The 'Netflix continuously measures throughput' benchmark only partly applies: Netflix's main lever is ABR rung-switching, which single-bitrate IPTV does not have; only the pre-buffer-depth sub-claim transfers.",
+    "dimension": "rebuffering"
+  },
+  {
+    "id": "channel-zap-shows-spinner-not-frozen-frame",
+    "title": "Live channel zap clears to a spinner with no last-frame hold, making every channel change feel like a rebuffer",
+    "severity": "P2",
+    "symptom": "Changing channels makes the previous picture vanish to black + bare spinner for the new stream's first-frame buffer, instead of a clean cut or held frame. With the thin LIVE buffer the zap can feel sluggish and indistinguishable from a mid-stream rebuffer.",
+    "trigger": "Every live channel change via tuneToChannel (D-pad zap / channel list select).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2633-2636 (tuneToChannel setMediaItem->prepare->play)",
+      "app/src/main/java/com/ooustream/iptv/player/BufferConfigs.kt:14-17 (LIVE minPlaybackMs=500)"
+    ],
+    "rootCause": "tuneToChannel does player.setMediaItem(newUri) -> prepare() -> play() (lines 2633-2635) on the existing player. While the new source buffers, STATE_BUFFERING fires and the same scrim-less spinner (showBufferingOverlay) appears over a SurfaceView whose previous output was flushed by setMediaItem. There is no last-frame hold during the source swap and no per-channel prefetch.",
+    "fix": "Hold the last frame of the outgoing channel (captured bitmap over the surface, or a PlayerView shutter) until onRenderedFirstFrame of the new channel, and suppress the spinner for the first ~700ms of the zap (shared with the micro-rebuffer debounce fix). Optionally pre-warm the next/prev channel's first segments to push zap time under 1.5s.",
+    "benchmark": "YouTube TV / cable-style apps target <1.5s channel change presented as a clean cut or held frame, never a black void with a generic spinner.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed as written. Existing mitigations the auditor credited are accurate: mute-before-load (line 2631/2636) avoids the audio pop, LIVE minPlaybackMs=500 (BufferConfigs:15) speeds time-to-picture, and the channel banner is posted after delay(500) (line 2649-2651). None of them holds the outgoing frame, so the black+spinner flash on each zap is real. P2 is correct \u2014 this is friction, not a watch-breaker, and the fix is the SAME last-frame-hold + spinner-debounce mechanism as the P0/P1 above, so it should be bundled.",
+    "dimension": "rebuffering"
+  },
+  {
+    "id": "black-gap-on-zap",
+    "title": "Every channel change flashes a black screen behind a bare centered spinner",
+    "severity": "P1",
+    "symptom": "On each DPAD_UP/DOWN channel change the video area cuts to a full black SurfaceView with only a small centered indeterminate ProgressBar \u2014 no held last frame, no channel-branded backdrop, no progress sliver. Reads as 'the TV blinked off' between channels. Worst on slow pipes / ULTRA_LOW sticks where buffer fill takes longer, but the connect+first-frame black window is visible even on fast wifi.",
+    "trigger": "Any live-TV channel up/down zap (D-pad, controls-bar prev/next, or horizontal fling on phone), every single press, the moment tuneToChannel commits.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2630-2636",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1126-1130"
+    ],
+    "rootCause": "tuneToChannel() (line 2631 mute, 2633-2635 setMediaItem/prepare/play) reuses the same ExoPlayer attached to a Leanback VideoSupportFragment SurfaceView (class declared line 81 `: VideoSupportFragment()`). ExoPlayer tears down the prior decoder output on prepare(), so the SurfaceView renders black until the new stream's first frame. STATE_BUFFERING (line 1128) calls showBufferingOverlay(true), which only adds a bare WRAP_CONTENT centered ProgressBar over black (lines 2154-2163) \u2014 no scrim, no backdrop, no channel info. Grep-confirmed: setKeepContentOnPlayerReset and setShutterBackgroundColor appear NOWHERE in app/src/main (zero hits) \u2014 and a raw Leanback SurfaceView has no PlayerView shutter to set anyway. Fragment background is transparent (lines 202/207) so there is no masking layer; onRenderedFirstFrame is not handled to fade anything.",
+    "fix": "Add a video-area mask that appears instantly on zap and fades on first frame: a full-screen dark scrim (#CC0A0A0A) carrying the target channel logo+name+number and a thin indeterminate bar, shown synchronously when tuneToChannel starts, dismissed on the first rendered frame (register an AnalyticsListener.onRenderedFirstFrame, currently unused, to drive the fade). Show the channel-info immediately rather than via the existing 500ms-delayed banner (lines 2649-2652). Optionally hold the prior SurfaceView/TextureView frame as a freeze-bitmap under the scrim so the change crossfades instead of cutting to black, and defer the spinner ~400ms so sub-400ms zaps show no spinner.",
+    "benchmark": "YouTube TV and cable-style guides crossfade or show a channel-branded loading card (logo + progress sliver) and never expose a black surface; Netflix holds a backdrop/box-art during any source switch. The single-bitrate-IPTV caveat does not apply here \u2014 this is purely a perceived-transition / shutter-masking gap, not an ABR claim, so the benchmark is fair.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real and correctly P1. Two precision corrections to the auditor's framing (neither changes severity): (1) The black does NOT span 'the full 300ms debounce + connect + buffer'. During the 300ms debounce window the OLD frame stays on screen \u2014 the player is untouched until the debounced tuneToChannel fires (debouncedTune lines 2361-2367). Black starts at setMediaItem (2633), so the gap is connect+first-frame only (~1.5-3s typical), not debounce-inclusive. (2) The auditor's cited line 2593 is the tuneToChannel signature; the actual mute+setMediaItem+prepare+play is lines 2630-2636. LoadControl fast-first-frame tuning is real (BufferConfigs LIVE: setBufferDurationsMs(5000,15000,500,1500)+setPrioritizeTimeOverSizeThresholds(true), line 14-16) but only speeds the gap, doesn't mask it. Gap stands.",
+    "dimension": "Live TV channel zapping (live-zap)"
+  },
+  {
+    "id": "cold-restart-preview-to-fullscreen",
+    "title": "Preview\u2192fullscreen re-buffers the SAME stream from scratch instead of handing off the warm player",
+    "severity": "P2",
+    "symptom": "After the side-panel live preview has been playing, pressing OK to go fullscreen makes the picture disappear and re-buffer (spinner + black, ~1.5-3s) before the identical channel returns \u2014 the customer waits a second time for content they were already watching.",
+    "trigger": "Live TV screen on a MID/HIGH Fire Stick: focus a channel, wait ~1s for auto-preview to start, then press OK. (Does NOT occur if OK is pressed within ~1s of focus \u2014 no preview ran yet \u2014 nor on ULTRA_LOW/<=128MB sticks where auto-preview is gated off entirely.)",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt:830-855",
+      "app/src/main/java/com/ooustream/iptv/player/LivePreviewManager.kt:84-92",
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt:378-387"
+    ],
+    "rootCause": "goFullscreen() (line 830) calls stopPreview()\u2192previewManager.release() (LivePreviewManager 84-89: stop/clearVideoSurface/release the warm ExoPlayer that already buffered the stream), then `tx.replace` launches a brand-new OoustreamPlaybackFragment (844-854) that constructs a fresh ExoPlayer and cold-starts the identical URL via tuneToChannel/setMediaItem. The buffered media, open socket, and warm decoder are discarded; the fullscreen player starts from zero, re-paying the first-frame cost (compounded by the black-gap-on-zap shutter gap, finding #1).",
+    "fix": "Either hand the preview's warm ExoPlayer to the fullscreen surface (single-engine Media3 makes this feasible: clearVideoSurface on the preview PlayerView, reattach the SAME player to the fullscreen Leanback SurfaceView \u2014 no stop/release), OR at minimum capture the preview's last frame as a freeze-frame backdrop behind the fullscreen spinner so the cold start has no visible black gap. The latter is the cheaper, lower-risk fix and dovetails with finding #1's shutter mask.",
+    "benchmark": "YouTube / Prime Video hover-previews expand the SAME already-playing stream to fullscreen with a scale/crossfade, no re-buffer. This benchmark applies (it's about not discarding a warm pipe, independent of ABR).",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real, but DOWNGRADED P1\u2192P2. The auditor's 'any preview\u2192fullscreen entry' overstates scope two ways verified in code: (a) auto-preview only fires after a ~1s focus dwell (LiveTvFragment 378-387) AND is gated TV-only AND off on lowMemoryDevice (memoryClass<=128, line 112) \u2014 so on the ULTRA_LOW sticks the auditor flags as 'worst,' NO preview ever runs and there is no double-wait (just one normal cold start). (b) A quick OK (within the dwell) also incurs no preview, so no double-wait. The double cold-start is real ONLY on MID/HIGH sticks where the user dwelled long enough for preview to start \u2014 a real but narrower window, and the second start lands on the same fast LIVE LoadControl. Customer-felt cost is one extra ~1.5-3s re-buffer in that specific path, not a watch-breaking interruption \u2192 P2 friction, not P1.",
+    "dimension": "Live TV channel zapping (live-zap)"
+  },
+  {
+    "id": "no-hold-last-frame",
+    "title": "Every recovery path goes to BLACK + spinner instead of freezing the last frame",
+    "severity": "P1",
+    "symptom": "Mid-movie, on any rebuffer or decoder recovery, the picture vanishes to a black screen with a small centered indeterminate spinner (and on SW/FFmpeg-video rebuilds, a 'Optimizing video decoder...' / 'Optimizing video playback\u2026' toast) for the full recovery duration, then video pops back. It reads as 'the stream broke,' not 'a momentary dip.'",
+    "trigger": "A transient network dip (STATE_BUFFERING at line 1128-1130), a network disconnect/reconnect (line 1377-1379 also shows a bare spinner), the stall detector firing (p.stop() at 1505), OR any of the three player rebuilds (rebuildPlayerWithSoftwareDecoder 1835, rebuildPlayerWithFfmpegVideoDecoder 1955, rebuildPlayerWithFfmpegPreferred 2048). Hits hardest on the 1GB Fire TV Sticks that need rebuilds most.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1404-1410",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1934",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:81"
+    ],
+    "rootCause": "The fragment extends Leanback VideoSupportFragment (line 81), whose video surface is a SurfaceView. showBufferingOverlay() (2151-2169) just adds a WRAP_CONTENT indeterminate ProgressBar gravity-centered over that SurfaceView \u2014 there is no captured bitmap of the last frame painted under it. On the stall path the detector calls p.stop() (1505); every rebuild calls safeReleasePlayer() (1404-1410) which does p.clearVideoSurface() + p.release() then builds a fresh ExoPlayer re-attached via a new LeanbackPlayerAdapter. The instant the producing decoder's output stops or the surface is cleared, a SurfaceView is black \u2014 nothing keeps painting the last frame. There is no setKeepContentOnPlayerReset / TextureView snapshot / artwork anywhere in the player package (verified by grep). The 'Optimizing video decoder...' Toast (1934) on the SW rebuild and 'Optimizing video playback\u2026' Toast (1582) on the watchdog are literal during-black UX.",
+    "fix": "Hold the last frame across recovery. Cleanest given the SurfaceView base: before stop()/clearVideoSurface(), capture the current frame (the simplest reliable route is to render video to a TextureView via the player's setVideoTextureView and snapshot getBitmap() into an ImageView placed above the surface, OR migrate the surface to PlayerView with setKeepContentOnPlayerReset(true)). Show that frozen frame (optionally with a small corner spinner, not a centered spinner on black) during recovery and cross-fade to live on the new player's onRenderedFirstFrame. Drop the two 'Optimizing\u2026' Toasts (1582, 1934) \u2014 recovery should be silent.",
+    "benchmark": "Netflix/YouTube TV freeze the last decoded frame and refill the buffer (or swap decoder) underneath it; the viewer sees a steady picture, at most a tiny spinner, never a black screen for a sub-few-second dip. This benchmark DOES apply to single-bitrate IPTV \u2014 hold-last-frame is a presentation technique independent of ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed against the actual code. The base class is VideoSupportFragment (SurfaceView), showBufferingOverlay is a bare centered ProgressBar, safeReleasePlayer does clearVideoSurface()+release(), and no last-frame-retention mechanism exists anywhere in player/. The auditor's PlayerView.setKeepContentOnPlayerReset suggestion is slightly off \u2014 this isn't a PlayerView, it's Leanback's SurfaceView, so that exact API isn't wired; the TextureView-snapshot route is the applicable fix. Severity P1 is correct: it is genuinely felt on every recovery and on the exact 1GB devices that recover most, but it does not break/stop watching, so it is not a P0. The existing spinner mitigation is real but does not address the black-screen feeling, so alreadyHandled=false.",
+    "dimension": "error-recovery"
+  },
+  {
+    "id": "buffering-spinner-no-debounce",
+    "title": "Buffering spinner flashes on every sub-second transient and on every channel change",
+    "severity": "P2",
+    "symptom": "A spinner blinks on/off on a slightly-unstable connection and flashes for a fraction of a second on every channel zap and on every brief network blip \u2014 visual noise that makes a basically-fine stream look unstable.",
+    "trigger": "Any STATE_BUFFERING transition, including the routine BUFFERING\u2192READY churn ExoPlayer does, the brief buffering at the start of every channel zap (tuneToChannel 2632-2635 \u2192 state listener), and a momentary network drop (1377-1379).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1130",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1377-1379",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2632-2636"
+    ],
+    "rootCause": "onPlaybackStateChanged \u2192 STATE_BUFFERING calls showBufferingOverlay(true) immediately, no delay/debounce (1128-1130). The network-disconnect branch (1379) also shows it immediately. tuneToChannel (2632-2636) does setMediaItem/prepare/play and lets the state listener flash the spinner with no smoothing or banner-only path during the zap. CLAUDE.md's own v3.6.4 notes record a real customer 'cycling spinner' report on AFTKRT WiFi where recovery was 300-1000ms but the spinner flashed every recovery \u2014 and the spinner-suppression UX was explicitly deferred.",
+    "fix": "Debounce: on STATE_BUFFERING, post a delayed (~600-800ms) runnable to show the spinner; cancel it on STATE_READY (and on the network-reconnect prepare). Suppress the spinner entirely for the first ~1s of a channel zap (the channel banner already shows at +500ms via showChannelBanner at 2651 \u2014 let that cover the gap). Pair with hold-last-frame so the brief gap shows the prior frame, not black.",
+    "benchmark": "YouTube TV / Netflix keep a pre-buffer that absorbs sub-second dips invisibly and only reveal a buffering indicator after a sustained stall (~1s+), never on routine BUFFERING\u2194READY churn. Applies to IPTV.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed \u2014 no debounce exists; showBufferingOverlay(true) fires synchronously on STATE_BUFFERING at three independent sites (1129, 1379, and indirectly via tuneToChannel). The buffer-storm detector (1131-1149) addresses the DECODER, not spinner visibility \u2014 so it does not mitigate this. P2 is the right severity (visual noise, not an interruption to playback). alreadyHandled=false; the v3.6.4 notes confirm it was knowingly deferred.",
+    "dimension": "error-recovery"
+  },
+  {
+    "id": "stall-detector-stop-kills-frame",
+    "title": "Mid-stream rebuffer recovery does a full stop()/restart that discards buffer and blacks the screen even for a recoverable blip",
+    "severity": "P3",
+    "symptom": "On a sustained network slowdown (the common single-bitrate IPTV case), instead of the picture pausing and resuming where it left off, the screen goes black and the stream visibly cold-restarts/reconnects \u2014 a heavier interruption than the dip warranted.",
+    "trigger": "VOD/Series buffering that exceeds STALL_TIMEOUT_VOD_MS (30s) or LIVE exceeding STALL_TIMEOUT_LIVE_MS (15s) while retries remain \u2014 the customer-side bandwidth-bottleneck case (13-15s refills).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1499-1508",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:3388-3389"
+    ],
+    "rootCause": "startStallDetector() (1492-1519) calls p.stop() (1505), delay(delayMs), then p.prepare()/play() (1507-1508). stop() releases the decoder/surface output \u2192 black AND discards already-buffered data, forcing a cold re-prepare from the network. For single-bitrate IPTV there's no lower rung to drop to, so the re-prepare just re-incurs the same cold-start latency the dip caused.",
+    "fix": "For VOD/Series, prefer letting ExoPlayer keep buffering (it self-heals BUFFERING\u2192READY when bytes arrive) and escalate at the timeout to a soft seekTo(currentPosition) rather than stop()/prepare(), preserving the surface and avoiding a full network cold-start. Reserve stop()/re-prepare for cases where the source is truly dead (cause chain shows connection-refused/EOF). Combine with hold-last-frame.",
+    "benchmark": "Netflix/Prime continue filling the buffer on a stall and resume from the exact paused frame; they don't tear down and re-establish the whole pipeline for a transient dip.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed the p.stop()/prepare() pattern at 1505-1508. SEVERITY DOWNGRADED P2\u2192P3. Reason: the 30s VOD / 15s LIVE timeouts are deliberately long, so by the time stop() fires, ExoPlayer has already been visibly stuck buffering (spinner on black) for the full timeout \u2014 it was NOT silently riding through a 'recoverable blip.' At that point the stream genuinely isn't progressing, and a stop/re-prepare is a defensible (if blunt) recovery, not the cause of the interruption. The auditor over-states the frequency ('the common case'); on a healthy connection this never fires. The real residual harm is narrow: discarding the partial buffer that DID accumulate, making the cold-restart slightly slower than continuing to load. That's polish-tier, hence P3. The hold-last-frame fix (finding #1) already covers the black-screen portion of this symptom; the remaining buffer-discard nuance is minor. Note the LIVE path is also somewhat moot \u2014 live streams are append-only with no resume buffer to preserve, so stop()/prepare() costs little there.",
+    "dimension": "error-recovery"
+  },
+  {
+    "id": "onpause-overwrites-good-resume",
+    "title": "onPause + 5s autosave save currentPosition with no state/monotonic guard \u2014 buffering/errored/rebuild exit overwrites a good resume point with ~0",
+    "severity": "P0",
+    "symptom": "Customer watches a movie to 1h30m, the stream rebuffers or hits a decoder-rebuild (flaky-network Fire Stick), they press Back during the spinner. Next launch from Continue Watching replays from the beginning (or a few seconds in) instead of 1h30m. Progress silently regressed.",
+    "trigger": "Pressing Back / backgrounding while player is in STATE_BUFFERING / STATE_IDLE / error-retry, OR within the rebuild window of rebuildPlayerWithSoftwareDecoder/FfmpegVideo/FfmpegPreferred (new player has setMediaItem+prepare done but seekTo(currentPosition) not yet applied, so currentPosition reads ~0). The concurrent 5s autosave loop (line 977-993) and onPause (line 2950-2961) both read currentPosition with only a dur>0 and pct>0.05 gate.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:977-993",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2943-2963",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1928-1932",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:85-111",
+      "app/src/main/java/com/ooustream/iptv/data/local/dao/WatchProgressDao.kt:35-36"
+    ],
+    "rootCause": "Verified: onPause (2950-2961) and the 5s loop (980-991) both compute pct = pos/dur and save whenever dur>0 && pct>0.05f, with NO check that playbackState==STATE_READY and NO monotonic floor against the last persisted position. saveProgress() (PlayerViewModel:85-111) builds a fresh WatchProgressEntity (lastWatched defaults to now) and calls watchProgressDao.upsert = @Insert(OnConflictStrategy.REPLACE) (WatchProgressDao:35), which fully REPLACES the existing row \u2014 clobbering position, progressPercent AND completed. The rebuild paths capture currentPosition before release then setMediaItem+prepare and only seekTo afterward (line 1929-1931), so during that async window currentPosition genuinely reads ~0; the autosave loop runs on an independent coroutine and can fire mid-rebuild. onDestroyView does NOT save \u2014 onPause is the sole authoritative exit-save, so its un-gated save is the real exposure.",
+    "fix": "Gate every save: only capture/persist currentPosition when player.playbackState == STATE_READY (or playWhenReady && pos>0); and make the bookmark monotonic \u2014 fetch the prior persisted position and refuse to write a position that regresses more than a tolerance (~15s) unless the user explicitly seeked back. Skip the save entirely during an active rebuild (a usingSoftwareVideoDecoder/rebuildInProgress flag). Keep completed/95% logic intact. This makes resume monotonic and immune to the dominant 'Back while a spinner is up' exit.",
+    "benchmark": "Netflix/Disney+ checkpoint only from a known-good playing state and treat the bookmark as monotonic within a session \u2014 a transient buffer or decoder hiccup never rewinds your resume point. (Server-authoritative bookmark in their case; here the fix is a client-side state-gate + monotonic floor, which fully applies to single-bitrate IPTV.)",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED as the auditor described, with one nuance: the auditor frames NonCancellable as 'making the bug worse' \u2014 that is accurate but secondary. NonCancellable only guarantees the onPause write lands; the 5s autosave loop is an equally likely (often more likely) corruptor because it fires every 5s regardless of player state, including mid-rebuild, with no Back-press needed. The most damaging path is actually: user is mid-movie, a decoder rebuild fires (mt8695 watchdog ladder is common on this exact hardware), the autosave loop ticks during the prepare\u2192seek window and persists ~0 with completed=false \u2014 no user action at all. P0 is correct; if anything the auditor under-credited the autosave-loop path.",
+    "dimension": "resume-continue"
+  },
+  {
+    "id": "mandatory-resume-dialog-friction",
+    "title": "Hard Resume/Play-from-Beginning modal on every detail/hero/recommendation play \u2014 friction Netflix never imposes",
+    "severity": "P1",
+    "symptom": "Pressing Play on a movie/episode from its detail page (or Home hero, or a recommendation) pops a blocking 'You stopped at 1:24:05. Would you like to resume or start over?' AlertDialog that must be answered before anything plays. Slower to picture and feels like the app second-guessing the customer. For series binge, you get prompted on every episode.",
+    "trigger": "Any play from VodDetailFragment (playButton, line 128), SeriesDetailFragment.playEpisode (line 323), Home hero / recommendation via playVodWithResumeCheck (HomeFragment lines 739/1034/1150/1840 \u2192 1876), whenever progress exists (>5% and not completed). ONLY the Continue Watching card path (navigateToContinueWatching, line 1789) resumes silently.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/ResumePlaybackHelper.kt:12-30",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:124-146",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesDetailFragment.kt:322-343",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1860-1900",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1789-1824"
+    ],
+    "rootCause": "Verified: ResumePlaybackHelper.showIfNeeded() unconditionally builds a blocking android.app.AlertDialog when progress exists (>0.05, not completed). It's wired into all three detail/hero/recommendation paths but deliberately bypassed by navigateToContinueWatching, which goes straight to the player and resumes via the setMediaItem(uri, positionMs) path. So the app ships two contradictory resume UXs and the higher-traffic detail path is the friction-heavy one.",
+    "fix": "Make resume silent by default on all paths \u2014 pass the saved position through to the player (it already resumes via getResumePositionSync\u2192setMediaItem(uri, positionMs)). Replace the upfront modal with an in-player affordance: a ~5s 'Resuming from 1:24:05 \u2014 press DOWN to restart' chip plus a persistent 'Restart' control in PlayerControlsBar. Keep ResumePlaybackHelper only as an opt-in setting.",
+    "benchmark": "Netflix/Disney+/Prime resume instantly with no prompt and surface a small 'Restart'/'From Beginning' control inside the player. This applies cleanly to single-bitrate IPTV \u2014 it's a UX pattern, not an ABR feature.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED exactly as described. The silent-resume machinery already exists and is proven on the Continue Watching card path (setMediaItem(uri, positionMs) at line 420 + forceStartFromBeginning arg plumbing), so the fix is low-risk \u2014 it just needs the detail/hero/recommendation paths to stop calling showIfNeeded and pass position through. P1 is correct.",
+    "dimension": "resume-continue"
+  },
+  {
+    "id": "binge-upnext-bogus-progress",
+    "title": "Binge 'Up Next' Continue Watching row shows a phantom ~6% progress bar (progressPercent=0.06 / duration=1)",
+    "severity": "P3",
+    "symptom": "After finishing an episode, the never-watched next episode appears in Continue Watching with a thin gold progress bar (~6%), as if partly watched, before the customer has ever opened it.",
+    "trigger": "Series binge completion: STATE_ENDED (or advanceSeriesOnCompletion) inserts the next episode as an Up Next entry.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:161-181",
+      "app/src/main/java/com/ooustream/iptv/home/ContinueWatchingPresenter.kt:42-80"
+    ],
+    "rootCause": "Verified: advanceSeriesOnCompletion() writes WatchProgressEntity(position=0, duration=1, progressPercent=0.06f) (PlayerViewModel:170-179). The 0.06 is a hack to clear getContinueWatching's 'progressPercent > 0.05' filter. ContinueWatchingPresenter sets progressBar.progress = (progressPercent*100).toInt() = 6 UNCONDITIONALLY (line 42) and NEVER hides the bar, so the phantom 6% bar renders.",
+    "fix": "Detect the queued/up-next case in the presenter (it already computes isUpNext = isSeries && position==0L at line 46) and hide the progress bar (progressBar.visibility = GONE) for it, OR add an explicit queued flag to WatchProgressEntity, broaden the getContinueWatching filter to include queued rows (drop the 0.06 hack, store progressPercent=0f), and have the presenter show only the 'Up Next' badge with no bar. Guard the bar against duration<=0 / position==0 regardless.",
+    "benchmark": "Netflix's Up Next card shows the new episode with NO progress bar and an 'Episode N / Next Episode' label \u2014 never a phantom partial-progress indicator.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "PARTIALLY confirmed; auditor OVERSTATED severity and one symptom. (1) The phantom 6% bar is real \u2014 confirmed, presenter never hides the bar. (2) BUT the claimed 'nonsensical time-left value / broken time-left math' is NOT real: with duration=1 and position=0, minutesLeft = (1-0)/60000 = 0, and the presenter hides the time-left label at line 72 (`if (minutesLeft > 0)`), so no bad time-left text is shown. (3) The presenter ALSO already shows a correct 'S1 E2 \u00b7 Up Next' label (lines 46-52) via the isUpNext = position==0L check \u2014 the auditor missed that partial handling exists. Net: this is a single cosmetic phantom-bar glitch on a queued card, not a metadata-corruption bug. Downgraded P2\u2192P3. position=0 means playback itself correctly starts at the top (getResumePositionSync returns 0), so zero functional impact.",
+    "dimension": "resume-continue"
+  },
+  {
+    "id": "resume-position-not-clamped-to-duration",
+    "title": "Resume position never re-validated against actual stream duration \u2014 can park on a black/ended end frame on a re-encoded shorter IPTV VOD",
+    "severity": "P3",
+    "symptom": "Rarely, a movie 'resumes' to a black/frozen end frame or jumps straight to the ended state, forcing the customer to scrub back manually.",
+    "trigger": "The IPTV server re-encodes / swaps the backing file behind a streamId so the new stream is shorter than when the position was saved, then the user resumes. The stored position now exceeds the new stream's length.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:77-83",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:413-424"
+    ],
+    "rootCause": "Verified: getResumePositionSync() returns progress.position with no upper bound (PlayerViewModel:77-83); the call site applies only coerceAtLeast(0L) (line 418) and passes it to setMediaItem(uri, resumePos). There is NO post-STATE_READY revalidation against the now-known duration anywhere in the fragment (grep of duration/coerce/clamp confirms only seek-clamps at 2417/2484, none on the resume path). ExoPlayer internally clamps a start position beyond duration to the period end, so it lands at the end rather than crashing \u2014 but 'lands at the end' is the bad outcome.",
+    "fix": "After STATE_READY when duration is known, if the resumed startPos is within the last ~10s of (or beyond) duration, treat it as stale/completed and restart from 0 (or seek to duration-30s). Optionally store the saved duration and discard the resume if the new actual duration differs by more than a tolerance.",
+    "benchmark": "Streaming platforms validate the bookmark against the current asset runtime and fall back to a sane position (or mark complete) rather than parking on a black end frame.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "CONFIRMED mechanically (no upper clamp, no revalidation), but rarity is correctly reflected in P3. The precondition \u2014 server mutating the backing file behind the same streamId between the save and the resume, to a SHORTER length \u2014 is genuinely uncommon. ExoPlayer's internal clamp prevents a crash, so the worst case is a black end frame the user scrubs back from. Severity P3 is right; not a flawlessness-defining defect.",
+    "dimension": "resume-continue"
+  },
+  {
+    "id": "no-next-episode-prebuffer",
+    "title": "No next-episode pre-buffering \u2014 black gap + spinner between every episode",
+    "severity": "P1",
+    "symptom": "Episode ends (or user taps 'Watch Next'), the SurfaceView clears to black, a bare centered indeterminate ProgressBar appears, and 2-5s later (on a 1GB Fire TV / single-bitrate IPTV cold buffer fill) the next episode's first frame paints. The transition is felt on every auto-advance \u2014 not the seamless cross-fade Netflix/Disney+ post-play gives.",
+    "trigger": "Every binge auto-advance: the countdown reaching zero (BingeCountdownOverlay.onFinish -> onPlayNext), pressing 'Watch Next' on the card, or the Next-Episode control (skipToNextEpisode). Worst on slow-throughput connections and budget Fire Sticks where cold buffer fill is slowest.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:490-492",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2344-2346",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1129",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169"
+    ],
+    "rootCause": "Both auto-advance paths load the next episode synchronously into the SAME ExoPlayer/SurfaceView: player.setMediaItem(MediaItem.fromUri(next.url)) -> player.prepare() -> player.play() (lines 490-492 in the binge onPlayNext, 2344-2346 in skipToNextEpisode). Verified via grep that there is NO ConcatenatingMediaSource / addMediaItem / setMediaItems / seekToNextMediaItem / preload / prefetch anywhere in the player package \u2014 the search returns zero hits. So the next stream is fetched/demuxed/decoded entirely from cold at the transition moment. The prepare() puts the player into STATE_BUFFERING, which calls showBufferingOverlay(true) (line 1129) -> a plain ProgressBar over a now-black surface (no frame for the new media yet). The 15s binge-window runway (line 1003) is used ONLY to render the countdown card, never to pre-prepare the next item.",
+    "fix": "Use the binge window as a pre-buffer runway: when the next episode is resolved at the 15s mark (line 1005), build/append it to the timeline (player.addMediaItem(nextMediaItem) on a queued player, or ConcatenatingMediaSource2) so ExoPlayer pre-buffers it while the current episode plays; on auto-advance call player.seekToNextMediaItem() instead of setMediaItem+prepare so the transition is into an already-buffered item with no cold load. Lighter interim: hold the last decoded frame under a dimmed scrim during the new item's buffer instead of going to black.",
+    "benchmark": "Netflix/Disney+/Prime post-play have the next episode buffered before the current one ends and cross-fade in \u2014 never black, never a spinner. This applies even to single-bitrate IPTV: ABR is irrelevant here, the win is pre-preparing the known next URL during the dwell window, not bitrate adaptation.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as reported. Existing hardening does NOT cover this: resume-via-setMediaItem(item, positionMs) and BufferConfigs only affect the CURRENT item's load, never pre-buffer the next. The grep claim is accurate. Severity P1 is correct \u2014 it degrades every boundary but doesn't break watching.",
+    "dimension": "binge-next"
+  },
+  {
+    "id": "uncached-next-episode-network-call",
+    "title": "resolveNextEpisode() does an uncached network round-trip (hit up to 3x per boundary), delaying the prompt and risking a false 'no more episodes'",
+    "severity": "P1",
+    "symptom": "On a slow or briefly-glitchy IPTV connection the binge card / next title appears late, and in the worst case the countdown completes, fires play-next, and a single transient network failure causes 'No more episodes' (line 2355) or the series-complete overlay (line 501/1009) to fire on an episode that actually HAS a next one \u2014 the binge silently stops.",
+    "trigger": "Reaching the end of any series episode on a slow/intermittent connection. Risk compounds because the lookup runs multiple times per boundary and ANY single failure collapses to 'no next episode'.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:219-259",
+      "app/src/main/java/com/ooustream/iptv/data/repository/ContentRepository.kt:75-78",
+      "app/src/main/java/com/ooustream/iptv/di/NetworkModule.kt:44-67",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1005",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:481",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2335",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:164"
+    ],
+    "rootCause": "resolveNextEpisode() (PlayerViewModel:219) calls contentRepository.getSeriesInfo(seriesId), which is a raw getApi().getSeriesInfo(...) Retrofit call with NO caching (ContentRepository:75-78). VERIFIED the OkHttpClient.Builder in NetworkModule:44-67 has no .cache(...) configured \u2014 there is no HTTP disk cache at all, and no session/Room cache for series info, so every call is a fresh network fetch of the full series payload. PlayerViewModel holds only scalar series context (seriesId/seasonNum/episodeNum, lines 41-43) \u2014 it has no in-memory episode list, so it must re-fetch every time. resolveNextEpisode runs at 3 independent sites per boundary: binge overlay show (Fragment:1005), the chosen advance path (Fragment:481 onPlayNext OR :2335 skipToNextEpisode), and advanceSeriesOnCompletion on STATE_ENDED (PlayerViewModel:164). The function is wrapped in try/catch returning null on ANY exception (lines 256-258), so a transient failure during the countdown is indistinguishable from 'episodes list exhausted'.",
+    "fix": "Cache getSeriesInfo per seriesId for the playback session (or Room) so 2nd/3rd lookups are instant and resilient; resolve the next episode ONCE (at play start or the binge window) and stash the NextEpisodeResult for onPlayNext/advance to reuse. Distinguish 'no next episode' (episodes list parsed, current is last) from 'lookup threw' \u2014 on a thrown failure, retry briefly and keep the binge card up rather than firing 'No more episodes' / series-complete.",
+    "benchmark": "Netflix has the episode list and next-episode metadata client-side before the episode starts; the decision is local and instantaneous. This benchmark legitimately applies \u2014 it's about caching the metadata the app already fetched in SeriesDetailFragment, not about ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed and slightly strengthened: there is not only no result cache, there is no OkHttp disk cache either (NetworkModule:44-67 has no .cache()), so even back-to-back identical calls re-hit the network. The null-on-exception conflation (PlayerViewModel:256-258) is the genuinely customer-hurting part: a flaky-IPTV blip ends an active binge with a wrong 'finished the season' message. The 'IO dispatcher so non-blocking' mitigation the auditor noted is real but irrelevant to the false-stop outcome. P1 is correct.",
+    "dimension": "binge-next"
+  },
+  {
+    "id": "series-end-no-autoplay-dead-end",
+    "title": "Episode ends to a black/idle player with no auto-play and no completion UI when the binge window is missed OR the user cancelled the binge card",
+    "severity": "P2",
+    "symptom": "An episode finishes and nothing happens \u2014 no next episode, no countdown card, no series-complete screen. The viewer is left on a black/idle player and must press Back manually, unsure whether the binge broke.",
+    "trigger": "TWO reachable paths land here, not one. (a) The 1s position poll never observes (dur-pos) < 15000 before STATE_ENDED \u2014 duration reported 0/unknown until the very end, a buffering stall over the final 15s, a hard cut to STATE_ENDED, or wrong/missing IPTV duration metadata; bingeShown stays false. (b) [MISSED by auditor] The user presses 'Cancel' on the binge card ('not now, let me finish'); bingeShown was already latched true at line 1004 and is NEVER reset in onCancel (line 505), so when the episode then reaches STATE_ENDED there is no terminal UX at all.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1003-1011",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:505",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1164-1204",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerViewModel.kt:161-181"
+    ],
+    "rootCause": "The ONLY trigger that auto-plays the next episode or shows the series-complete overlay is the poll at line 1003 (dur>0 && pos>0 && (dur-pos)<15000 && !bingeShown). STATE_ENDED for SERIES (line 1188-1192) calls ONLY advanceSeriesOnCompletion(), which inserts an 'Up Next' DB row (PlayerViewModel:161-181) \u2014 it does NOT auto-play and does NOT show seriesCompleteOverlay. Contrast VOD STATE_ENDED (line 1194-1203) which at least shows Watch Next or pops back; SERIES has no equivalent in-player terminal UX. So both the missed-window case and the cancelled-card case (bingeShown never reset at line 505) dead-end on a black/idle player. The DB Up Next row only helps the Home screen's Continue Watching, not the in-session viewer.",
+    "fix": "In STATE_ENDED for SERIES, when the in-player binge UX never ran (e.g. seriesCompleteOverlay not showing and no auto-advance issued), drive the same decision there: resolve next episode (reusing the cached NextEpisodeResult from finding #2) and either auto-advance OR show seriesCompleteOverlay \u2014 never a silent black end. Also reset bingeShown=false in onCancel (line 505) and re-check the binge window once duration becomes known for unknown-duration streams, so the credits-watcher still gets a completion screen.",
+    "benchmark": "Netflix always lands an episode end on post-play autoplay OR a clear 'You've finished this season' screen \u2014 never a frozen/black player with no next action.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "[MISSED] The auditor framed this as only triggering on broken/unknown duration metadata (relatively rare). Verified a SECOND, more common path to the identical dead-end: pressing 'Cancel' on the binge card. onCancel (line 505) is a no-op comment ('Stay on current episode') and never resets bingeShown (confirmed: bingeShown is only reset at lines 488 and 2342, both auto-advance paths). So any user who declines auto-play to finish the episode/credits then hits STATE_ENDED -> DB-row-only -> black dead-end. This makes the hole more reachable than reported; P2 is still appropriate (friction, not a watch-breaking crash) but the fix must include resetting bingeShown on cancel.",
+    "dimension": "binge-next"
+  },
+  {
+    "id": "binge-transition-plain-spinner-no-polish",
+    "title": "Binge transition uses a bare spinner over black + a Toast \u2014 no last-frame hold, no branded next-up card",
+    "severity": "P3",
+    "symptom": "Even when the next episode loads fast, the in-between moment looks unfinished: black surface + generic centered indeterminate ProgressBar (the same one used for any mid-stream rebuffer), with the next episode only confirmed by a small Toast. Reads as 'cheap/loading' rather than a deliberate next-up moment.",
+    "trigger": "Every binge auto-advance and manual 'Watch Next' \u2014 the window between the current episode being torn down and the next episode's first frame.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:499",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2353",
+      "app/src/main/java/com/ooustream/iptv/player/BingeCountdownOverlay.kt:72-92"
+    ],
+    "rootCause": "showBufferingOverlay (2151-2169) programmatically adds a plain WRAP_CONTENT centered ProgressBar with no scrim, no next-episode artwork, no 'Now Playing S_E_' card \u2014 identical to any rebuffer spinner. Next-episode confirmation is Toast.makeText(next.name) at lines 499 and 2353. The binge card itself (BingeCountdownOverlay) shows only the title text + countdown with no poster/thumbnail (verified: it inflates overlay_binge_countdown with binge_next_title TextView, no ImageView for episode art).",
+    "fix": "During a binge transition, replace the generic spinner with a dedicated 'Up Next' card: next-episode title + S/E + poster thumbnail over a dimmed last-frame, with the buffering indicator integrated. Drop the redundant Toast. Combined with finding #1's pre-buffer, this turns the boundary into an intentional branded moment.",
+    "benchmark": "Netflix/Disney+ show a styled next-episode title/thumbnail post-play card and cross-fade into already-buffered video. Valid as a polish target.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as reported; P3 is correct (pure polish gap, not a functional hiccup). Note this finding is largely a cosmetic restatement of #1's symptom \u2014 its standalone value is low until #1's pre-buffer lands, since masking a 2-5s black load with a prettier card without pre-buffering still leaves the customer waiting. Bumped the auditor's medium confidence to high on the code facts (the spinner/Toast/no-thumbnail claims are all verified).",
+    "dimension": "binge-next"
+  },
+  {
+    "id": "audio-disabled-leaks-across-episodes",
+    "title": "Disabled/fallback audio state leaks from one episode to the next in a binge",
+    "severity": "P1",
+    "symptom": "During a series binge, if one episode hits the Stage-2 audio-disable fallback (hardware codec error with no alternate track and no FFmpeg), the next auto-advanced episode also plays with no sound even though its audio is decodable, and stays silent for the rest of the binge until the customer backs fully out of the player and re-enters.",
+    "trigger": "SERIES playback where episode N reaches Stage-2 audio disable (audioDisabledByFallback=true at line 1055/1068), then auto-advances to N+1 via the binge countdown onPlayNext (line 478-503) or the skip-next button (glue.onNextEpisode -> skipToNextEpisode, line 2332/3026).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2332-2358",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:478-504",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1292-1294"
+    ],
+    "rootCause": "Both episode-transition paths call setMediaItem/prepare/play on the SAME shared ExoPlayer but never reset audioFallbackAttempted / audioDisabledByFallback / userTrackOverrideActive / mtkMultichannelFfmpegApplied, and never clear the setTrackTypeDisabled(AUDIO,true) override Stage-2 applied (line 1058/1074). onTracksChanged then early-returns at line 1294 (`if (audioDisabledByFallback) return`), so the new episode's audio is never selected. The audio-reset block exists in exactly three places \u2014 tuneToChannel (2599-2617, LIVE only), showErrorDialog retry (2179-2189), showFriendlyError retry (2302-2311) \u2014 and was never wired into the SERIES next-episode/binge transitions.",
+    "fix": "Extract the reset block (audioFallbackAttempted=false, audioDisabledByFallback=false, userTrackOverrideActive=false, mtkMultichannelFfmpegApplied=false, plus trackSelector setTrackTypeDisabled(AUDIO,false)+clearOverridesOfType(AUDIO) exactly like 2185-2189) into a resetAudioStateForNewContent() helper and call it at the top of both skipToNextEpisode() (2332) and the binge onPlayNext advance (478) before setMediaItem.",
+    "benchmark": "Netflix/Disney+ treat each episode as an independent session with fresh decoder negotiation; a codec quirk on one episode never carries audio state into the next.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED with one severity-scoping nuance the auditor overstated. The leak ONLY bites when Stage-2 (disable audio, lines 1055/1068) actually fires \u2014 i.e. a hard ERROR_CODE_AUDIO_TRACK_* PlaybackException with no alternate track AND no FFmpeg available. If Stage-1.5 rebuildPlayerWithFfmpegPreferred() succeeds (the common AC3/EAC3 mt8695 case), audio is rerouted through FFmpeg and audioDisabledByFallback stays false, so the next episode is NOT muted. Since AudioLogger.isFfmpegAvailable is true on virtually all shipping ARM builds (the FFmpeg AAR loads on all primary devices), Stage-2 is comparatively rare \u2014 it needs FFmpeg to be unavailable OR to also fail. So 'one bad episode silently mutes EVERY subsequent episode' is real but narrower than implied. Separately, userTrackOverrideActive leaking is a real secondary bug (manual track pick on episode N persists the override-protection flag into N+1, suppressing English auto-select). P1 stands because when it does hit, it's a multi-episode silent break with no in-player recovery.",
+    "dimension": "audio-av"
+  },
+  {
+    "id": "no-recovery-on-mid-stream-audio-dropout",
+    "title": "Mid-stream audio dropout (sink error / sustained stall) is logged but never recovered",
+    "severity": "P2",
+    "symptom": "Mid-movie or mid-channel the audio cuts out and stays silent while video keeps playing; the customer must manually back out and re-open, or change channel, to get sound back. On an AudioTrack sink error or a sustained audio-renderer stall the silence persists for the session.",
+    "trigger": "onAudioSinkError (non-fatal, bypasses onPlayerError entirely) or a sustained audio stall where audioDecoderCounters.renderedOutputBufferCount stops advancing for >10s while video continues (checkAudioStall, PlaybackHealthMonitor:190-228).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/PlaybackHealthMonitor.kt:190-229",
+      "app/src/main/java/com/ooustream/iptv/player/ExoPlayerDiagnosticListener.kt:137-154",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1018-1082"
+    ],
+    "rootCause": "checkAudioStall() only calls logger.logAppEvent(\"AUDIO_STALL\") \u2014 PlaybackHealthMonitor's constructor takes only (logger, scope) with no fragment callback, so it structurally cannot trigger recovery. onAudioSinkError/onAudioUnderrun/onAudioDisabled in ExoPlayerDiagnosticListener are AnalyticsListener callbacks that are pure logger.logAppEvent() calls. The three-stage audio fallback ladder lives entirely inside corePlayerListener.onPlayerError (1018-1082) and only triggers on PlaybackException via isAudioDecoderError(); a non-fatal sink error never reaches onPlayerError, so nothing attempts recovery.",
+    "fix": "Add an onAudioStall callback into PlaybackHealthMonitor (and wire onAudioSinkError) that does a lightweight recovery: toggle setTrackTypeDisabled(AUDIO,false)+re-select, or escalate to rebuildPlayerWithFfmpegPreferred() preserving position, with an attempt-cap/debounce. Already correctly gated on hasSelectedAudio && volume>0 (lines 194-198), so muted preview/audio-only won't false-trigger.",
+    "benchmark": "Netflix/YouTube TV silently re-initialize the audio decoder on a sink fault and refill \u2014 the dropout is a sub-second blip, not a permanent loss, and the viewer never has to restart.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED root cause and gap exactly. Lowered P1->P2: this is a genuine hole but the customer-felt FREQUENCY is low. Real Ooustream triage (per CLAUDE.md debug-log reference) shows AUDIO_UNDERRUN/AUDIO_DISABLED/AUDIO_SINK_ERROR overwhelmingly ride on top of NETWORK STARVATION \u2014 the audio chain tearing down because data isn't arriving \u2014 not standalone codec/sink faults. In the starvation case, recovery has nothing to recover (the pipe is the problem) and toggling the renderer would just thrash. A true permanent-silence-with-healthy-video onAudioSinkError (e.g. a Reelz ad-break elementary-stream swap) does exist and is unrecovered, but it's a minority of the logged audio events. Worth fixing, but P1 overstates how often a paying customer hits irrecoverable mid-stream silence vs. a network-driven blip that resolves on its own.",
+    "dimension": "audio-av"
+  },
+  {
+    "id": "channel-switch-mute-pop-ineffective",
+    "title": "Anti-pop mute on channel switch is defeated by synchronous volume restore",
+    "severity": "P3",
+    "symptom": "On a live channel zap, a brief audible click/blip of the new stream's first audio buffer can be heard at full volume because the intended mute window has effectively zero duration.",
+    "trigger": "Every live channel switch via tuneToChannel (lines 2630-2636).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2630-2636"
+    ],
+    "rootCause": "tuneToChannel sets player.volume=0f (2631), then setMediaItem/prepare/play (2633-2635), then player.volume=1f (2636) \u2014 all synchronously on the same main-thread call stack. The player spends no real wall-clock time muted; volume is back to 1f before the new stream decodes its first audio buffer, so any first-buffer click is unmuted.",
+    "fix": "Set volume=0f before setMediaItem, restore to 1f from onPlaybackStateChanged STATE_READY (or onRenderedFirstFrame) for the new item with a ~600ms safety timeout, ideally an 80-120ms fade-in. Apply the same pattern to skipToNextEpisode/binge if a click is observed there.",
+    "benchmark": "Netflix/YouTube TV hard-gate or crossfade audio across a source switch so the new audio fades up only once it is actually decoding \u2014 zero pop.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "CONFIRMED the code does nothing (synchronous mute/unmute) but the auditor MISDESCRIBED the artifact and OVERSTATED scope. (1) WRONG: 'pop of the PREVIOUS stream's audio' \u2014 setMediaItem tears down the old pipeline immediately, so there is no previous-stream audio left to leak; the only possible artifact is the NEW stream's first un-faded buffer (a minor click), and on a channel switch the new stream enters STATE_BUFFERING for hundreds of ms before any audio renders, so in practice the pop is faint-to-inaudible on most streams. (2) WRONG: 'and on VOD resume' \u2014 VERIFIED the VOD/SERIES initial-load path (lines 413-430) does NOT mute at all; there is no resume-mute to be defeated. The artifact is purely the live-zap path. Severity lowered P2->P3: a faint occasional click on channel change is polish-tier, not felt friction, and IPTV zaps already carry a >1s buffering gap that dominates the perception.",
+    "dimension": "audio-av"
+  },
+  {
+    "id": "seek-no-debounce-storm",
+    "title": "Every D-pad seek tap fires an immediate network seek \u2014 no scrub accumulation/debounce",
+    "severity": "P2",
+    "symptom": "Tapping Left/Right repeatedly to skip past the currently-buffered window produces a stutter-then-spinner on each press that lands outside the buffer, rather than one fluid scrub. Within the buffered window (VOD 15-45s ahead, 10-30s low-mem) seeks are instant; the storm only manifests when stepping repeatedly beyond it.",
+    "trigger": "User presses DPAD_LEFT/RIGHT (or FF/RW, swipe, double-tap) several times in a row on VOD/Series, each step landing past the buffered range.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackGlue.kt:258-278",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:636-660",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:829-837"
+    ],
+    "rootCause": "Confirmed in code: every seek path commits player.seekTo() synchronously on ACTION_DOWN with no pending-target accumulation. Glue onKey DPAD_LEFT/RIGHT (262/272) calls playerAdapter.seekTo immediately; PlayerControlsBar.dispatchKeyEvent (641/647) invokes onDpadSeek which seeks at fragment 832; FF/RW (241/250), swipe (2484/2487) and double-tap all seekTo() directly. seekDeltaForRepeat (glue 354, bar 656) only grows the STEP (10s\u219230s\u219260s), not coalesces commits. No pendingSeek/debounce/OnSeekBarChangeListener exists anywhere in the module.",
+    "fix": "Accumulate pendingSeekTargetMs on each press, update the seekbar/time text optimistically, and commit a single player.seekTo() after ~250-350ms idle or on key-up. Pairs naturally with CLOSEST_SYNC (see seek-exact-params) so the one committed seek is also cheap.",
+    "benchmark": "Netflix/YouTube TV accumulate the scrub target while a direction is held and commit one seek on release \u2014 picture refetches once, at the landing point. This DOES apply to single-bitrate IPTV: it's about coalescing seek commits, not ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity corrected P1\u2192P2. The auditor's '8 taps to skip an intro' is overstated: seekDeltaForRepeat accelerates to 30s after 3 presses and 60s after 10, so a 60-90s intro skip is typically 2-4 presses, and any step that lands inside the 15-45s VOD / 10-30s low-mem buffer (BufferConfigs.kt) is instant with no refetch. Also note seek-induced BUFFERING is correctly insulated from the recovery ladder \u2014 the stall detector only fires after a 30s VOD timeout (fragment 1499) and the frame watchdog is deliberately not restarted on seek BUFFERING\u2192READY (fragment 1156-1159) \u2014 so a seek storm degrades smoothness but never escalates into retries/error dialogs. Real and worth fixing, but it's friction, not an interruption.",
+    "dimension": "seeking"
+  },
+  {
+    "id": "seek-exact-params",
+    "title": "No setSeekParameters() \u2014 every seek is frame-EXACT, maximizing decode-from-keyframe cost",
+    "severity": "P2",
+    "symptom": "After a seek that lands outside the buffer, motion resumes a beat later than necessary because the decoder must walk from the preceding keyframe to the exact frame before rendering \u2014 more pronounced on the weak MTK decoders in Fire Stick targets.",
+    "trigger": "Any VOD/Series seek (D-pad, FF/RW, swipe, double-tap, chapter jump) that lands outside the buffered range.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:305-311",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1867-1873"
+    ],
+    "rootCause": "Confirmed: all four ExoPlayer.Builder sites (305, 1867, 1987, 2075) omit setSeekParameters(), so SeekParameters.DEFAULT (frame-exact) is in force. grep for setSeekParameters/SeekParameters returns zero hits across the whole module. On long-GOP IPTV-transcoded streams the keyframe\u2192target decode is real added latency on coarse D-pad scrubs the user can't perceive the precision of anyway.",
+    "fix": "Set SeekParameters.CLOSEST_SYNC (or PREVIOUS_SYNC) during active coarse scrubbing so the picture snaps to the nearest keyframe and resumes immediately; keep EXACT only for the final landing commit and for resume/chapter jumps. Cheap one-liner per build site (or set once and re-apply on rebuilds).",
+    "benchmark": "Streaming players seek to keyframe boundaries during active scrub for near-instant resume, reserving frame-exact for the final commit. Applies to single-bitrate IPTV \u2014 it's a decode-cost reduction, not ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity corrected P1\u2192P2. Real and code-grounded, but the magnitude is GOP-dependent and only felt on out-of-buffer seeks; for the common in-buffer step it's invisible. Note the resume path (fragment 418-423) uses setMediaItem(uri, resumePos) which buffers from the offset \u2014 frame-exactness there is desirable for landing on the right spot, so a blanket CLOSEST_SYNC must be scoped to active-scrub only, not applied to resume/chapter (the auditor's fix correctly says this).",
+    "dimension": "seeking"
+  },
+  {
+    "id": "seek-bare-spinner",
+    "title": "Seek-induced rebuffer shows a bare spinner over a frozen frame instead of an invisible refill",
+    "severity": "P2",
+    "symptom": "A bare indeterminate spinner pops over the last frame the instant a seek lands outside the buffer, then vanishes \u2014 routine scrubbing looks like the stream is struggling even when the refill is ~1s. Rapid scrubbing flashes it repeatedly.",
+    "trigger": "Any seek (or transient auto-recovery) that briefly enters STATE_BUFFERING.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1129",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169"
+    ],
+    "rootCause": "Confirmed: onPlaybackStateChanged \u2192 STATE_BUFFERING calls showBufferingOverlay(true) unconditionally and synchronously (1129). showBufferingOverlay (2151-2169) lazily inflates a plain indeterminate ProgressBar and toggles VISIBLE \u2014 no postDelayed grace window, no distinction between a sub-second seek refill and a genuine stall. STATE_READY (1152) hides it promptly, so it does clear fast, but every short refill flashes it.",
+    "fix": "Gate showBufferingOverlay(true) behind a ~400-600ms postDelayed that is cancelled if STATE_READY arrives first, so sub-threshold seek refills hold the last frame with no chrome; only persistent buffering shows the spinner. This is precisely the v3.6.4-deferred 'suppress spinner during <1s recoveries' item.",
+    "benchmark": "Netflix/Disney+ hold the last frame on a brief seek refill with no spinner; chrome appears only once the stall is long enough the user would think it froze.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real; severity P2 appropriate (kept as filed). The CLAUDE.md v3.6.4 note explicitly logged this spinner-suppression as deferred and it was never shipped \u2014 verified there is no grace-window delay in showBufferingOverlay. One nuance: the same unconditional spinner also flashes on every channel-switch/recovery BUFFERING, so the fix benefits live zap perception too, not just seeking.",
+    "dimension": "seeking"
+  },
+  {
+    "id": "seek-no-thumbnail-preview",
+    "title": "No scrub preview thumbnails or absolute scrub-time bubble \u2014 only a relative '+Ns' text",
+    "severity": "P3",
+    "symptom": "While scrubbing, the customer can't see WHERE they'll land \u2014 no filmstrip thumbnail and no absolute timecode bubble at the thumb, only a cumulative '+30s'/'-30s' delta. Finding a specific scene is seek-watch-seek-watch.",
+    "trigger": "User scrubs a movie/episode to find a specific point.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/SeekFeedbackOverlay.kt:36-57",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:276-285"
+    ],
+    "rootCause": "Confirmed: the only scrub feedback is SeekFeedbackOverlay's centered cumulative '+Ns' text (showSeek accumulates cumulativeDeltaMs, 36-57) \u2014 relative, not absolute. updatePosition (276-285) only sets the seekbar progress + time-left/right text. No PlaybackSeekDataProvider / thumbnail sprite source is wired anywhere (grep returns zero hits). The seekbar is enabled+focusable for D-pad but has no OnSeekBarChangeListener and no preview affordance.",
+    "fix": "Short term (cheap, high value): render the ABSOLUTE target timecode of the pending seek (e.g. '1:23:45') at/near the seekbar thumb during scrub \u2014 pairs with the pendingSeekTarget from seek-no-debounce-storm. Long term where CPU/bandwidth allow: client-side low-res keyframe thumbnails (or a server BIF if flarecoral ever exposes one) via Leanback PlaybackSeekDataProvider.",
+    "benchmark": "Netflix/Prime/YouTube TV show a live thumbnail filmstrip plus a timecode while scrubbing so you land on the right scene first try.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real, P3 (polish) is correct \u2014 true trickplay thumbnails are genuinely impractical for single-bitrate Xtream VOD on a 1GB Fire Stick, so the realistic win is the absolute-timecode bubble, which the auditor correctly prioritizes. Minor cite correction: the auditor described the seekbar at PlayerControlsBar.kt:223-226 as 'non-interactive (a progress indicator)', but those exact lines actually set seekBar.isEnabled = true and isFocusable = true (for D-pad focus). The substance holds \u2014 there is no touch OnSeekBarChangeListener and no scrub preview \u2014 but the 'non-interactive' phrasing and that specific line cite are imprecise.",
+    "dimension": "seeking"
+  },
+  {
+    "id": "sticky-resolution-cap",
+    "title": "Watchdog 720p/480p downgrade + software-decoder rebuild is permanent \u2014 never cleared, so the rest of the live session stays downscaled and CPU-bound",
+    "severity": "P1",
+    "symptom": "After one channel briefly stutters/black-screens and trips the frame watchdog, every channel the user zaps to afterward plays soft/blurry (720p, then 480p) on the slow software decoder \u2014 even clean HD channels the same device handled natively seconds earlier. The picture visibly looks worse and never recovers until the user fully backs out of the player and re-enters.",
+    "trigger": "Live TV: one channel freezes frames for >=3s repeatedly (transient buffering, a momentary decoder hiccup, a bad-encode channel) -> watchdog escalates: SEEK_FLUSH -> rebuildPlayerWithSoftwareDecoder() / rebuildPlayerWithFfmpegVideoDecoder() -> setMaxVideoSize(1280,720) -> setMaxVideoSize(854,480). The user then zaps via debouncedTune -> tuneToChannel, which reuses the SAME player + trackSelector.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1746-1788",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2593-2636",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:172",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:178",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:243",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2178-2189"
+    ],
+    "rootCause": "The recovery ladder is strictly one-directional. trackSelector is created once (line 243) and reused across every rebuild (player builders at 308/870/990/2078 all pass the same trackSelector!!). setMaxVideoSize(720)/(480) is applied to it at lines 1702/1728/1760/1773/1783 and is NEVER cleared \u2014 grep for clearVideoSizeConstraints returns zero matches, and there is no setMaxVideoSize(Int.MAX_VALUE,...) anywhere. The fields usingSoftwareVideoDecoder (line 172) and usingFfmpegVideoDecoder (line 178) are set to true (lines 1838/1959/1960) and NEVER set back to false (grep for '= false' on these matches only the declarations). tuneToChannel (2593) resets retryCount/audioFallbackAttempted/mtkMultichannelFfmpegApplied/the watchdog job and re-enables audio (2616), but never touches the video cap, never resets the SW/FFmpeg flags, and never rebuilds back to the hardware factory \u2014 it only swaps the MediaItem (2633). So the next channel inherits the SW-rebuilt player and the 480p cap for the entire session.",
+    "fix": "In tuneToChannel, clear the cap and re-probe hardware: trackSelector.setParameters(buildUponParameters().clearVideoSizeConstraints()), and if usingSoftwareVideoDecoder/usingFfmpegVideoDecoder are set, rebuild once with AudioPipelineFactory.createMtkAwareRenderersFactory and reset both flags to false so the new channel gets a fresh full-resolution HW attempt. Additionally, in the watchdog 'sustained playback confirmed' branch (line 1815), after N good polls clear the cap and attempt ONE upward step to the hardware factory; only fall back again if it re-stalls. Keep the cap sticky ONLY for known-bad MTK (mt8695/mt8167) where HW genuinely never works. The Retry button handler (2178-2189) should also clear the video cap, not just audio overrides.",
+    "benchmark": "Netflix/YouTube TV continuously re-evaluate decoder + throughput headroom and climb back to the maximum the panel/decoder support within seconds; a momentary dip causes a brief recoverable reduction, never a session-long lock to a low rung, and each new title/channel starts fresh at max attempt instead of inheriting the previous one's emergency downgrade. Note this is NOT an ABR claim (IPTV is single-bitrate) \u2014 it is the decoder/resolution axis, which the app really does have and really does abandon permanently.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as reported. Line references are slightly off (the 720->480 cap ladder is at 1746-1788 not 1759-1786, tuneToChannel is 2593-2676) but the mechanism is precisely right: cap+SW-factory never cleared, flags never reset, same trackSelector/player reused across zaps via tuneToChannel. The 'sustained playback' reset branch (1815-1821) only resets watchdogResetCount/consecutiveGoodPolls \u2014 verified it does NOT clear the cap or the factory. Severity P1 is correct. One scoping note the auditor missed: tuneToChannel DOES cancel and restart the watchdog (2609-2610 + STATE_READY at 1159), so the ladder COUNTER and the local hwDecoderProvenGood var reset per channel \u2014 but the persistent cap (on trackSelector) and the SW/FFmpeg fields (instance-level) survive, which is exactly why the downgrade is sticky despite the per-channel watchdog restart. This strengthens, not weakens, the finding.",
+    "dimension": "quality-decoder"
+  },
+  {
+    "id": "no-upward-requality",
+    "title": "No upward decoder/resolution re-probe after a transient VOD/Series downgrade \u2014 the rest of the title plays in SD software decode",
+    "severity": "P2",
+    "symptom": "A momentary wifi dip or one frozen-frame event drops a movie to software-decoded 720p/480p, and it stays there for the entire title even after the network/decoder fully recovers seconds later. The customer watches the rest of the movie at materially lower quality with no way to get HD back short of exiting and re-launching playback.",
+    "trigger": "VOD/Series: brief network starvation or a single decode stall escalates the watchdog to rebuildPlayerWithSoftwareDecoder()/rebuildPlayerWithFfmpegVideoDecoder() + a 720p/480p cap. Because the player isn't recreated mid-title and tuneToChannel only applies to Live, nothing ever re-probes hardware for the rest of the title.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1746-1788",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1815-1824",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1835-1899"
+    ],
+    "rootCause": "Every rebuild call (lines 1615/1647/1683/1704/1766/1775/1785) goes DOWN the ladder to a software/FFmpeg factory; grep confirms there is no rebuildPlayerWithHardware, no clearOverridesOfType(TRACK_TYPE_VIDEO), no reprobe/stepUp/escalateUp logic anywhere in the fragment. The only 'recovery' is the counter reset at 1815-1819 which leaves the applied cap and the software factory in place. For VOD/Series the same player persists for the whole title (no per-channel tuneToChannel path), so the degradation lasts the entire movie.",
+    "fix": "Add a debounced upward re-probe: after the SW/cap path has sustained smooth playback (e.g. SUSTAINED_PLAYBACK_POLLS x2 = ~12s) AND buffer health is good, do one controlled attempt at the current position \u2014 clearVideoSizeConstraints() + rebuild with the hardware factory, resetting usingSoftwareVideoDecoder/usingFfmpegVideoDecoder. If it re-stalls within a short window, fall back and mark the stream confirmed-bad for the rest of the title (don't oscillate). This mirrors ABR step-up logic but on the decoder/resolution axis \u2014 valid even though IPTV has no bitrate rungs.",
+    "benchmark": "Every top platform's quality controller is bidirectional: it backs off on starvation and ramps back up the instant headroom returns, targeting the max the device+panel support. A 5-second dip never costs the rest of the movie in SD. The single-bitrate triage caveat is correctly acknowledged \u2014 the missing rung here is decoder/resolution (SW 480p <-> HW native), not ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed. Verified by grep that NO upward re-probe / hardware-rebuild path exists; the ladder is strictly monotonic-down. The auditor rated this 'medium' confidence \u2014 I am raising verifier confidence to high because the code is unambiguous (zero re-probe matches). This overlaps heavily with sticky-resolution-cap (#1) \u2014 they share the same root cause (cap+factory never cleared); #1 is the Live-zap manifestation and #2 is the VOD-whole-title manifestation. Both are real and worth keeping distinct because the fixes land in different places (tuneToChannel for Live; the watchdog sustained-playback branch for VOD). P2 is appropriate for the VOD variant since it requires an actual transient stall first (less frequent than zapping).",
+    "dimension": "quality-decoder"
+  },
+  {
+    "id": "ultralow-hevc-main10-blackscreen",
+    "title": "ULTRA_LOW mt8695 devices 'try' HEVC Main 10 they can't decode \u2014 but the result is often an indefinite ~3fps FFmpeg slideshow with NO error, not just a delayed friendly error",
+    "severity": "P2",
+    "symptom": "On a known-incapable cheap Fire TV Stick (mt8695 / 900MB, e.g. AFTSS), opening a 10-bit HDR HEVC title shows a black screen with a spinner for several seconds while the watchdog churns, and then EITHER surfaces 'This content uses a video format not supported on this device' (the auditor's case) OR \u2014 more often \u2014 falls into an unwatchable ~3fps FFmpeg software-HEVC slideshow that never errors out, because a slideshow renders frames (just slowly) and so never trips the frozen-frame watchdog. Either way the customer experiences a long broken-looking hang on hardware the app already KNOWS is incapable.",
+    "trigger": "VOD/Series with HEVC Main 10 (hvc1.2*/hev1.2*) on a device where DeviceTierDetector.canDecodeHevcMain10() returns false (ULTRA_LOW, <1.2GB RAM, mt8695 AFTSS). isKnownBadMtk is true for mt8695, so the watchdog routes to rebuildPlayerWithFfmpegVideoDecoder() at reset=2.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1220-1245",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1662-1689",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1804-1812",
+      "app/src/main/java/com/ooustream/iptv/common/DeviceTier.kt:139-151"
+    ],
+    "rootCause": "v3.7.9 removed the upfront HEVC Main 10 refusal at onTracksChanged (line 1220-1245) \u2014 it now only logs HEVC_MAIN10_ATTEMPT and lets hardware try even when canDecodeHevcMain10()==false (1239-1245). When HW stalls, the watchdog routes mt8695 to rebuildPlayerWithFfmpegVideoDecoder() at reset=2 (1673-1685). FFmpeg software HEVC on a 4xA53 is ~3fps (acknowledged in CLAUDE.md). The v3.7.0-removed slideshow detector (comment at 1804-1812) means there is NO low-but-nonzero-fps detection: a 3fps slideshow advances frames each 2s poll, so currentFrames != lastRenderedFrameCount, the frozen timer never fires, and the give-up/friendly-error path (1596-1630) is never reached. So the friendly error the auditor credits as the eventual fallback frequently does NOT fire for this exact codec.",
+    "fix": "Restore a fast-fail for the genuinely-incapable case: in onTracksChanged, when cachedVideoCodecs is HEVC Main 10 AND canDecodeHevcMain10()==false AND tier is ULTRA_LOW, call showFriendlyError('Your device can't play HDR / 10-bit content') immediately (within ~1s) instead of entering the watchdog ladder at all. Separately, re-add a slideshow guard (sustained <~10fps over several polls => give up) so any future low-fps-but-not-frozen path can't strand the user in a permanent slideshow. Keep the relaxed 'let HW try' path only for tiers where the capability check is uncertain (the mt8695-with-more-RAM cases v3.7.9 was meant to unblock).",
+    "benchmark": "Netflix/Disney+ never serve a codec/profile the device can't decode (server-side capability negotiation), so the user always gets a playable stream; when a device truly can't play something the message is instant and explicit, never a multi-second black screen \u2014 and certainly never an indefinite single-digit-fps slideshow with no error.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Real symptom and correct root cause (v3.7.9 removed the fast-fail; verified at 1220-1245 \u2014 only logs HEVC_MAIN10_ATTEMPT). BUT the auditor OVER-CREDITED the friendly-error fallback. I traced the actual mt8695 path: isKnownBadMtk routes to FFmpeg software video at reset=2 (1673-1685), and HEVC IS in the AAR's enabled decoders so isFfmpegVideoAvailable('video/hevc') returns true. FFmpeg HEVC at ~3fps advances frames, so it does NOT trip the frozen-frame watchdog (which requires currentFrames == lastRenderedFrameCount) \u2014 meaning the showFriendlyError at 1628 the auditor relies on will frequently NEVER fire, and the user gets a permanent unwatchable slideshow instead of 'a delayed friendly error.' Only if FFmpeg renders ZERO frames (possible if the build's hevc config rejects 10-bit) does it freeze and error. So the real worst case is worse than the auditor stated. Also: the DeviceTier.canDecodeHevcMain10 doc comment (lines 132-134) still references a libVLC early-swap path that was DELETED in v3.7.0 \u2014 stale and misleading, but code-hygiene not customer-facing. Severity P2 holds (affects only ULTRA_LOW mt8695 + HEVC Main 10 content, a narrow slice), though the no-error slideshow variant arguably nudges toward P1 for that device class.",
+    "dimension": "quality-decoder"
+  },
+  {
+    "id": "black-screen-detail-to-play",
+    "title": "Detail\u2192play shows a black screen + tiny bare spinner instead of the title's art during the buffer window",
+    "severity": "P1",
+    "symptom": "Customer presses Play on a movie/episode and stares at a fully black screen with a small unstyled white spinner dead-center for ~2-5s (longer on weak wifi / mt8695) until ExoPlayer renders frame 1. No poster, no backdrop, no title, no scrim. Reads as 'the app froze' rather than 'your movie is loading'.",
+    "trigger": "Every VOD/Series playback start. Also every Live channel zap (tuneToChannel calls setMediaItem which clears the prior frame \u2192 STATE_BUFFERING \u2192 same bare spinner) \u2014 though Live zap additionally shows the ChannelZapOverlay with channel name, so the video area going black is slightly less disorienting there than on VOD/Series where there is literally nothing on screen.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:85-87",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:201-213",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:413-430",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:495"
+    ],
+    "rootCause": "VERIFIED. OoustreamPlaybackFragment forces backgroundType=BG_NONE (overridden setBackgroundType at lines 85-87) and view.setBackgroundColor(TRANSPARENT) (lines 202,207), so behind the Leanback video SurfaceView there is pure black until frame 1. The only loading affordance is showBufferingOverlay(true) (line 2151) which creates a raw ProgressBar(isIndeterminate=true) with WRAP_CONTENT + Gravity.CENTER, no scrim, no background, no text (lines 2154-2161). streamIcon IS plumbed through newInstance() (line 3406/3418, restored at 3435) and IS used by the controls bar (bar.bindVod(streamName, streamIcon) line 884; bindLive line 886), but is never displayed as a full-bleed startup backdrop. There is NO onRenderedFirstFrame handler in the fragment (the only onRenderedFirstFrame override is in ExoPlayerDiagnosticListener.kt:70, which just logs \u2014 it does not fade any art).",
+    "fix": "Add a full-bleed ImageView behind the Leanback video surface, load streamIcon/cover (rewriteBackdrop / PosterUrlRewriter) into it in onViewCreated with a dark gradient scrim, and keep it visible until first frame. Wire AnalyticsListener.onRenderedFirstFrame (or the existing diagnostic listener's callback) in the fragment to fade the backdrop out over ~200ms. Style showBufferingOverlay with a centered spinner over a subtle dim + optional 'Loading\u2026' label. Reuses art the fragment already holds.",
+    "benchmark": "Netflix/Disney+/Prime paint the title's key art (often the same backdrop from the detail page, shared-element) plus a branded spinner during pre-roll buffer, then crossfade to video on first frame \u2014 the customer never sees raw black between Play and picture. This bar genuinely applies to single-bitrate IPTV; it is a pure UX layer with no ABR dependency.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed and correctly diagnosed. Minor correction to the trigger framing: the auditor cited line 81 as the BG_NONE source \u2014 the actual force is the setBackgroundType override at lines 85-87 plus the onViewCreated TRANSPARENT calls at 201-213. Also: on channel zap the black gap is partly softened by ChannelZapOverlay showing channel name/EPG, so 'looks like the app froze' is most acute on VOD/Series start (where the screen is truly empty) \u2014 the symptom is universal but worst on VOD/Series. Severity P1 is correct: this is the single highest-frequency perceived-quality miss (100% of watch starts) and squarely below the <3s-acceptable bar in feel even when time-to-first-frame is fine.",
+    "dimension": "Loading states & perceived performance (browse \u2192 watch)"
+  },
+  {
+    "id": "spinner-flash-no-threshold-no-hold-frame",
+    "title": "Mid-stream rebuffer flashes a bare spinner with no minimum-display threshold and no hold-last-frame treatment",
+    "severity": "P1",
+    "symptom": "During a movie/live channel, a brief network dip replaces the picture with a spinner flash, then snaps back. On a flaky pipe it strobes repeatedly. A 300-500ms refill looks like a glitch/stutter rather than a smooth recovery.",
+    "trigger": "Any STATE_BUFFERING during playback: short network dips on single-bitrate IPTV, seek flushes, and the BUFFERING\u2192READY cycling the code itself documents (buffer-storm detection). Worst in the customer-side-bottleneck scenario (pipe drains and refills repeatedly).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1126-1152",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169"
+    ],
+    "rootCause": "VERIFIED. onPlaybackStateChanged calls showBufferingOverlay(true) immediately and synchronously on STATE_BUFFERING (line 1129) and showBufferingOverlay(false) on STATE_READY (line 1152). The overlay is a bare WRAP_CONTENT ProgressBar with no scrim (lines 2154-2161). There is no delayed/cancellable job gating the show (grep of all 6 showBufferingOverlay(true) call sites \u2014 1100,1114,1129,1379,1580 \u2014 confirms every one is a direct synchronous call) and no minimum-visible-time once shown, so sub-second refills strobe. ExoPlayer does hold the last decoded frame on the SurfaceView during BUFFERING, but the opaque centered spinner over the otherwise-bare surface still reads as a flash.",
+    "fix": "Gate showBufferingOverlay(true) behind a ~600-800ms delayed coroutine job cancelled if STATE_READY arrives first (sub-second refills never show a spinner), enforce ~500ms minimum visible once shown (can't strobe), and dim the held last frame rather than centering a stark spinner on black. Escalate to a fuller 'still buffering' treatment only after a few seconds. Leverages the last frame ExoPlayer already holds.",
+    "benchmark": "Top platforms debounce the buffering indicator, hold the last frame under a subtle scrim, and surface a spinner only after the dip exceeds a grace window \u2014 transient rebuffer recoveries are perceptually invisible. This is a buffering-UX concern, not ABR, so it applies fully to single-bitrate IPTV.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed. The cited existing mitigations (buffer-storm FFmpeg rebuild lines 1131-1149, stall detector, frame watchdog) are real but address decoder/codec FREEZES and reduce rebuffer FREQUENCY \u2014 they do nothing for the perceived jank of a short transient dip, exactly as the auditor states; no over-crediting here. Severity is borderline P1/P2: it does not interrupt the ability to watch (the stream recovers in <1s) so by the strict rubric it is a 'noticeable hiccup that degrades the experience' rather than a break \u2014 P1 is defensible because on a flaky connection the strobing is repeated and very visible, but a reviewer could fairly grade it P2. Keeping P1 with this caveat.",
+    "dimension": "Loading states & perceived performance (browse \u2192 watch)"
+  },
+  {
+    "id": "empty-category-skeletons-forever",
+    "title": "Empty VOD/Series category can leave fake shimmer skeletons on screen permanently (no empty-state, swap gated on non-empty)",
+    "severity": "P2",
+    "symptom": "Customer lands on a Movies/Series view whose first-loaded category resolves empty (empty server category, an over-filtered New Releases, or a fully parental-blocked category) and sees 10 shimmering placeholder posters that never resolve \u2014 looks perpetually loading with no explanation.",
+    "trigger": "NARROWER than the auditor states. The skeleton\u2192real swap is gated on isNotEmpty AND skeletonSwapped is a one-shot local var per fragment instance. So shimmer-forever only happens when the FIRST category that loads for this fragment instance resolves empty. Once ANY non-empty category has loaded, skeletonSwapped=true and the real adapter stays \u2014 a subsequently-selected empty category then shows a BLANK real grid (still bad, but not shimmering). Reachable empty-first cases: NEW_RELEASES year-filter yields nothing (VodViewModel:106-117), an else category with zero streams (line 118-121), or a category 100% parental-blocked by filterContent.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt:233-253",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt:118-122",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt:215-232",
+      "app/src/main/java/com/ooustream/iptv/vod/VodViewModel.kt:77-127"
+    ],
+    "rootCause": "VERIFIED. posterGrid.adapter is set to ItemBridgeAdapter(skeletonAdapter) with 10 fixed shimmer items (SeriesFragment:120-122; same in VodFragment). The swap is `if (!skeletonSwapped && movies.isNotEmpty())` (VodFragment:240) / `series.isNotEmpty()` (SeriesFragment:220). _movies/_seriesList CAN emit empty (VodViewModel:111,120 set the value to a filtered list that may be empty). VodViewModel HAS an _isLoading flag (line 31/55/67) but NEITHER fragment observes it \u2014 there is no branch distinguishing 'still loading' from 'loaded but empty', and no empty-state view or 'No titles' message (grep confirms zero empty-state strings in either fragment). PosterSkeletonPresenter has no self-timeout (no postDelayed/stopShimmer), so skeletons shimmer until the adapter is swapped.",
+    "fix": "Observe _isLoading alongside the list. When the list emits empty AND loading has completed, swap the skeleton adapter out for a small friendly empty-state view ('No titles in this category') instead of leaving skeletons up. Reset the swapped/skeleton state on each selectCategory so a later empty category also shows the empty-state rather than a blank real grid.",
+    "benchmark": "Streaming apps never leave skeletons up indefinitely \u2014 once a request resolves empty they show a short friendly empty-state and the loader is gone within the request window.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Real, but the auditor overstated the trigger. It is NOT 'any empty category the user navigates into' \u2014 because skeletonSwapped is a one-shot per fragment instance, only the FIRST-loaded category matters for the shimmer-forever symptom; a later empty category shows a blank-but-static real grid (no shimmer). The favorites-empty fallback (v2.8.1, VodViewModel loadCategories:59-66) auto-selects the first real category, so the most common path avoids an empty default. Net: a real 'is it broken?' moment but with a narrower trigger than claimed. P2 is fair (arguably P3 given the narrow first-load-empty trigger); the auditor's 'permanent fake-loading' framing is accurate only for that first-load case.",
+    "dimension": "Loading states & perceived performance (browse \u2192 watch)"
+  },
+  {
+    "id": "poster-shimmer-dismisses-before-art-loads",
+    "title": "Poster shimmer dismisses at 300ms keyed to image.drawable!=null, which is true the instant the synchronous color placeholder is set",
+    "severity": "P3",
+    "symptom": "On a slow connection or cold cache, the shimmer disappears after ~300ms leaving a flat dominant-color (or default dark-blue) rectangle with no artwork for another second+. The card looks 'done loading' while still blank \u2014 a subtle 'the app gave up on this poster' feel.",
+    "trigger": "Scrolling VOD/Series/Home grids on slow networks or cold image cache, where the real poster bitmap takes >300ms to download after the placeholder ColorDrawable is set synchronously.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/PosterPresenter.kt:113-138",
+      "app/src/main/java/com/ooustream/iptv/common/ProgressiveImageLoader.kt:39-77"
+    ],
+    "rootCause": "VERIFIED. PosterPresenter starts shimmer (lines 114-116), calls ProgressiveImageLoader.loadThumbnail (line 120) which sets a ColorDrawable placeholder synchronously via Coil's placeholder() (ProgressiveImageLoader:49-53; and for null URLs setImageDrawable directly at line 40), then at 300ms checks `if (image.drawable != null)` (PosterPresenter:124) to dismiss shimmer. Because the placeholder makes image.drawable non-null almost immediately, the 300ms check passes regardless of whether the real bitmap arrived \u2014 shimmer fades over the placeholder. The 1500ms safety (lines 135-138) unconditionally kills shimmer too. Coil DOES have an onSuccess listener wired (ProgressiveImageLoader:62-75) but only for Palette extraction; it is not used to drive shimmer dismissal.",
+    "fix": "Drive shimmer dismissal from Coil's actual load result, not a 300ms drawable!=null poll: add/extend an onSuccess (and onError) callback in loadThumbnail (or expose a completion lambda) and only stop/fade the shimmer when the real bitmap is set. Keep the 1500ms timeout purely as a safety net.",
+    "benchmark": "Netflix/Prime keep the shimmer/placeholder running until the actual poster bitmap is decoded and presented, then crossfade \u2014 the loading affordance ends precisely when content appears, never before.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as described. The crossfade(150) (ProgressiveImageLoader:54) softens the eventual placeholder\u2192real swap, and dominant-color placeholders make the gap less ugly \u2014 but neither closes the gap that the shimmer signal ends early on slow networks. Bumped my confidence from the auditor's 'medium' to high: the synchronous-placeholder-makes-drawable-non-null mechanism is unambiguous in the code. P3 is correct (pure polish vs Netflix, cosmetic only on slow/cold-cache scrolling, no functional impact).",
+    "dimension": "Loading states & perceived performance (browse \u2192 watch)"
+  },
+  {
+    "id": "cc-on-but-nothing-renders",
+    "title": "CC toggle says \"CC On\" even when no subtitle track exists or matches \u2014 customer enables captions, nothing ever appears",
+    "severity": "P1",
+    "symptom": "Customer presses the CC button (or KEYCODE_CAPTIONS remote key). The button turns gold and reads \"CC On\", a toast says \"Subtitles On\" \u2014 but no captions ever appear because the stream carries no embedded TEXT tracks (common for IPTV transcodes and live channels) or has subs only in a non-preferred language. The user concludes \"CC is broken\" and re-toggles to the same fake-positive state.",
+    "trigger": "Pressing the CC fast-path button on any VOD/Series/Live stream with zero TEXT track groups, or whose only subtitle languages differ from subtitlePreferences.preferredLanguage (default 'en'). subtitlesEnabled defaults to false (SubtitlePreferences.kt:15), so the CC button IS the primary way users turn captions on \u2014 making this the dominant path, not an edge case.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2866-2888",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:636-643",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:478-492"
+    ],
+    "rootCause": "toggleClosedCaptions() (2866) computes newEnabled purely from the inverse of the current TEXT-disabled flag, then immediately calls controlsBar?.updateCcState(newEnabled) (2879) + a hardcoded \"Subtitles On\" toast (2881-2882). It never checks player.currentTracks for any C.TRACK_TYPE_TEXT group and never verifies post-enable that the selector actually selected a text track. setTrackTypeDisabled(TEXT,false)+setPreferredTextLanguage only express a preference \u2014 if no matching/any track exists, onCues never fires (verified: the only sv.setCues call is at 2802 inside onCues) yet the UI already committed to the gold 'On' state. The track-picker dismiss path (640-643) has the identical fake-positive: it reads only disabledTrackTypes, never whether a track is actually selected.",
+    "fix": "In toggleClosedCaptions(), before enabling, check player.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }. If none: keep state Off + toast 'No subtitles available for this content'. If some exist, enable then hook the next onTracksChanged/onCues (or post a ~300ms delayed check): if no TEXT track ended up selected, either auto-select the first available text track regardless of language so 'On' always shows something, or revert to Off with a toast naming the available languages. Mirror the actually-selected check in the picker onTrackSelected handler (636-643) so updateCcState reflects a real selection, not just the disabled flag.",
+    "benchmark": "Netflix/Disney+ only surface CC for tracks that exist and, when the profile-preferred language is absent, fall back to an available language or a clearly-labeled Off \u2014 never a silent 'On' with nothing rendering. Toggle state always reflects an actually-rendering track. This benchmark applies cleanly to IPTV (it is about track presence, not ABR).",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as reported. The default subtitlesEnabled=false (SubtitlePreferences.kt:15) actually STRENGTHENS this finding: the CC button is the main entry point, so the fake-positive is hit on the first thing a captions-wanting customer does. P1 severity is correct.",
+    "dimension": "subtitles-cc"
+  },
+  {
+    "id": "subs-not-reapplied-or-cleared-next-episode",
+    "title": "Manual non-preferred subtitle choice is dropped on next-episode autoplay; self-test stops validating after episode 1 (frozen-frame claim is wrong)",
+    "severity": "P2",
+    "symptom": "Series binge with captions ON: (b) if the user manually picked a NON-preferred-language subtitle via the track picker on the prior episode, that explicit per-track override is lost on the next episode \u2014 captions revert to the preferred language (or vanish if the next episode lacks the preferred language). (c) the subtitle pipeline self-test never re-runs for episodes 2..N, so a SUBTITLE_PIPELINE_BROKEN regression would go unlogged after the first episode (diagnostic-only, no direct customer symptom). The auditor's claimed symptom (a) \u2014 last caption frozen on screen through the whole buffering gap \u2014 does NOT occur.",
+    "trigger": "Binge countdown onPlayNext (478-504) or manual skipToNextEpisode() (2332-2358), both of which reuse the SAME ExoPlayer via setMediaItem(next.url)+prepare()+play() without re-applying subtitle params or resetting subtitleSelfTestRan. Fires on every episode boundary in a binge session \u2014 but only matters when captions are ON (default OFF).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:478-504",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2332-2358",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2603-2619",
+      "app/src/main/java/com/ooustream/iptv/player/TrackPickerOverlay.kt:489-503"
+    ],
+    "rootCause": "Both next-episode paths only setMediaItem; unlike tuneToChannel (2613-2619) they do NOT reset subtitleSelfTestRan (only tuneToChannel resets it at 2603, so the self-test's `if (subtitleSelfTestRan) return` guard at 2835 blocks it for episodes 2+). For (b): the picker applies a per-track TrackSelectionOverride(group.mediaTrackGroup,...) (TrackPickerOverlay.kt:489) which references the OLD media's track group and is invalid for the new MediaItem. HOWEVER the picker ALSO calls setPreferredTextLanguage(track.language) (line 500) and saveSelectedSubtitleLanguage() persists it (2891-2904), so the chosen LANGUAGE preference does carry into the next episode via the shared trackSelector \u2014 only the exact per-track override is lost. For (a): REFUTED \u2014 decompiled Media3 1.10.0 TextRenderer.onPositionReset() and onDisabled() both call clearOutput() which emits an empty CueGroup (ImmutableList.of()) \u2192 invokeUpdateOutputInternal \u2192 output.onCues(empty) \u2192 the fragment's cueListener (2799-2811) \u2192 sv.setCues(emptyList()). So setMediaItem+prepare DOES clear the old cue within a frame; the SubtitleView does not hold a stale line through the gap.",
+    "fix": "Extract reapplySubtitleState() = the 2616-2618 lines (re-enable TEXT per pref + setPreferredTextLanguage) + subtitleSelfTestRan=false, and call it from onPlayNext (490) and skipToNextEpisode (2344) right after setMediaItem. This restores per-episode self-test coverage and makes the language carry-over explicit instead of relying on the shared selector's implicit state. The frozen-cue 'setCues(emptyList()) on transition' part of the auditor's fix is unnecessary (TextRenderer already clears). For (b), if exact per-track persistence is wanted, re-resolve the override by language on the next onTracksChanged \u2014 but since the language preference already carries, this is low value.",
+    "benchmark": "Netflix/Disney+ carry subtitle on/off + language selection seamlessly into the next binge episode with no caption ghosting. This app already mostly achieves that (language pref carries, TextRenderer clears stale cues); the real residual gaps are the lost exact-track override and the stopped diagnostic self-test.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "DOWNGRADED P1\u2192P2 and substantially corrected. Symptom (a) 'previous episode's last caption freezes on screen until the new stream emits a cue' is REFUTED by decompiling Media3 1.10.0 TextRenderer: onPositionReset/onDisabled both call clearOutput()\u2192onCues(empty)\u2192sv.setCues(emptyList()), so the cue clears on transition \u2014 there is no ghost frame. Symptom (b) is real but narrower than stated: the language PREFERENCE does survive (picker sets setPreferredTextLanguage AND saveSelectedSubtitleLanguage persists it); only the exact per-track override dies. Symptom (c) self-test stopping after ep1 is CONFIRMED but is diagnostic-only with no customer-felt impact. Combined with the default subtitlesEnabled=false (only captions-ON bingers are affected) and the refuted frozen-frame, this is P2, not P1.",
+    "dimension": "subtitles-cc"
+  },
+  {
+    "id": "subs-behind-controls-bar",
+    "title": "Subtitles render behind the controls bar and get dimmed/overlapped whenever controls appear",
+    "severity": "P2",
+    "symptom": "While reading captions the customer presses OK / a D-pad key and the controls bar fades in. The bottom scrim + seek bar + EPG/info row + action buttons draw on top of the subtitle text (anchored ~8% from bottom \u2014 squarely in the controls band), so the active caption is dimmed by the scrim and can be partially covered by the seek/info row for the controls' visible window. A line of dialogue is lost each time the remote is touched (worst during scrubbing, exactly when reading matters).",
+    "trigger": "Any time playback controls are shown (OK press, seek/scrub, pause, channel banner) while a subtitle cue is on screen.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:735-736",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:748-755",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:757-770",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2794"
+    ],
+    "rootCause": "configureSubtitleView adds the SubtitleView to the fragment root at 736, then the full-screen MATCH_PARENT PlayerControlsBar is addView'd at 749 AFTER it \u2014 so the controls bar is higher in z-order and paints over the SubtitleView. Verified there is no subtitleView.bringToFront()/elevation/translationZ anywhere. The fixed bottom padding screenHeight*0.08 (2794) puts captions in the controls band, and controlsManager.onVisibilityChanged (757-770) only toggles the Leanback dock's descendant focusability \u2014 it never raises the subtitle padding or brings it to front when controls show.",
+    "fix": "Add the SubtitleView AFTER the controls bar (or call subtitleView.bringToFront()) so captions always draw above the scrim, AND in onVisibilityChanged raise the SubtitleView bottom padding while controls are visible (e.g. ~22% from bottom, clearing the band) and restore to 8% when controls hide, animated to match the controls fade.",
+    "benchmark": "Netflix/Disney+/Prime animate subtitles upward above the transport controls the instant controls appear, so dialogue is never covered/dimmed while scrubbing. This is a generic z-order/positioning behavior, not ABR-specific \u2014 it applies to IPTV.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed: view-tree order (sub at 736, bar at 749) and 8% padding (2794) verified; no bringToFront/elevation exists. Minor nuance the auditor over-stated \u2014 the controls bar is mostly transparent and the strong black caption outline (EDGE_TYPE_OUTLINE default) keeps text legible against the scrim, so it's dimming/partial-overlap rather than full occlusion. P2 is the right severity (polish gap, not a watch-breaker).",
+    "dimension": "subtitles-cc"
+  },
+  {
+    "id": "wrong-image-cache-trimmed",
+    "title": "trimForPlayback() clears the wrong (effectively empty) Coil cache \u2014 the real display cache stays resident for the whole movie",
+    "severity": "P2",
+    "symptom": "On a long movie on a 1GB Fire TV, available heap during playback is ~14-19MB lower than the design intends because the poster bitmaps scrolled past in Home/VOD/Series grids stay resident. On worst-case content (FFmpeg software video decode, multi-MB YUV frame buffers), this is headroom that contributes to GC-pressure micro-stutters; in the tail it is an OOM-risk amplifier (not the primary cause). The customer can't attribute it to anything.",
+    "trigger": "Pressing play on any VOD/Series after browsing the grids (which fill the Coil singleton cache), most acutely on mt8695/mt8167 content that escalates to the FFmpeg software video decoder mid-movie.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/OoustreamApp.kt:64-80",
+      "app/src/main/java/com/ooustream/iptv/common/AdaptiveImageLoader.kt:16-43",
+      "app/src/main/java/com/ooustream/iptv/di/AppModule.kt:26-30",
+      "app/src/main/java/com/ooustream/iptv/data/repository/PredictivePreFetcher.kt:25",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:393",
+      "app/src/main/java/com/ooustream/iptv/common/ProgressiveImageLoader.kt:46-89"
+    ],
+    "rootCause": "Two separate Coil ImageLoaders exist. OoustreamApp implements ImageLoaderFactory.newImageLoader() (maxSizePercent(0.15), NO allowRgb565) \u2014 this is the singleton every imageView.load()/coil.load resolves to via context.imageLoader, and ALL on-screen poster/channel loading goes through ProgressiveImageLoader.loadThumbnail/loadFullRes which call imageView.load(). Separately, AdaptiveImageLoader (Hilt @Singleton, allowRgb565(true)) is provided as the injectable ImageLoader (AppModule:28) but is injected into exactly ONE consumer \u2014 PredictivePreFetcher \u2014 which never calls it (it only prefetches EPG). So AdaptiveImageLoader's cache is effectively never populated by anything. OoustreamPlaybackFragment.trimForPlayback() at line 393 clears AdaptiveImageLoader.imageLoader.memoryCache \u2014 a near-empty cache \u2014 so it is a no-op for the bitmaps that are actually resident. The real display cache (the app singleton's) is never trimmed on entering playback.",
+    "fix": "Collapse to ONE ImageLoader: have OoustreamApp.newImageLoader() return adaptiveImageLoader.imageLoader (and add allowRgb565(true) \u2014 currently the survivor lacks it, doubling bitmap bytes), so imageView.load() and the injected loader are the same instance. Then make trimForPlayback() target that singleton via context.imageLoader and, instead of full clear() (which re-shimmers Home \u2014 the comment at lines 218-220 is the reason it was softened), call memoryCache.trimToSize(maxSize/4) on player entry and let it refill on exit.",
+    "benchmark": "Netflix/Prime run a single tightly-budgeted image pipeline and aggressively evict browse-tier artwork when entering the player so the decoder owns the heap; they never run two competing caches and downsample (RGB565-equivalent) on constrained TV hardware. This part of the benchmark legitimately applies \u2014 it is about image-cache hygiene, not ABR.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity corrected P1->P2 and the magnitude was inflated. (1) The cache is a HARD BYTE CEILING (maxSizePercent(0.15) of memoryClass), so on a 1GB stick (memoryClass ~96-128MB) it tops out at ~14-19MB, not 24-27MB; ARGB_8888 vs RGB565 changes how many bitmaps fit under the cap, NOT the cap itself, so 'doubling bitmap bytes' does not produce 24-27MB resident. (2) The auditor framed this purely as a no-op-trim, but the deeper truth is the AdaptiveImageLoader instance is never used at all (PredictivePreFetcher injects it and never calls it), making the RGB565 setting also dead. (3) On a 2h movie the dominant heap consumer is decoder + YUV frame buffers, not posters, so this is an OOM amplifier at the margin, not a primary cause \u2014 P2, a felt-only-on-worst-case hiccup. Still a real wiring bug worth fixing.",
+    "dimension": "Memory & stability under playback (1GB Fire TV)"
+  },
+  {
+    "id": "no-proactive-memory-mitigation",
+    "title": "Health monitor logs heap every 60s but never acts on it \u2014 no app-level dynamic memory response during a long movie",
+    "severity": "P2",
+    "symptom": "Late in a long FFmpeg-software-decoded movie on a 1GB stick, heap pressure builds and the app takes no proactive step (no buffer tightening); in the tail risk the player dies with no warning. The only artifact is a SYSTEM/MEMORY log line read after the fact.",
+    "trigger": "90-120 minute VOD/Series on a 1GB device, especially after the watchdog has escalated to FFmpeg/platform software video decode (uncompressed frame buffers + larger decoded queue).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/PlaybackHealthMonitor.kt:102-109",
+      "app/src/main/java/com/ooustream/iptv/OoustreamApp.kt:29-30",
+      "app/src/main/AndroidManifest.xml:31"
+    ],
+    "rootCause": "PlaybackHealthMonitor's 60s memory tick (lines 103-108) computes used/total/free and calls logger.logMemory(...) \u2014 that is the entire action; there is no threshold branch that trims caches or reduces buffer targets. Confirmed via grep that NO onTrimMemory/ComponentCallbacks2/registerComponentCallbacks/onLowMemory exists anywhere in app/src, and no trimToSize call exists anywhere \u2014 so there is no app-level dynamic response. All memory defenses (largeHeap, tier buffer caps, the <=192MB low-memory load control at OoustreamPlaybackFragment:226, safeReleasePlayer) are chosen ONCE at player init.",
+    "fix": "(1) In the 60s memory tick, when freeMb falls below a tier-aware threshold (e.g. used > 85% of maxMemory), trim the (unified) imageLoader.memoryCache and log a MEMORY_TRIM event. (2) The bigger lever on a single-bitrate IPTV stream is buffers: register a ComponentCallbacks2 in OoustreamApp that, when a player is foregrounded and TRIM_MEMORY_RUNNING_CRITICAL fires, nudges the load control toward smaller buffer targets. Image-cache trimming alone is low-value here since the image cache is small relative to decoder buffers.",
+    "benchmark": "Netflix/YouTube TV treat onTrimMemory as a first-class signal and tighten working-set/buffering under system pressure, biasing toward holding the decoder over browse artwork. The benchmark applies for the buffer-tightening half; the image-cache half is largely already covered by Coil (see correction).",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Severity corrected P1->P2 and the auditor OVER-CREDITED the gap with a factual error. The claim that 'the system's own low-memory signal is ignored' is WRONG: Coil 2.x's RealImageLoader registers its OWN internal ComponentCallbacks2 and trims its memory cache automatically on TRIM_MEMORY_* \u2014 so the image cache IS shed under system pressure even without an app-level handler. The real, narrower residual gap is that there is no app-level dynamic BUFFER tightening (load control is static at init). That is real but smaller than the auditor's framing, and on a 1GB stick the existing static defenses (forLowMemory caps at <=192MB heap: VOD min/max 10s/30s; tier resolution caps; safeReleasePlayer) already bound steady-state footprint well. This is a polish/robustness gap (P2), not a P1 \u2014 there is no evidence in code or the documented customer reports of OOM-during-steady-playback once the <=192MB low-memory path is active.",
+    "dimension": "Memory & stability under playback (1GB Fire TV)"
+  },
+  {
+    "id": "instant-buffering-spinner",
+    "title": "Buffering spinner shows instantly on every dip \u2014 no grace period to hide sub-second IPTV rebuffers",
+    "severity": "P2",
+    "symptom": "During a long movie on imperfect wifi, the customer sees the loading spinner flash over the held video frame for a fraction of a second, repeatedly. The picture is fine but the flashing spinner makes it feel unstable and cheap vs Netflix, where the same dip is invisible.",
+    "trigger": "Any short STATE_BUFFERING->STATE_READY round-trip \u2014 very common on single-bitrate IPTV VOD where a momentary throughput dip forces a brief refill. Fires on sub-300ms dips the user would otherwise never notice.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1129",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1151-1152",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169"
+    ],
+    "rootCause": "onPlaybackStateChanged STATE_BUFFERING (line 1129) calls showBufferingOverlay(true) synchronously and immediately; STATE_READY (line 1152) calls showBufferingOverlay(false). showBufferingOverlay (lines 2151-2169) just flips a ProgressBar VISIBLE/GONE with no debounce. A 200ms buffering blip still toggles the spinner on then off, painting a visible flash over a held frame.",
+    "fix": "Debounce the spinner: on STATE_BUFFERING post a delayed (600-800ms) showBufferingOverlay(true) stored in a Handler/Job field; on STATE_READY cancel the pending show AND hide. Dips shorter than the grace window never paint a spinner (frame just holds, like Netflix), while genuine multi-second stalls still show it. Leave the existing stall-detector/frame-watchdog timers untouched \u2014 they operate independently.",
+    "benchmark": "Netflix/YouTube/Disney+ hold the last frame and reveal a loading indicator only after a sustained threshold (~0.5-1s); sub-second rebuffers are designed to be invisible. This applies to single-bitrate IPTV because it is purely a UX grace-window, not an ABR claim.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as written; severity P2 is correct. Verified the spinner is not debounced anywhere else: the stall detector (startStallDetector, line 1492) and frame watchdog are independent recovery timers and do not gate the STATE_BUFFERING->showBufferingOverlay(true) call, so they don't mitigate this. The held-last-frame behaviour the auditor credits is correct (ExoPlayer surface holds the last decoded frame on a brief rebuffer).",
+    "dimension": "Memory & stability under playback (1GB Fire TV)"
+  },
+  {
+    "id": "diagnostic-flush-on-main-thread",
+    "title": "Diagnostic logger flushes to disk on every event from the player/main thread \u2014 self-amplifying jank during a degraded stretch",
+    "severity": "P3",
+    "symptom": "When a movie is already struggling (frames dropping, audio underruns, buffer churn), each event triggers a synchronous flushed disk write on the main thread, adding a few ms of main-thread I/O exactly when the device is most stressed \u2014 a small contribution to the stutter being logged.",
+    "trigger": "Bursts of diagnostic events during a degraded stretch: FRAMES_DROPPED, AUDIO_UNDERRUN, AUDIO_FORMAT_CHANGED, repeated STATE_BUFFERING/READY, decoder re-inits \u2014 each routes to StreamDiagnosticLogger.write() which flush()es immediately.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/StreamDiagnosticLogger.kt:280-291",
+      "app/src/main/java/com/ooustream/iptv/player/ExoPlayerDiagnosticListener.kt:74-154",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:305-311"
+    ],
+    "rootCause": "write() (line 281, @Synchronized) does writer?.write(line) then writer?.flush() on EVERY call. The log methods are invoked directly from ExoPlayer's AnalyticsListener callbacks (onDroppedVideoFrames, onAudioUnderrun, onAudioInputFormatChanged, etc.) which run on the player's application looper. The player is built (OoustreamPlaybackFragment:305-311) with NO setPlaybackLooper, so the application looper IS the main thread \u2014 every diagnostic event is a synchronous flushed file write on the UI thread, serialized via the @Synchronized monitor during a burst.",
+    "fix": "Post log writes to a dedicated single-thread HandlerThread/dispatcher and replace flush-per-line with periodic flush (every 1-2s or N lines), with explicit flush in CrashLogger's uncaught-exception handler and in onPause/onDestroyView so the crash tail is still captured. Note the logger already exposes flush points (lines 238, 330) the fix can lean on.",
+    "benchmark": "Production players batch diagnostics off the playback thread and flush asynchronously; crash durability is handled by flushing in the crash handler, not by flushing every routine event. Applies generally.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed. Severity P3 is appropriate \u2014 the per-event main-thread flush is real and lands at the worst moment, but the magnitude is a few ms of buffered-write flush per event (BufferedWriter + small lines), and these bursts are not the typical case, so it is a polish/robustness gap, not a felt interruption on its own. The threading claim was verified: the player has no separate playback looper, so AnalyticsListener callbacks do run on main.",
+    "dimension": "Memory & stability under playback (1GB Fire TV)"
+  },
+  {
+    "id": "buffering-state-not-retried-on-network-return",
+    "title": "Wifi returns but player keeps spinning \u2014 fast-retry path skips the STATE_BUFFERING case",
+    "severity": "P1",
+    "symptom": "After a wifi/router blip that fully drops then restores the network connection (firing onLost\u2192onAvailable), the picture can stay frozen with a bare spinner until the 15s (LIVE) / 30s (VOD) stall detector or 30s OkHttp readTimeout fires \u2014 even though the OS already signalled the network is back.",
+    "trigger": "A wifi blip severe enough that ConnectivityManager fires onLost then onAvailable (full wifi reconnect, or default-network switch), while ExoPlayer is still sitting in STATE_BUFFERING on the old socket with playerError == null (socket not yet timed out).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1373-1390",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1491-1518",
+      "app/src/main/java/com/ooustream/iptv/player/StreamingDataFactories.kt:62-65",
+      "app/src/main/java/com/ooustream/iptv/di/NetworkModule.kt:45-50"
+    ],
+    "rootCause": "Verified: the network-return branch at line 1383 gates re-prepare on `if (p.playbackState == Player.STATE_IDLE || p.playerError != null)`. During a blip the player is STATE_BUFFERING with no error, so the branch is false and the restored-connectivity signal is ignored. The frame watchdog (line 1557) only runs in STATE_READY so it does NOT cover buffering. Recovery is left to the stall detector (STALL_TIMEOUT_LIVE_MS=15s / STALL_TIMEOUT_VOD_MS=30s, lines 3388-3389) which does p.stop()+prepare(), or the OkHttp readTimeout. Confirmed the streaming DataSource reuses the injected singleton OkHttpClient (StreamingDataFactories.buildDataSourceFactory passes it straight into OkHttpDataSource.Factory with no timeout override), so ExoPlayer streaming inherits NetworkModule's 30s connect/read/write timeouts.",
+    "fix": "Broaden the network-return guard to also handle STATE_BUFFERING: `if (p.playbackState == Player.STATE_IDLE || p.playbackState == Player.STATE_BUFFERING || p.playerError != null) { retryCount = 0; p.prepare() (LIVE: p.seekToDefaultPosition() first); p.play() }`. ExoPlayer re-opens the source from the current position without clearing the held SurfaceView frame. Also lower the streaming client's connect/read timeouts (8-10s) so the error-driven path is fast when the socket truly died \u2014 but do this on a SEPARATE stream-only OkHttpClient, NOT the shared singleton (the Retrofit API path legitimately wants 30s for slow get_live_streams payloads, and the singleton is also reused by EPG/auth).",
+    "benchmark": "The connectivity-callback-driven instant re-request pattern is genuinely what Netflix/YouTube TV do and it applies to single-bitrate IPTV too (re-open the HTTP byte stream from the current position). The ABR 'request the next segment' framing is IPTV-inapt, but the core idea \u2014 act on the OS connectivity signal instead of waiting on a 30s socket \u2014 is valid.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity downgraded P0\u2192P1. The auditor over-states this as 'the single most common scenario.' A large class of transient wifi blips keeps the SAME Network handle (device stays associated; AP momentarily drops packets) and fires NO onLost/onAvailable at all \u2014 in that case ExoPlayer auto-resumes from STATE_BUFFERING the instant bytes flow again with no prepare() needed, so the premise 'NetworkMonitor.onAvailable fired, the app already KNOWS the network is back' is FALSE and nothing is broken. The bug only bites when onLost\u2192onAvailable actually fired AND the player hasn't yet errored to IDLE. The stall detector also backstops it at 15s/30s (annoying, not broken). Real and worth fixing, but P1 (intermittent slow reconnect), not P0 (frequently breaks watching). Also: the auditor OVER-CREDITED the existing mitigation by claiming the collector 'DOES handle the hard-disconnect-then-reconnect case' \u2014 it only does so if the player has already transitioned to STATE_IDLE/playerError by the time onAvailable fires; on a fast reconnect (blip << 30s readTimeout) the player is still STATE_BUFFERING, so even the hard-disconnect case has the same hole.",
+    "dimension": "network-reconnect"
+  },
+  {
+    "id": "no-wake-mode-network",
+    "title": "No WAKE_MODE_NETWORK \u2014 Fire TV radio/CPU can throttle during a stall",
+    "severity": "P2",
+    "symptom": "On a marginal connection, buffer refills/reconnects can take slightly longer and transient dips are marginally more likely to become full stalls, because the device is free to drop CPU frequency / put the wifi radio in power-save exactly while the player is trying to pull bytes to recover.",
+    "trigger": "Any mid-watch buffering stall on Fire TV, especially weak wifi where the buffer drains and the player sits in STATE_BUFFERING for several seconds.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:305-311",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1362-1369",
+      "app/src/main/AndroidManifest.xml:20"
+    ],
+    "rootCause": "Verified: none of the 6 ExoPlayer.Builder sites (main at 305, three rebuild factories at 1867/1987/2075, two MultiView at MultiViewPlayerManager.kt:115/452) call setWakeMode(C.WAKE_MODE_NETWORK), so ExoPlayer defaults to WAKE_MODE_NONE \u2014 no partial wake lock and no wifi lock during playback. The only awake mechanism is FLAG_KEEP_SCREEN_ON in onIsPlayingChanged (lines 1364-1367), which addresses the display only and is actually CLEARED when isPlaying flips false \u2014 i.e. removed during a buffering stall, exactly when the radio should stay responsive. WAKE_LOCK permission IS already present in the manifest (line 20), so the fix is a one-liner with no manifest change needed.",
+    "fix": "Add .setWakeMode(C.WAKE_MODE_NETWORK) to the ExoPlayer.Builder at line 305 and the three rebuild factories (and MultiView). ExoPlayer then holds a partial wake lock + WifiLock for the playback duration (acquires/releases automatically with playWhenReady), keeping the radio out of power-save during refills. WAKE_LOCK is already granted; ExoPlayer's WifiLockManager handles the wifi lock internally with no extra permission.",
+    "benchmark": "WAKE_MODE_NETWORK for streamed media is recommended by the ExoPlayer integration guide and is standard for TV streaming players; it's a reliability hedge so refills aren't sabotaged by radio power-save.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity downgraded P1\u2192P2. The gap is real and unmitigated, but on Fire TV during ACTIVE watching the display is on and the system generally stays out of deep doze, so the customer-felt impact is 'reconnects sometimes a bit slower on marginal wifi,' not a frequent or reproducible hiccup \u2014 that's polish/reliability (P2), not a noticeable per-session degradation (P1). Still a correct best-practices fix worth landing. Auditor correctly noted the WAKE_LOCK permission is present and FLAG_KEEP_SCREEN_ON doesn't cover the network path \u2014 both verified accurate.",
+    "dimension": "network-reconnect"
+  },
+  {
+    "id": "reconnect-ux-bare-unlabeled-spinner",
+    "title": "Reconnect UX is a bare unlabeled spinner \u2014 no Reconnecting message, no offline distinction",
+    "severity": "P2",
+    "symptom": "On any stall or network drop the customer sees only a generic indeterminate spinner over the frozen frame, identical to normal buffering. No 'Reconnecting' reassurance, no offline-specific copy, until ~15-30s later a modal 'Unable to connect\u2026 try again' dialog interrupts.",
+    "trigger": "Any mid-watch buffering stall or network loss. showBufferingOverlay(true) is the only in-place feedback across the normal-buffer path (line 1129), the network-loss path (line 1379), and the frame-watchdog path (line 1580).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1377-1379",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2171-2198"
+    ],
+    "rootCause": "Verified: showBufferingOverlay (lines 2153-2163) builds a bare ProgressBar with no text label, centered over the frame, reused for normal buffer / network-loss / watchdog with no differentiated 'Reconnecting' state and no use of NetworkMonitor.isConnected to show offline copy. Confirmed no 'Reconnecting'/'Buffering'/'Waiting for network' string exists anywhere in code or strings.xml. The held-frame claim is correct: ExoPlayer never clears the SurfaceView on buffering (clearVideoSurface only runs in safeReleasePlayer) and the spinner is addView'd on top, so it's frozen-frame+spinner, not a black screen. The only network-aware messaging is the terminal modal AlertDialog (lines 2171-2197) via friendlyErrorMessage(), which appears only after retries are exhausted.",
+    "fix": "Give showBufferingOverlay an optional label and show a small 'Reconnecting\u2026' (or 'Waiting for network' when networkMonitor.state.value.isConnected == false) under the spinner on the network-loss branch (line 1379) and after the first stall-detector retry. Keep it subtle/non-modal over the held frame; reserve the AlertDialog for true last resort. The connectivity signal to distinguish offline vs buffering is already in hand.",
+    "benchmark": "Netflix/YouTube TV show a quiet labeled retry indicator over the paused frame and resume silently when bytes return, clearly signalling offline vs ordinary buffering without a modal \u2014 apt and applicable here.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Severity downgraded P1\u2192P2. Genuine polish gap vs Netflix and all code claims verified, but it does not interrupt or degrade the actual playback \u2014 the picture is held and recovery still happens; this is purely a reassurance/affordance gap on the 10-foot UI. That's P2 friction, not a P1 experience degradation. Auditor's held-frame credit and friendlyErrorMessage observation are both accurate.",
+    "dimension": "network-reconnect"
+  },
+  {
+    "id": "hard-stop-on-transient-stall",
+    "title": "Stall recovery does stop()+fixed delay instead of an in-place refill",
+    "severity": "P3",
+    "symptom": "A brief throughput dip that could recover invisibly instead, once the stall timer trips, tears the stream down (p.stop()) and waits a fixed delay (first hit 1s) before prepare()+play() \u2014 adding avoidable downtime on a connection that was merely slow, not dead.",
+    "trigger": "A transient bandwidth dip on a single-bitrate IPTV stream where the buffer drains but the connection is alive; player enters STATE_BUFFERING and the stall detector fires after STALL_TIMEOUT (15s LIVE / 30s VOD).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1499-1517",
+      "app/src/main/java/com/ooustream/iptv/player/BufferConfigs.kt:13-24"
+    ],
+    "rootCause": "Verified: the stall detector at line 1505-1508 calls p.stop() then delay(delayMs) (RETRY_DELAYS_MS[0]=1000 on the first escalation, up to 15000) BEFORE p.prepare()+p.play(). A bare prepare() (no stop, shorter/no delay) would reconnect faster on a still-alive socket. The fixed buffer cushions (LIVE 5s min / VOD 15s min in BufferConfigs.forContentType) don't grow after a recent stall, so a thin pipe keeps buffer-drain-rebuffering. Confirmed the MediaItem retains its position across stop()/prepare(), so VOD recovery resumes from the stalled spot (no replay-from-start) \u2014 this is purely a latency concern, not a resume-loss bug.",
+    "fix": "For the first stall escalation, prefer an in-place refill: skip stop() and call p.prepare() with no (or a much shorter) fixed delay; reserve hard stop()+escalating delay for repeated failures. Optionally grow minBufferMs after a recent stall.",
+    "benchmark": "PARTIALLY APT. The 'in-place prepare instead of stop+wait' half is valid and IPTV-applicable. But the 'deep adaptive pre-buffer absorbs the dip invisibly' half is an ABR/single-bitrate mismatch: per the triage rules, IPTV is single-bitrate with no lower rung, and the documented real customer pattern is a SUSTAINED customer-side bottleneck (consistent 13-15s refills) where no pre-buffer depth helps \u2014 buffer\u2192drain\u2192rebuffer is inevitable. A deeper post-stall pre-buffer only helps genuine momentary dips, not the common sustained-throttle case.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "medium",
+    "correction": "Severity downgraded P2\u2192P3. The in-place-refill optimization is legitimate but only saves a 1s fixed delay on the FIRST escalation, and only fires after the stream has already been stalled for the full 15s/30s stall window \u2014 by which point the customer has long seen a spinner regardless, so shaving the recovery delay is a marginal polish win. The escalating retry ladder already recovers and STATE_READY resets retryCount. Auditor's medium confidence is appropriate; I'm pushing it to P3 because the felt benefit is small and the 'deep adaptive pre-buffer' benchmark half doesn't apply to the dominant single-bitrate sustained-bottleneck scenario.",
+    "dimension": "network-reconnect"
+  },
+  {
+    "id": "black-spinner-no-art",
+    "title": "Every play action opens on a black screen + bare spinner (no poster/backdrop/last-frame hold)",
+    "severity": "P1",
+    "symptom": "Press Play (or zap a channel) and the screen goes fully black with a small centered spinner for the entire TTFF window (2-5s on a 1GB Fire TV over IPTV). It reads as 'the app froze' or 'the stream is broken' rather than 'loading'.",
+    "trigger": "Any transition into the player: hero Play, search result, Continue Watching, deep-link, and every live zap. Fires on 100% of plays.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2151-2169",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1130",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:3406-3435"
+    ],
+    "rootCause": "Verified: showBufferingOverlay() (line 2151) lazily creates a single indeterminate ProgressBar, WRAP_CONTENT, Gravity.CENTER, and addView()s it over a BG_NONE VideoSupportFragment SurfaceView that is black until first frame (setBackgroundType forces BG_NONE, line 85-87). There is no ImageView, no backdrop, no poster, no dim scrim \u2014 grep for ImageView/Coil/backdrop/load() in the fragment returns nothing for a loading screen. streamIcon IS passed into newInstance and stored (line 3435) but is consumed only by the controls bar bindVod (line 884), never loaded as a full-screen loading background. The overlay is hidden only on STATE_READY (line 1152) \u2014 there is NO onRenderedFirstFrame handler anywhere in the fragment, so there is no cross-fade-from-art into the picture.",
+    "fix": "Add a full-screen ImageView behind the SurfaceView; Coil-load the passed streamIcon (and, for VOD, the cover) into it in onViewCreated; show it with a dim scrim whenever STATE_BUFFERING and no first frame has rendered; register an onRenderedFirstFrame (Player.Listener) callback to cross-fade it out. Replace the centered ProgressBar with art + a slim bottom shimmer. For zap, don't clear the outgoing frame until the new first frame renders.",
+    "benchmark": "Netflix/Disney+/YouTube TV hold the selected title's art or a full-bleed backdrop with a subtle loading shimmer during TTFF and cross-fade straight into the picture \u2014 the user never sees black, so a 2-3s start feels near-instant. This benchmark DOES apply to single-bitrate IPTV: it's a perceptual-UX fix, not an ABR fix.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "",
+    "dimension": "discovery-to-play"
+  },
+  {
+    "id": "zap-black-during-buffer",
+    "title": "Channel zap drops to black + spinner instead of holding the last frame; banner lags 500ms",
+    "severity": "P2",
+    "symptom": "Changing channels flashes black + spinner for ~1-3s before the new channel appears (plus a 500ms-late channel banner), instead of a clean cut. Channel surfing feels sluggish and 'broken' between channels.",
+    "trigger": "Every live channel change via the zap overlay or up/down channel keys.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2630-2652",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:1128-1130"
+    ],
+    "rootCause": "Verified: tuneToChannel mutes (line 2631) then calls setMediaItem/prepare/play (lines 2633-2635) on the same ExoPlayer; the new prepare blanks the surface and STATE_BUFFERING paints the bare spinner over black (same root cause as black-spinner-no-art). The channel banner is posted behind a 500ms delay (line 2649-2651) instead of synchronously on key-press. No last-frame hold and no decoded pre-warm of the adjacent channel (predictive pre-fetch is metadata-only).",
+    "fix": "Show the channel banner + target-channel logo/art synchronously on key-press; keep the outgoing frame (or a dim channel-art scrim) visible during the buffer instead of black; consider a small next/prev pre-warm for up/down surfing. Shares the art-overlay infrastructure with black-spinner-no-art.",
+    "benchmark": "YouTube TV / cable-style TV apps target sub-1.5s zaps and mask the buffer by holding the old frame or showing channel art + banner immediately, so the change feels like a clean cut. Applies to IPTV (perceptual, not ABR).",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Same underlying defect as black-spinner-no-art (bare spinner overlay + no first-frame/last-frame logic) specialized to zap; the 500ms-late banner is an additional verified contributor. P2 is appropriate \u2014 channel surfing is a frequent live-TV interaction but each individual zap still recovers.",
+    "dimension": "discovery-to-play"
+  },
+  {
+    "id": "search-silent-resume-inconsistent",
+    "title": "Search movies silently jump to the middle (no Resume dialog), unlike every other surface",
+    "severity": "P2",
+    "symptom": "Searching a partly-watched movie and pressing it drops the customer straight into the middle with no choice \u2014 yet the SAME movie from Home, the detail page, or Continue Watching asks 'Resume or Start Over?'. The inconsistency is surprising and can strand them deep in a film they wanted to restart.",
+    "trigger": "Playing a VOD result directly from the Search screen when watch progress exists.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/search/SearchFragment.kt:611-628",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:410-424"
+    ],
+    "rootCause": "Verified: SearchFragment.navigateToContent's VOD branch (line 611-628) builds newInstance WITHOUT forceStartFromBeginning and WITHOUT routing through ResumePlaybackHelper. In the player, needsResume = contentType != LIVE && !hasResumed && !forceBeginningArg (line 411) is therefore true, so getResumePositionSync() auto-seeks to the saved offset (lines 417-423) with no prompt. Home (playVodWithResumeCheck, HomeFragment 1876), VodDetail (124-146), and SeriesDetail all gate through ResumePlaybackHelper.showIfNeeded, so they prompt. The two paths genuinely disagree.",
+    "fix": "Route SearchFragment.navigateToContent's VOD branch through a resume-check (ResumePlaybackHelper.showIfNeeded with a local getWatchProgress query) so resume behavior is identical everywhere.",
+    "benchmark": "Netflix/Disney+ behave identically from every entry point (search, row, detail) \u2014 same resume/start-over affordance, no surface-dependent surprises.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as reported. Note this is partly a sub-case of the broader resume-modal-friction debate: if the app moved to 'auto-resume + in-player Restart chip' (the benchmark), Search's silent resume would actually be the CORRECT behavior and the other surfaces' modals would be the inconsistency. Either way the surfaces must converge. P2 is fair (low frequency: needs a searched, partly-watched title).",
+    "dimension": "discovery-to-play"
+  },
+  {
+    "id": "resume-modal-friction",
+    "title": "Resume requires a blocking modal choice instead of just continuing",
+    "severity": "P3",
+    "symptom": "Pressing Play / 'Resume from 1:12:03' on a partly-watched movie pops a blocking AlertDialog the customer must answer before anything plays \u2014 an extra D-pad press on the most common action (continuing what you were watching), redundant when the button already said 'Resume from X'.",
+    "trigger": "Playing any VOD/series with >5% saved progress from Home, VOD detail, or series detail (Continue Watching already resumes without a dialog).",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/ResumePlaybackHelper.kt:12-30",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1859-1900"
+    ],
+    "rootCause": "Verified: ResumePlaybackHelper.showIfNeeded always throws an AlertDialog when progress > 5% and not completed (lines 17-29). VodDetail's button is already labeled 'Resume from X' (line 277) yet still triggers the same modal (line 128). Continue Watching (navigateToContinueWatching) correctly resumes directly with no prompt.",
+    "fix": "When the affordance already says 'Resume', resume directly and surface a quiet 'Start Over'/'Restart' chip in the player controls (or a brief snackbar with an undo action) instead of a blocking pre-play dialog. Reserve the modal for genuinely ambiguous entry points.",
+    "benchmark": "Netflix/YouTube TV auto-resume on Play and expose 'Restart'/'Watch from start' as a secondary in-player control \u2014 no blocking pre-roll dialog.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Real and correctly P3 (a polish/UX-opinion gap, not a defect \u2014 the modal is fully functional and shows the exact resume timestamp). This is a design-philosophy call; some users prefer the explicit prompt. Keeping P3.",
+    "dimension": "discovery-to-play"
+  },
+  {
+    "id": "live-empty-placeholder-url",
+    "title": "Live deep-link shows placeholder 'Channel 1234' name and seeds no channel list",
+    "severity": "P3",
+    "symptom": "Opening a live channel via an ooustream:// deep link shows the title 'Channel 481516' in the banner instead of the real channel name, and D-pad channel up/down/zap does nothing afterward because no channel list was seeded.",
+    "trigger": "Following an ooustream:// live deep link.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt:381-395",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1842-1855",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:1346-1359"
+    ],
+    "rootCause": "PARTIAL. Verified TRUE: MainActivity deep-link Live branch builds a REAL URL via contentRepository.buildLiveStreamUrl(streamId) (line 383) but hardcodes streamName = 'Channel ${target.streamId}' (line 388) with no channel lookup, and never calls setChannels \u2014 so the player has no channel list and zap/up-down is dead. Verified FALSE for the auditor's headline claim: the 'For You Live' recommendation does NOT pass an empty URL. That row's clicks go through HomeFragment.navigateToLiveChannel (line 1346), which builds a real URL via buildLiveStreamUrl(channel.channelId) AND seeds the full channel list (lines 1351-1359). The empty-URL 'live' branch in navigateToRecommendation (line 1842-1849, streamUrl=\"\") is DEAD CODE: RecommendationEngine only ever emits type=\"vod\" or type=\"series\" (RecommendationEngine.kt: all 5 RecommendedItem constructions are vod/series, never \"live\"), and HomeViewModel never constructs a live RecommendedItem. So no customer can reach the empty-URL path.",
+    "fix": "Deep-link Live branch: look up the channel by streamId to pass the real name and seed the channel list (setChannels) so zap works; fall back to a generic name only if lookup fails. Optionally delete the unreachable empty-URL 'live' branch in navigateToRecommendation to prevent a future regression.",
+    "benchmark": "Live TV apps (YouTube TV) never open a player without a resolvable stream and always show the real channel/program name on tune-in, with channel up/down working immediately.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Auditor MIS-attributed and over-severitied. The 'empty URL -> instant error/black screen' half is FALSE (unreachable dead code; the real For You Live path builds a valid URL and seeds channels). Only the deep-link placeholder NAME is real, plus a MISSED real consequence the auditor didn't state: the deep-link path also seeds no channel list, so zap is silently dead after a deep-link tune-in. Deep links are a rare entry point and a wrong banner name doesn't break watching, so this drops from P2 to P3.",
+    "dimension": "discovery-to-play"
+  },
+  {
+    "id": "vod-detail-roundtrip",
+    "title": "Movies route through a detail screen before Play (extra step), but Play itself is NOT network-gated",
+    "severity": "P3",
+    "symptom": "Picking a movie from a VOD/Series grid tile or the hero 'More Info' opens a separate detail screen rather than playing directly \u2014 an extra full-screen navigation versus a streaming app where the tile plays. A late focus jump can also occur when metadata returns.",
+    "trigger": "Browsing movies via grids or hero 'More Info'; tapping a series in search.",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:124-146",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:259-289",
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt:95-99"
+    ],
+    "rootCause": "PARTIAL. Verified TRUE: the default grid-tile and hero 'More Info' action routes to VodDetailFragment (an extra screen) rather than playing directly; the hero primary button has a direct play path but tiles don't. Verified FALSE / over-stated by the auditor: Play is NOT gated on the get_vod_info network call. The play URL is built from containerExtension, which is ALREADY passed in from the grid payload (VodFragment.kt line 99 -> VodDetailFragment ARG_CONTAINER_EXT, used at line 126 with ?: 'mp4' fallback); the 'Resume from X' label comes from viewModel.watchProgress, a LOCAL Room Flow (line 268), not the network. So a customer CAN press Resume/Play immediately on placeholders. The only genuine network-coupled jank is line 260: when loadVodInfo returns, playButton.requestFocus() fires again and can yank focus back if the user had D-padded away to read the plot.",
+    "fix": "Make the grid-tile primary action play directly (with a resume check) and reserve detail for long-press/'More Info'. Remove the redundant post-API playButton.requestFocus() (line 260) so returning metadata doesn't steal focus. The containerExtension pre-warm the auditor recommends is already done.",
+    "benchmark": "Netflix/Prime: clicking a tile plays immediately (resume or start) with a single big Play; details are secondary.",
+    "isReal": true,
+    "alreadyHandled": false,
+    "verifierConfidence": "high",
+    "correction": "Auditor over-credited the network dependency. The claimed 'metadata API call must return before Play is usable' is FALSE: extension is pre-warmed from the grid payload and the resume label is local-DB-driven. The real residue is (1) one extra navigation step (a legitimate but minor flow choice \u2014 many streaming apps DO show a detail page for movies) and (2) a post-API focus-steal at line 260. Drops from P2 to P3.",
+    "dimension": "discovery-to-play"
+  }
+]

@@ -2,6 +2,8 @@ package com.ooustream.iptv.epg.guide
 
 import com.ooustream.iptv.data.model.EpgProgram
 import com.ooustream.iptv.data.model.LiveStream
+import com.ooustream.iptv.epg.ChannelContentType
+import com.ooustream.iptv.epg.ChannelNameParser
 import com.ooustream.iptv.epg.EpgSource
 import com.ooustream.iptv.epg.SmartEpgFiller
 
@@ -19,11 +21,39 @@ data class GuideProgram(
     fun contains(timeMs: Long): Boolean = timeMs in startMs until endMs
 }
 
-/** One row of the guide: a channel plus its (normalized, gap-filled) program lane. */
+/**
+ * One row of the guide: a channel, its (normalized, gap-filled) program lane, and a genre
+ * [accentColor] (ARGB) derived from the channel name for at-a-glance color coding.
+ */
 data class GuideRowData(
     val channel: LiveStream,
-    val programs: List<GuideProgram>
+    val programs: List<GuideProgram>,
+    val accentColor: Int = GuideGenrePalette.NEUTRAL
 )
+
+/**
+ * Genre → accent color for cell color-coding. Classification is via [ChannelNameParser]; the
+ * lane paints a solid left stripe in this color and a faint wash over each cell.
+ */
+object GuideGenrePalette {
+    const val NEUTRAL = 0xFF546E7A.toInt()
+
+    fun colorFor(type: ChannelContentType): Int = when (type) {
+        ChannelContentType.SPORTS -> 0xFF4CAF50.toInt()        // green
+        ChannelContentType.NEWS -> 0xFF42A5F5.toInt()          // blue
+        ChannelContentType.ENTERTAINMENT -> 0xFFAB47BC.toInt() // purple
+        ChannelContentType.KIDS -> 0xFF26C6DA.toInt()          // cyan
+        ChannelContentType.MOVIES -> 0xFFFF7043.toInt()        // deep orange
+        ChannelContentType.DOCUMENTARY -> 0xFFFFCA28.toInt()   // amber
+        ChannelContentType.MUSIC -> 0xFFEC407A.toInt()         // pink
+        ChannelContentType.RELIGIOUS -> 0xFF7E57C2.toInt()     // indigo
+        ChannelContentType.UNKNOWN -> NEUTRAL
+    }
+
+    /** Classify a channel name (uses category as a hint) and return its accent color. */
+    fun colorForChannel(channelName: String, categoryName: String?): Int =
+        colorFor(ChannelNameParser.parse(channelName, categoryName).contentType)
+}
 
 /**
  * Pure normalization for guide lanes: epoch-second timestamps → ms, invalid rows dropped,

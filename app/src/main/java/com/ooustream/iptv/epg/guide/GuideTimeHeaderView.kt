@@ -27,8 +27,11 @@ class GuideTimeHeaderView(context: Context) : View(context) {
 
     private val invalidateListener: () -> Unit = { invalidate() }
     private val density = context.resources.displayMetrics.density
-    private val slotMs = 30 * 60_000L
     private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+
+    /** Tick spacing scales with the window: 30-min for ≤2h, hourly for wider windows. */
+    private fun slotMsFor(windowMs: Long): Long =
+        if (windowMs <= 2 * 60 * 60_000L) 30 * 60_000L else 60 * 60_000L
 
     private val labelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0x99FFFFFF.toInt()
@@ -60,6 +63,7 @@ class GuideTimeHeaderView(context: Context) : View(context) {
         if (laneWidth <= 0) return
 
         // First slot boundary at/after the window start
+        val slotMs = slotMsFor(ctrl.windowDurationMs)
         var slot = (ctrl.windowStartMs / slotMs) * slotMs
         if (slot < ctrl.windowStartMs) slot += slotMs
         val baselineY = height / 2f - (labelPaint.descent() + labelPaint.ascent()) / 2f

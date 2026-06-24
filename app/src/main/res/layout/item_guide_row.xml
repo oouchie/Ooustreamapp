@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
+    android:layout_height="72dp"
     android:orientation="horizontal"
     android:focusable="true"
     android:focusableInTouchMode="true"
@@ -15,7 +15,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="8dp"
-        android:paddingEnd="8dp"
+        android:paddingEnd="6dp"
         android:background="#14FFFFFF">
 
         <FrameLayout
@@ -64,6 +64,14 @@
                 android:maxLines="2"
                 android:ellipsize="end" />
         </LinearLayout>
+
+        <ImageView
+            android:id="@+id/guide_channel_favorite"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="4dp"
+            android:src="@drawable/ic_heart_outline"
+            android:contentDescription="@null" />
     </LinearLayout>
 
     <!-- Canvas program lane (GuideProgramLaneView added programmatically) -->

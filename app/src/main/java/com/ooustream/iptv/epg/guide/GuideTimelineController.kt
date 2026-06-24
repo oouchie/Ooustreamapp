@@ -9,8 +9,9 @@ package com.ooustream.iptv.epg.guide
  */
 class GuideTimelineController {
 
-    /** Visible window width: 2 hours. */
-    val windowDurationMs = 2 * 60 * 60_000L
+    /** Visible window width, driven by the Hours selector (default 2h). */
+    var windowDurationMs = DEFAULT_WINDOW_MS
+        private set
 
     var horizonStartMs = 0L
         private set
@@ -62,6 +63,21 @@ class GuideTimelineController {
         return moved
     }
 
+    /**
+     * Change the visible window width (Hours selector). Re-clamps the window start so the new
+     * window still fits the horizon and keeps the focused cell on screen. No-op if unchanged.
+     */
+    fun setWindowDuration(durationMs: Long) {
+        if (durationMs <= 0 || durationMs == windowDurationMs) return
+        windowDurationMs = durationMs
+        windowStartMs = windowStartMs.coerceIn(
+            horizonStartMs,
+            (horizonEndMs - windowDurationMs).coerceAtLeast(horizonStartMs)
+        )
+        ensureAnchorVisible()
+        notifyChanged()
+    }
+
     /** Keep the focused cell comfortably visible: scroll if its anchor leaves the middle 80%. */
     fun ensureAnchorVisible() {
         val margin = windowDurationMs / 10
@@ -81,4 +97,13 @@ class GuideTimelineController {
     fun addListener(l: () -> Unit) { listeners += l }
     fun removeListener(l: () -> Unit) { listeners -= l }
     fun notifyChanged() { listeners.toList().forEach { it() } }
+
+    companion object {
+        const val DEFAULT_WINDOW_MS = 2 * 60 * 60_000L
+        val WINDOW_OPTIONS_MS = longArrayOf(
+            2 * 60 * 60_000L,   // 2h
+            4 * 60 * 60_000L,   // 4h
+            8 * 60 * 60_000L,   // 8h
+        )
+    }
 }

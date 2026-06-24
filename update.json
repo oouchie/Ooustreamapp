@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.1",
-  "version_code": 89,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.1/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.1 — Series Playback & Connection Fixes\n\n• Fixed series episodes that failed to play and showed \"server is having issues\": the app no longer retries a series with the wrong file type, and shows an accurate message instead.\n• When your account hits its simultaneous-connection limit, you'll now see a clear \"close Ooustream on your other devices and try again\" message instead of a generic server error.\n• Reduced cases where the app briefly opened a second stream on its own — when retrying a series, choosing \"Watch Next\", or auto-playing the next episode — which could trip your account's connection limit.\n\nApplies to all devices.",
+  "version_name": "4.2.2",
+  "version_code": 90,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.2/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.2/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.2/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.2 — TV Guide upgrade + clearer unavailable-title message\n\n• TV Guide overhaul: live channel preview while you browse, a Now Playing / Up Next header for the selected channel, and a new toolbar — Global Search, Full Screen, an adjustable hours window, and Jump to Now. Hold OK on a channel to favorite it (inline ★), and page through the timeline faster.\n• When a movie or series is listed but your provider isn't actually serving it, the app now says \"This title isn't available from your provider right now\" and fails fast — instead of a generic playback error or a long retry.\n\nApplies to all devices.",
   "mandatory": false
 }

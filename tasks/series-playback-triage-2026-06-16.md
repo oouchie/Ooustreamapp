@@ -102,6 +102,42 @@ connection on series was the `mkv→mp4` retry, which Fix #1 removes. If 551 per
 connection, the 2nd slot is genuinely occupied — a real 2nd device, or the provider's slot-release lag on rapid
 retries. That part is account/provider-side, not app-fixable.
 
+## DEFINITIVE root cause — proven by direct fetch (2026-06-17, account "Oouchie", on-device .82 + Mac ffprobe/curl)
+Fetched the actual stream endpoints from flarecoral with a real account (User-Agent = the app's), account at
+`active=3 max=4` (NOT maxed — rules out connection limit):
+- **Failing series** (The Chi S07E01 `series/.../1210734.mkv`, By Blood `1539404`, Power Book III `1232082`):
+  **HTTP 200, `content-type: text/html`, EMPTY body — no redirect.** ExoPlayer is handed 0 bytes of HTML →
+  `UnrecognizedInputFormatException` (exactly the `loaded=0KB` in the reports). The `.mp4` variant → HTTP 551.
+- **Working titles** (The C-Team series `1463484`, Michael VOD `1538153`): **HTTP 302 → CDN**
+  `http://68.235.41.x/live/play/<token>/<id>`; following it yields real Matroska bytes (`1a45dfa3 … matroska`).
+**Conclusion: the failing titles are LISTED by flarecoral (get_series_info returns them, so they show in the
+app) but NOT SERVED — the stream endpoint returns an empty HTML page instead of a 302-to-CDN.** This is 100%
+provider-side; no app change can play an empty response. The v4.2.1 series message ("broken or missing on your
+provider's server") is therefore accurate. Affected: a band of premium series (The Chi all seasons, Power Book
+III/IV, By Blood, Will Trent). ACTION: provider/flarecoral must actually host those files (or remove the dead
+listings). Optional app polish: detect `content-type: text/html` on a stream response → show "not available
+from your provider" instantly (faster + clearer than the generic unrecognized-format path).
+
+## Catalog scan (2026-06-17, account "Oouchie") — quantifies the provider damage
+`tasks`-side python probe of the live series catalog (sample 4 series/category, probe first episode's
+stream endpoint, classify 302→CDN = served vs 200 text/html = dead). Result:
+- **19 categories, 7,995 series listed. Overall DEAD RATE ≈ 21% (15/72 probed series return an empty page).**
+- Worst: Wrestling (3/4 dead), Crime/News/Soap (2/4). Fully served: Drama, Comedy, Reality, Documentary,
+  Family, Western, War & Politics. Extrapolated ≈ ~1,600 "listed-but-not-served" series.
+- Confirms the customer reports: The Chi (all seasons), Power Book III/IV, By Blood, Will Trent are dead.
+This is hard evidence for the flarecoral conversation: ~1 in 5 listed series serves nothing.
+
+## App polish shipped to code (Fix #5) — detect & message provider dead listings
+`OoustreamPlaybackFragment`: on an `UnrecognizedInputFormatException` for VOD/SERIES, a new
+`probeStreamContentType()` (shared OkHttp client, follows redirects, 8s call-timeout, range 0-1, self-closing)
+checks the stream's final Content-Type. If `text/html` → it's a provider dead listing (no media), so show
+"This title isn't available from your provider right now. Try another title, or let your provider know." and
+log a new `PROVIDER_DEAD_LISTING` diagnostic event (so future debug reports show this unambiguously instead of
+a bare UnrecognizedInputFormat). Falls through to the existing container-ext retry when the probe fails or the
+type isn't html (no regression for real container mismatches). `:app:compileDebugKotlin` BUILD SUCCESSFUL.
+NOTE: this only makes the *message* honest/precise — it cannot make a 0-byte provider response play. The
+streams can only "work" once flarecoral actually serves those files.
+
 ## What to tell the customers
 - rootzbar: update to 4.2.0 (you were on the April 3.6.8 build); the mkv-series failure is gone.
 - allinone: those specific Will Trent episodes are erroring on the provider (flarecoral.com returned 551 /

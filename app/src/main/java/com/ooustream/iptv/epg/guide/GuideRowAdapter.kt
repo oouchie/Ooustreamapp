@@ -24,15 +24,25 @@ class GuideRowAdapter(
     private val onLanePan: ((Long) -> Unit)? = null
 ) : ListAdapter<GuideRowData, GuideRowAdapter.GuideRowViewHolder>(DIFF) {
 
+    /** Set of favorite ids ("live_<streamId>"). Updating repaints visible hearts only. */
+    var favoriteIds: Set<String> = emptySet()
+        set(value) {
+            if (field == value) return
+            field = value
+            if (itemCount > 0) notifyItemRangeChanged(0, itemCount, PAYLOAD_FAV)
+        }
+
     companion object {
         const val PAYLOAD_EPG = "epg"
+        const val PAYLOAD_FAV = "fav"
 
         private val DIFF = object : DiffUtil.ItemCallback<GuideRowData>() {
             override fun areItemsTheSame(a: GuideRowData, b: GuideRowData) =
                 a.channel.streamId == b.channel.streamId
 
             override fun areContentsTheSame(a: GuideRowData, b: GuideRowData) =
-                a.programs == b.programs && a.channel.name == b.channel.name
+                a.programs == b.programs && a.channel.name == b.channel.name &&
+                    a.accentColor == b.accentColor
 
             override fun getChangePayload(a: GuideRowData, b: GuideRowData): Any? =
                 if (a.channel.streamId == b.channel.streamId) PAYLOAD_EPG else null
@@ -44,6 +54,7 @@ class GuideRowAdapter(
         val channelName: TextView = root.findViewById(R.id.guide_channel_name)
         val channelLogo: ImageView = root.findViewById(R.id.guide_channel_logo)
         val channelInitials: TextView = root.findViewById(R.id.guide_channel_initials)
+        val favoriteIcon: ImageView = root.findViewById(R.id.guide_channel_favorite)
         val laneContainer: FrameLayout = root.findViewById(R.id.guide_lane_container)
         val lane: GuideProgramLaneView = GuideProgramLaneView(root.context).also {
             it.layoutParams = FrameLayout.LayoutParams(
@@ -119,16 +130,37 @@ class GuideRowAdapter(
             holder.channelLogo, holder.channelInitials,
             row.channel.streamIcon, row.channel.name
         )
+        holder.lane.accentColor = row.accentColor
         holder.lane.programs = row.programs
+        bindFavorite(holder, row.channel.streamId)
     }
 
     override fun onBindViewHolder(
         holder: GuideRowViewHolder, position: Int, payloads: MutableList<Any>
     ) {
-        if (payloads.contains(PAYLOAD_EPG)) {
-            holder.lane.programs = getItem(position).programs
-        } else {
+        if (payloads.isEmpty()) {
             super.onBindViewHolder(holder, position, payloads)
+            return
+        }
+        val row = getItem(position)
+        for (pl in payloads) {
+            when (pl) {
+                PAYLOAD_EPG -> {
+                    holder.lane.accentColor = row.accentColor
+                    holder.lane.programs = row.programs
+                }
+                PAYLOAD_FAV -> bindFavorite(holder, row.channel.streamId)
+            }
+        }
+    }
+
+    private fun bindFavorite(holder: GuideRowViewHolder, streamId: Int) {
+        if (favoriteIds.contains("live_$streamId")) {
+            holder.favoriteIcon.setImageResource(R.drawable.ic_favorites)
+            holder.favoriteIcon.setColorFilter(0xFFFFC107.toInt())
+        } else {
+            holder.favoriteIcon.setImageResource(R.drawable.ic_heart_outline)
+            holder.favoriteIcon.setColorFilter(0x66FFFFFF)
         }
     }
 

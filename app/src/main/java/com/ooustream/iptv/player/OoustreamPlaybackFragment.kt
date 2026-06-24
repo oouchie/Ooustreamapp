@@ -1193,6 +1193,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         retryJob?.cancel()
                         retryJob = viewLifecycleOwner.lifecycleScope.launch {
                             showBufferingOverlay(true, immediate = true)
+                            // Provider "dead listing" check. Some titles are LISTED (get_series_info /
+                            // get_vod return them, so they appear in the app) but the provider serves an
+                            // empty text/html page instead of redirecting to its video CDN — there is no
+                            // media to play, and no ext-swap/retry can fix it. Detect it and give an honest,
+                            // specific message. (Proven on flarecoral 2026-06-17: dead titles return HTTP 200
+                            // text/html empty; served titles return 302 → CDN with real media.)
+                            if (isUnrecognizedContainerError(error)) {
+                                val ct = probeStreamContentType(viewModel.streamUrl)
+                                if (ct != null && ct.trim().startsWith("text/html", ignoreCase = true)) {
+                                    streamDiagnosticLogger.logAppEvent("PROVIDER_DEAD_LISTING",
+                                        "contentType=$ct, channel=${healthMonitor?.channelName ?: "unknown"}")
+                                    showFriendlyError("This title isn't available from your provider right now. " +
+                                        "Try another title, or let your provider know.")
+                                    return@launch
+                                }
+                            }
                             // Prefer the AUTHORITATIVE extension from get_vod_info — panels only
                             // serve a file at its exact extension and the heuristic swap can't
                             // guess exotic ones (Kung Fu Panda = .m2ts). Heuristic is the
@@ -1598,6 +1614,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     /** Safely releases a player instance, catching exceptions from stuck decoders (e.g. MTK). */
+    /** Lightweight probe of a stream URL's final Content-Type via the shared OkHttp client (which
+     *  follows redirects, so a served title resolves to its CDN's video type). A `text/html` result on
+     *  a /movie//series/ stream = a provider "dead listing" (title listed but no media served). Returns
+     *  null on failure/timeout. Error-path use only (one brief, self-closing request). */
+    private suspend fun probeStreamContentType(url: String): String? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okHttpClient.newBuilder()
+                    .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val req = okhttp3.Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Ooustream/1.0 (Mobile)")
+                    .header("Range", "bytes=0-1")
+                    .build()
+                client.newCall(req).execute().use { it.header("Content-Type") }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
     private fun safeReleasePlayer(p: ExoPlayer) {
         try { p.stop() } catch (_: Exception) { }
         try { p.clearVideoSurface() } catch (_: Exception) { }

@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.1 (versionCode 89)
+- **Current Version**: 4.2.2 (versionCode 90)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -452,6 +452,37 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.2** — Provider "dead listing" detection + message (versionCode 90). Follow-up to the v4.2.1 series
+  triage. PROVEN root cause of the "series won't play" reports (direct fetch from flarecoral with a real
+  account, 2026-06-17): the failing titles (The Chi all seasons, Power Book III/IV, By Blood, Will Trent) are
+  **listed** by the provider (get_series_info returns them, so they appear in the app) but **not served** — the
+  stream endpoint returns **HTTP 200 `content-type: text/html` with an empty body** instead of the normal
+  `302 → CDN` that working titles return (verified: served titles redirect to `68.235.41.x/live/play/<token>`
+  and deliver real Matroska; account was at 3/4 connections, ruling out the connection limit). A catalog scan
+  (`tasks/series-playback-triage-2026-06-16.md`) measured **~21% of the series catalog dead** (15/72 probed;
+  ~1,600 of 7,995 listings). This is provider-side — no app change can play a 0-byte response. The app change
+  here makes the failure HONEST + diagnosable: on an `UnrecognizedInputFormatException` for VOD/SERIES, new
+  `probeStreamContentType()` (shared OkHttp client, follows redirects, 8s call-timeout, range 0-1, self-closing)
+  checks the stream's final Content-Type; if `text/html` → show "This title isn't available from your provider
+  right now. Try another title, or let your provider know." and log a new **`PROVIDER_DEAD_LISTING`** diagnostic
+  event (so future debug reports identify this instantly instead of a bare UnrecognizedInputFormat). Falls
+  through to the existing container-ext retry when the probe fails or the type isn't html (no regression for
+  real container mismatches). Single file: `player/OoustreamPlaybackFragment.kt`. `assembleRelease` clean; NOT
+  on-device-verified at release time (error-path-only change). NOTE for triage: `PROVIDER_DEAD_LISTING` in a
+  report = the provider isn't serving that title; escalate to the provider, not the app.
+  **ALSO BUNDLED IN THE v4.2.2 RELEASE (the dead-listing entry above was authored as a single-file change, but
+  the shipped APK also carries ~900 lines of TV Guide rework that was uncommitted in the working tree at
+  release time):** EPG Guide upgrade in `epg/guide/*` (7 files) + `fragment_epg_grid.xml` (+273) +
+  `item_guide_row.xml` + `strings.xml` + new drawables `bg_guide_pill.xml` / `ic_heart_outline.xml`. Adds: live
+  channel preview pane while browsing the guide, a Now Playing / Up Next header for the selected channel, a
+  toolbar (Global Search, Full Screen toggle, adjustable hours window, Jump to Now), hold-OK to favorite a
+  channel (inline ★ hearts + reactive header indicator), paged timeline scrolling (⏩⏪ = Page, replacing the old
+  ±2h), and back-from-playback focus-restore fixes (view recreated from XML while the fragment instance is
+  retained — reset the header/preview gate on view recreation; selection committed in the adapter callback to
+  avoid the v3.7.13 empty→populated focus -1 race, never via `post{}`). Device-verified informally by
+  installing this exact APK on AFTMA08C15 sticks at 192.168.1.154 / .155 before release; not a formal
+  guided walkthrough.
 
 - **v4.2.1** — Series Playback & Connection Fixes (versionCode 89). Triaged from customer `Repport.docx`
   exports (`tasks/series-playback-triage-2026-06-16.md`, `tasks/repport-2026-06-12-triage.md`). Series

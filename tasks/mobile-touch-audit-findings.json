@@ -1,0 +1,1273 @@
+[
+  {
+    "id": "home-rows-focusable-in-touch-steal",
+    "title": "All Home rows set isFocusableInTouchMode=true on phone \u2014 opposite of VOD/Series touch-passthrough pattern; grid becomes a focus candidate on empty-area taps",
+    "severity": "P1",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt",
+      "app/src/main/res/layout/fragment_home.xml",
+      "app/src/main/res/layout/item_poster_card.xml"
+    ],
+    "symptom": "On a phone, a finger-down on a Home row's EMPTY area (the inter-card gutters / leading padding / area past the last card) lets the Leanback grid itself grab focus, and a horizontal drag begun there can hitch as the grid claims focus on ACTION_DOWN. Taps that land squarely ON a poster card still reach the card (its own focusableInTouchMode=true wins under descendantFocusability=afterDescendants), so the auditor's 'first taps land on the empty row / need a second press' is overstated for on-card taps. The defect is real but narrower: it is friction on empty-area / drag-start touches, plus a needless focus contender during scroll.",
+    "rootCause": "HomeFragment.bindViews() (~line 503-509) loops all 8 static HorizontalGridViews on phone and sets grid.isFocusableInTouchMode = true; the dynamic genre/BYW rows do the same (~line 1291: isFocusableInTouchMode = !DeviceUtils.isTV(...)). This is the exact inverse of VodFragment (lines 85-86: posterGrid.descendantFocusability = FOCUS_AFTER_DESCENDANTS + isFocusableInTouchMode = false) and SeriesFragment (lines 83-84, identical). All static rows already declare descendantFocusability='afterDescendants' in fragment_home.xml (e.g. lines 301, 338), and the poster card root (item_poster_card.xml line 12) is itself focusableInTouchMode=true \u2014 so on-card taps go to the card. The grid being focusableInTouchMode only changes behavior when the touch is NOT on a focusable child (empty grid space), where the grid now self-focuses instead of doing nothing. The comment at line 502 ('let touch events pass directly to grid children') states the goal; setting the grid focusable-in-touch achieves the opposite intent and contradicts the codebase's own proven touch-passthrough idiom.",
+    "fix": "Change both sites to match VOD/Series: at HomeFragment.kt:507 set grid.isFocusableInTouchMode = false (and optionally grid.descendantFocusability = FOCUS_AFTER_DESCENDANTS, though the XML already sets it), and at HomeFragment.kt:1291 set isFocusableInTouchMode = false (or drop the line so the default false applies on phone \u2014 the dynamic grids already set descendantFocusability = FOCUS_AFTER_DESCENDANTS at line 1292). Cards keep focusable=true + foreground=selectableItemBackground, so taps and horizontal drags reach them cleanly and the grid stops competing for the down event.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Symptom overstated. With descendantFocusability=afterDescendants on the grids (XML lines 301/338) AND focusableInTouchMode=true on the poster card root (item_poster_card.xml:12), taps that land ON a card DO reach the card \u2014 the child wins focus over the parent. The grid's isFocusableInTouchMode=true only bites for taps on EMPTY grid area (gutters, padding, beyond last card) and as an extra focus contender during a drag-start. So 'first taps land on the empty row and need a second press' is not how it generally behaves on-card. The fix is still correct and worth doing (it matches the proven VOD/Series pattern and removes a needless touch focus candidate), but the user-facing impact is narrower than described. Severity P1 is defensible given it contradicts the working pattern and plausibly contributes to the 'menus not scrolling properly' complaint on drag-start, but it is borderline P2.",
+    "page": "home"
+  },
+  {
+    "id": "home-no-portrait-tv-layout",
+    "title": "Home is a 10-foot TV layout with no portrait path; tall TV-sized rows + 24dp gaps bury content below the fold on a phone",
+    "severity": "P2",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_home.xml",
+      "app/src/main/res/values/dimens.xml",
+      "app/src/main/res/values-sw320dp/dimens.xml",
+      "app/src/main/res/values/integers.xml",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt"
+    ],
+    "symptom": "In portrait on a phone the hero (runtime-scaled to 45% of screen height) plus the first 185dp poster row (170dp on small phones) plus 24dp section gaps fill most of the viewport, so a user sees the hero and at most one partial row and must scroll through tall TV-sized rails to reach content. It reads as a shrunken TV home, not a phone home. This is real but usability-degrading, not broken \u2014 everything still scrolls.",
+    "rootCause": "There is only one layout/fragment_home.xml (shared by phone) plus a layout-television variant; no layout-port or phone-specific arrangement exists. Row heights are fixed at 185dp (values/dimens.xml:46-53; 170dp in values-sw320dp/dimens.xml) with layout_marginTop=24dp on every section label (fragment_home.xml e.g. lines 320, 348). The hero is NOT a fixed 200dp at runtime as the auditor stated: fragment_home.xml:37 sets layout_height=@dimen/hero_height, but HomeFragment.kt:203-207 OVERRIDES it to screenHeight * hero_height_percent/100, and on phones hero_height_percent=45 (values/integers.xml:3) \u2014 so the effective hero is ~45% of the actual screen, not 200dp/170dp. Still ~45% viewport + 185dp rows + 24dp gaps pushes rails below the fold.",
+    "fix": "Add phone-tuned dimens in the values/ bucket (it is the phone default): shrink row_*_height to ~130-150dp and reduce label topMargin from 24dp to ~12dp, while keeping TV sizes in values-television/dimens.xml. Optionally lower hero_height_percent for phones (currently 45) so more rails show above the fold. Pure dimension/integer overrides \u2014 no code change. Note 24dp margins are hardcoded in XML so they would need extraction to a @dimen to override per bucket.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Two corrections. (1) The hero is NOT a fixed 200dp/170dp at runtime \u2014 HomeFragment.kt:205-207 overrides the XML @dimen/hero_height to 45% of screen height on phone (hero_height_percent=45 in values/integers.xml). The auditor cited the dimens as the live value; they are only the pre-runtime placeholder. (2) Severity lowered P1 -> P2: the screen is fully usable and scrolls correctly; it is density/below-the-fold friction (polish-to-moderate), not a 'badly degraded but usable' P1. The 24dp label margins are hardcoded in XML (e.g. line 320), so the proposed 'pure dimens override' fix needs those values extracted to a @dimen first; the row-height override works as described.",
+    "page": "home"
+  },
+  {
+    "id": "home-hero-swipe-vs-vertical-scroll",
+    "title": "Hero swipe GestureDetector returns true from onDown, contending with vertical page scroll when a drag starts on the hero",
+    "severity": "P2",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt"
+    ],
+    "symptom": "When a vertical scroll is begun with the finger on the hero banner (top of page), the hero touch listener consumes the down event, so the first vertical drag from the hero can feel sticky / not scroll the page until the finger leaves the hero region. Only fires on phone (setupHeroSwipeGesture is gated to non-TV at line 227).",
+    "rootCause": "setupHeroSwipeGesture() (~line 1748-1777) installs heroContainer.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) } and the SimpleOnGestureListener overrides onDown to return true (line 1774). Returning the gesture-detector result claims the down on the hero. The NestedScrollView can still steal the gesture once it crosses its vertical touch slop (NestedScrollView.onInterceptTouchEvent), so this is mitigated, not catastrophic \u2014 hence P2. onFling already gates on horizontal dominance (abs(deltaX) < 80 returns false, line 1759) so a vertical drag won't trigger a hero change; the residual issue is purely the consumed down event causing initial stickiness.",
+    "fix": "Have the touch listener return false (or call gestureDetector.onTouchEvent(event) and then return false) so the NestedScrollView reliably receives the motion, OR change onDown to return false. The fling is already horizontal-gated (abs(deltaX) < 80 guard at line 1759), so returning false from the listener does not break the swipe-to-change-hero feature.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed onDown returns true (line 1774) and the listener returns the gesture result (line 1776). One clarification to the auditor's root cause: onFling ALREADY guards horizontal dominance (abs(deltaX) < 80 at line 1759), so vertical drags do not accidentally rotate the hero \u2014 the only live problem is the consumed ACTION_DOWN causing initial stickiness, which NestedScrollView's own slop-based interception largely recovers from. P2 is correct.",
+    "page": "home"
+  },
+  {
+    "id": "home-hero-dots-touch-target",
+    "title": "Hero pagination dots are tappable on phone but only ~8dp tall \u2014 far below the 48dp Material touch-target minimum",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt"
+    ],
+    "symptom": "On a phone the hero page-indicator dots are made clickable (jump to that featured item) but each dot is 8dp tall and 8dp wide (24dp wide when active), with only a 6dp end margin, so they are hard to hit accurately and mis-taps are likely.",
+    "rootCause": "updateHeroIndicators() (~line 641-671) builds each dot with dotHeight = 8.dp and dotWidth = 8.dp (24.dp active), sets isClickable = true and a setOnClickListener for phone (lines 657-667). The clickable bounds equal the visual 8dp dot \u2014 no TouchDelegate, no expanded hit rect.",
+    "fix": "Keep the 8dp visual dot but expand the touchable region to >=48dp: wrap each dot in a 48dp-min container, or attach an android.view.TouchDelegate on hero_indicators that grows each dot's hit rect to 48dp, or give the dot View a 48dp layout height/width with the visible drawable centered/inset.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as described \u2014 dotHeight=8.dp, dotWidth 8.dp/24.dp, isClickable=true on phone, no expanded hit area. P3 is correct (polish; dots are a convenience, hero also rotates automatically and is swipeable).",
+    "page": "home"
+  },
+  {
+    "id": "home-neighbor-dimming-sticky-on-touch",
+    "title": "BrowseCardFocusHelper neighbor-dimming is keyed on D-pad focus; on touch it can leave cards stuck at 0.50/0.65 alpha",
+    "severity": "P3",
+    "category": "focus",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/common/BrowseCardFocusHelper.kt"
+    ],
+    "symptom": "On a phone, if a card gains focus (e.g. a tap the grid converts to focus), the helper dims neighbouring cards to 65%/50% alpha. Because touch focus is transient, the clear-dimming path (guarded by gridView.hasFocus() inside a postDelayed) may not run, leaving a row with several visibly greyed-out cards until the user interacts again.",
+    "rootCause": "attachRowDimming() (~line 535-556) applies BrowseCardFocusHelper.applyNeighborDimming on focus-gain and only clears on focus-loss inside a 50ms postDelayed guarded by gridView.hasFocus() (lines 548-553). applyNeighborDimming (BrowseCardFocusHelper.kt:31-56) animates non-focused children to ALPHA_NEAR 0.65 / ALPHA_FAR 0.50. The effect is entirely focus-keyed (a 10-foot spotlight) and is NOT gated behind DeviceUtils.isTV \u2014 it runs on phones too, where focus is not the primary interaction model, so dimming can be applied without a reliable symmetric clear.",
+    "fix": "Gate attachment to TV only: in attachRowDimming() wrap the applyNeighborDimming/highlightRowHeader/clearDimming wiring in if (DeviceUtils.isTV(requireContext())) so phones stay at full alpha \u2014 mirroring how presenters already gate GoldGlowFocusDrawable/FocusBracketDrawable behind DeviceUtils.isTV. This removes the sticky-dim risk entirely on touch.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed: attachRowDimming (HomeFragment) is wired on every row's onBind with no isTV gate, and applyNeighborDimming/clearDimming (BrowseCardFocusHelper.kt) are not phone-gated. The clear path is guarded by gridView.hasFocus() in a postDelayed, which on touch (transient/absent focus) can skip, leaving residual dimming. P3 is correct (cosmetic). Minor note: the auditor cited 'lines 31-73' for BrowseCardFocusHelper; applyNeighborDimming is 31-56 and clearDimming is 61-73 \u2014 both relevant.",
+    "page": "home"
+  },
+  {
+    "id": "livetv-tv-only-3panel-no-portrait",
+    "title": "3-panel side-by-side TV layout has no phone/portrait arrangement; panels collapse to unusable widths in portrait",
+    "severity": "P0",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_live_tv.xml",
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt"
+    ],
+    "symptom": "On a phone in portrait, all three panels are laid out side-by-side at once: categories at 22% of width (~79dp on a 360dp phone), channels at 33% (~119dp), and preview+EPG at 45% (~162dp). Channel rows (48dp logo + 2-line name + EPG line + quality/country badges + favorite star) are crushed into a ~119dp column so names wrap/ellipsize hard and badges have almost no room; the EPG list is unreadable in its sliver; and nearly half the screen is donated to a video-preview frame that never plays on phone. The user sees three cramped columns instead of a single full-width channel list.",
+    "rootCause": "Verified: there is exactly one layout file (app/src/main/res/layout/fragment_live_tv.xml) \u2014 no layout-television/ or layout-port/ variant of it exists (confirmed via find). Root content is a horizontal LinearLayout (lines 24-28) with three weighted children: categories_panel weight=22 (line 35), channels FrameLayout weight=33 (line 56), preview_panel weight=45 (line 79), each layout_height=match_parent with NO outer scroll. The only phone gating in onViewCreated (LiveTvFragment.kt lines 121-126) hides frosted_header and flips channelsList focusability/descendantFocusability \u2014 it never re-stacks the panels, never hides the preview, never widens the channel column. The 10-foot 3-column design renders verbatim on a portrait phone.",
+    "fix": "Add a phone path in onViewCreated when !DeviceUtils.isTV(): set preview_panel visibility=GONE (it never runs on phone), and zero out the categories_panel layout_weight in favor of a top dropdown/chip strip OR set channels weight so the channel list takes the full remaining width. Cleanest is a layout-sw320dp/layout (or runtime ConstraintSet/weight swap) that stacks [category selector on top] over [full-width channels list] and drops the preview, optionally moving EPG into a bottom sheet. At minimum, reassign categories_panel/channels/preview_panel weights programmatically so channels is full-width on phone.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "livetv"
+  },
+  {
+    "id": "livetv-header-gone-search-multiview-unreachable",
+    "title": "Entire header is set GONE on phone, making the in-screen channel search and MultiView entry point unreachable by touch",
+    "severity": "P1",
+    "category": "nav",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt",
+      "app/src/main/res/layout/fragment_live_tv.xml"
+    ],
+    "symptom": "On a phone, the frosted header is hidden entirely. That header is the sole host of the channel-search icon/field and the MultiView icon on this screen, so a phone user on Live TV has no way to filter channels by name here and no touch affordance to launch MultiView from Live TV. The header_search_input filter that feeds updateCategoryList/updateChannelList is dead on phone.",
+    "rootCause": "Verified: LiveTvFragment.kt line 122 unconditionally calls view.findViewById(R.id.frosted_header)?.visibility = View.GONE for any non-TV device. That header (fragment_live_tv.xml lines 180-272) is the only host of header_search_icon (242-256) and header_multiview_icon (258-271). The search toggle/filter wiring (lines 226-252) and the MultiView click (lines 217-219) are attached to those now-hidden views, so both are unreachable on phone with no replacement toolbar.",
+    "fix": "Replace the blanket GONE with a phone-appropriate header: a slim Material toolbar exposing a 48dp search action and a MultiView/overflow action, or move both into a phone overflow/bottom-sheet. Do not leave the screen with zero in-screen search and no MultiView entry.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Severity confirmed P1 (not P0): this is a degraded-but-usable screen, not unusable. Two factual corrections to the auditor's framing: (1) the header search is an IN-SCREEN channel-name FILTER (header_search_input -> searchFilter -> updateChannelList, lines 244-252), NOT the app's main Search screen \u2014 the global Search fragment is a separate top-level destination reachable from app nav, so phone users are not cut off from search entirely, only from filtering this channel list. (2) The MultiView icon is additionally gated by userPlanManager.isDeviceCapable() (line 200), so on many phones it would be GONE anyway; the lost touch entry only matters on capable devices. Both functions are still genuinely unreachable from Live TV on phone, so isReal=true stands.",
+    "page": "livetv"
+  },
+  {
+    "id": "livetv-preview-panel-dead-zone-on-phone",
+    "title": "Preview panel occupies 45% of phone width but never plays and is a focusable inert dead-zone on touch",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt",
+      "app/src/main/res/layout/fragment_live_tv.xml"
+    ],
+    "symptom": "On phone, ~45% of the horizontal space is the preview+EPG panel, but the muted preview NEVER starts (auto-preview is TV-only) so previewingChannel stays null. Tapping the preview area does nothing (the onClick is previewingChannel?.let { goFullscreen } \u2014 a no-op when null). Nearly half the screen is a static play-glyph placeholder that steals width from the already-cramped channel column and, being focusable in touch mode, can absorb a stray tap with no result.",
+    "rootCause": "Verified: auto-preview is gated TV-only at line 356 (if (DeviceUtils.isTV() && !lowMemoryDevice)), so startPreviewFor is never scheduled on phone and previewingChannel stays null. previewContainer.isFocusable=true AND isFocusableInTouchMode=true are set UNCONDITIONALLY (lines 137-138) \u2014 not gated to TV. Its onClick (lines 139-141) is a no-op when previewingChannel==null. The 45%-weight preview_panel (fragment_live_tv.xml line 79) is never hidden on phone.",
+    "fix": "On phone (!DeviceUtils.isTV()): set preview_panel visibility=GONE and reassign its weight to channels_list, since the preview has no function without auto-preview. Also guard previewContainer.isFocusable/isFocusableInTouchMode behind DeviceUtils.isTV() so it isn't a focusable dead target on touch. A single tap on a channel already goes straight to fullscreen (line 268 goFullscreen), so the preview concept can simply be dropped on phone.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Minor refinement to the auditor's wording: the gold-glow focus OVERLAY on the preview IS already gated to TV (line 146, if (DeviceUtils.isTV())), so it won't paint on phone \u2014 but the auditor's core claim is still correct because isFocusable/isFocusableInTouchMode (lines 137-138) are NOT TV-gated, so the panel remains a focusable inert dead target on touch and still consumes 45% width. isReal=true stands.",
+    "page": "livetv"
+  },
+  {
+    "id": "livetv-category-row-sub-48dp",
+    "title": "Category list rows are 42dp tall (below 48dp Material minimum) in a ~79dp-wide column",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_category.xml",
+      "app/src/main/res/layout/fragment_live_tv.xml"
+    ],
+    "symptom": "Each category row is only 42dp tall and lives in the ~22%-width (~79dp) categories column, so on a phone the tappable target is both short (42dp < 48dp Material minimum) and narrow, with a 2dp inter-item margin \u2014 easy to mis-tap an adjacent category or spill into the channel column.",
+    "rootCause": "Verified: item_category.xml line 5 hardcodes android:layout_height=\"42dp\" with no phone override. card_category_height=72dp IS defined in values/dimens.xml line 14 but is NOT referenced by this layout (confirmed via grep \u2014 only one definition, no usage in item_category.xml). categories_panel is weight=22 (fragment_live_tv.xml line 35), a narrow column on phone.",
+    "fix": "Bump the category row height to >=48dp for touch (e.g. a dedicated dimen referenced by item_category.xml with a values-television override keeping 42dp for D-pad density). Better, fold into the phone layout rework so categories become a horizontal chip strip / dropdown rather than a narrow vertical column.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "livetv"
+  },
+  {
+    "id": "livetv-channel-focus-visuals-no-touch-equivalent",
+    "title": "Channel-card gold emphasis and real-EPG upgrade fire only on D-pad focus, not on touch",
+    "severity": "P3",
+    "category": "focus",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/ChannelPresenter.kt",
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt"
+    ],
+    "symptom": "On a phone, finger-scrolling the channel list shows no selection/now-playing emphasis: the gold glow, 1.04x scale, gold accent bar, gold name tint, full-res logo swap, and the real-EPG + live-progress-bar upgrade for the focused row never appear, because all of these are driven by focus and touch scrolling does not move focus. An explicit tap launches fullscreen (no in-list selected state). The list looks less alive than on TV.",
+    "rootCause": "Verified: all channel emphasis is inside root.setOnFocusChangeListener (ChannelPresenter.kt lines 109-161), and the real-EPG/progress upgrade keys off channelsList.selectedPosition / onChildViewHolderSelected (LiveTvFragment.kt lines 336-371 and 438-491) \u2014 i.e. D-pad focus events. On phone, channelsList is FOCUS_AFTER_DESCENDANTS + isFocusableInTouchMode=false (lines 124-125), so finger scrolling generates no focus change and none of the focus-gated visuals or the focused-row EPG refresh run.",
+    "fix": "On phone, drive selected/now-playing visuals and the EPG upgrade from the center/visible item or from tap rather than focus \u2014 add an OnScrollListener (phone only) that picks the center-most channel, applies the emphasis, and calls the same EPG-upgrade path; or apply emphasis on ACTION_DOWN. The selectableItemBackground ripple on item_channel.xml line 12 already gives tap feedback.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Severity corrected P2 -> P3 (polish, not friction). The auditor overstated 'the list reads as static/flat': verified that ChannelPresenter.onBindViewHolder (lines 78-87) binds an inferred 'on now' EPG line for EVERY row via epgResolver REGARDLESS of focus (the LiveTvFragment wires epgResolver at lines 176-180 with smartEpgFiller.inferRuleBased). So every channel row already shows name + an on-now blurb on phone; only the gold focus chrome and the real-EPG-vs-inferred UPGRADE for one row are missing. Channel name, logo, badges, favorite star, and an EPG line all render fine and the row taps through to fullscreen. This is cosmetic polish, not a usability defect \u2014 downgraded to P3. isReal=true stands (the focus-only visuals genuinely never fire on touch).",
+    "page": "livetv"
+  },
+  {
+    "id": "vod-tv-2panel-no-portrait",
+    "title": "TV-only 25/75 horizontal split layout has no portrait/phone arrangement",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_vod.xml",
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt"
+    ],
+    "symptom": "On a phone in portrait the category sidebar is pinned to 25% of screen width (~90-100px on a typical 360dp-wide phone). Category names are heavily ellipsized (ellipsize=end, maxLines=1 at item_category.xml:39-40) and the in-sidebar count pill crowds the remaining width; the poster grid is squeezed into 75% of an already-narrow portrait width but does at least drop to 3 columns on phone (poster_columns=3 in values/dimens.xml:60 vs 4 on TV). It reads as a squashed TV screen, not a phone menu.",
+    "rootCause": "fragment_vod.xml uses a single horizontal LinearLayout (lines 24-28) with android:layout_weight=\"25\" on the sidebar (line 35) and android:layout_weight=\"75\" on the VerticalGridView (line 70), both android:layout_height=\"match_parent\". Confirmed there are only layout/ and layout-television/ resource dirs (no layout-port/, no layout-sw320dp/layout/), so portrait phones render this exact weighted split. The only phone adaptation in code is hiding nav hints + frosted header and a touch-passthrough fix on the poster grid (VodFragment.kt:81-87) \u2014 nothing re-weights or restructures the sidebar.",
+    "fix": "Add a phone path. Either create res/layout-port/fragment_vod.xml that stacks a horizontal category strip (HorizontalGridView) above a full-width VerticalGridView, or in VodFragment.onViewCreated gate on !DeviceUtils.isTV() and re-set the vod_sidebar LinearLayout.LayoutParams weight (e.g. to ~38-40, or a fixed 130dp min width) so category names are legible. The 3-column phone grid already exists; the unsolved half is the cramped fixed-weight sidebar.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed accurate. Verified: weights are exactly 25/75 (lines 35, 70), both match_parent height, only layout/ + layout-television/ exist (no portrait variant). One refinement to the auditor's symptom: the grid is NOT stuck at TV column counts \u2014 poster_columns is 3 on phone (values/dimens.xml:60) vs 4 on TV/sw600dp, so the poster side is less broken than implied; the real degradation is the ~90px ellipsized sidebar. Severity P1 is correct (badly degraded but usable \u2014 both panels still function and scroll).",
+    "page": "vod"
+  },
+  {
+    "id": "vod-category-list-no-touch-passthrough",
+    "title": "Category RecyclerView missing the phone touch-passthrough treatment the poster grid gets",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/common/CategoryListAdapter.kt",
+      "app/src/main/res/layout/item_category.xml"
+    ],
+    "symptom": "The category list's first finger tap can land on focus-acquisition instead of cleanly selecting, so the first tap on a category may visibly highlight/scale it (focus) rather than immediately switching the grid; a second tap then selects. The list DOES drag-scroll fine (plain RecyclerView claims the drag at touch slop). So this is mild first-tap friction, not a scroll break.",
+    "rootCause": "The phone fix block (VodFragment.kt:81-87) applies FOCUS_AFTER_DESCENDANTS + isFocusableInTouchMode=false ONLY to posterGrid (lines 85-86). categoriesList (plain androidx.recyclerview.RecyclerView, LinearLayoutManager set at line 111) gets none of it, and every row in item_category.xml is focusable=true + focusableInTouchMode=true (lines 12-13). Verified CategoryListAdapter wires itemView.setOnClickListener at line 102, so tap-to-select DOES work \u2014 but the focusableInTouchMode rows plus the 60ms-debounced focus scale animation (CategoryListAdapter.kt:89-92) make the first touch register as a focus event with a visible 1.04x scale before the click is honored.",
+    "fix": "In the !DeviceUtils.isTV() block, also set categoriesList.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS (mirroring posterGrid at lines 85-86) so a tap reaches the row click directly. Optionally also set categoriesList rows' focusableInTouchMode false on phone to suppress the focus-scale on first touch.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real but SEVERITY DOWNGRADED P2 -> P3. The auditor itself notes (and code confirms) the list scrolls fine and tap-to-select works via setOnClickListener (CategoryListAdapter.kt:102) \u2014 the only artifact is a cosmetic first-tap focus highlight/scale, which is polish, not noticeable functional friction. Category=scroll is acceptable since it sits in the scroll-passthrough family, though it is really a focus/touch artifact.",
+    "page": "vod"
+  },
+  {
+    "id": "vod-category-row-touch-target",
+    "title": "Category rows are 42dp tall \u2014 below the 48dp Material touch minimum",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_category.xml",
+      "app/src/main/res/layout/fragment_vod.xml"
+    ],
+    "symptom": "Category list rows on phone are 42dp tall (item_category.xml:5) plus a 2dp bottom margin (line 10), so the tappable height is under the 48dp Material minimum. Combined with the ~90px-wide portrait sidebar (finding vod-tv-2panel-no-portrait), categories are easy to mis-tap and fiddly to hit with a thumb.",
+    "rootCause": "item_category.xml hard-codes android:layout_height=\"42dp\" (line 5). Verified there is NO layout-television/item_category.xml override \u2014 the file is shared by phone and TV, so phone inherits the dense 42dp row. No values-sw320dp or other qualifier bumps it. The card_category_height dimen (72dp) exists in values/dimens.xml:14 but is unused by this layout.",
+    "fix": "Make item_category.xml line 5 reference a dimen (e.g. @dimen/category_row_height) defined as >=48dp in values/ for phone, and add a 42dp override only in values-television/dimens.xml so the 10-foot UI keeps its density. (The auditor's suggestion to reuse @dimen/card_category_height=72dp would over-tall the row; 48-52dp is the right phone target.)",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed accurate. Verified 42dp literal at item_category.xml:5, 2dp bottom margin at line 10, no TV layout override of this item, card_category_height=72dp exists and is unused. Minor correction to the auditor's fix: reusing the 72dp card_category_height would make rows excessively tall; target ~48-52dp instead. Severity P2 correct.",
+    "page": "vod"
+  },
+  {
+    "id": "vod-header-search-hidden-on-phone",
+    "title": "VOD per-screen search is entirely hidden on phone (frosted_header GONE), plus the 28dp icon is sub-48dp on TV/tablet",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/fragment_vod.xml",
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt"
+    ],
+    "symptom": "On phone the entire frosted_header is set GONE (VodFragment.kt:83), and the only search entry point on the VOD screen \u2014 header_search_icon + header_search_input \u2014 lives inside that header. So a phone user has NO way to open the per-screen movie search/filter from the Movies tab; they must leave and use the global Search tab. The 28dp icon touch target (fragment_vod.xml:154-155, with 2dp padding = ~24dp glyph) is below 48dp, but that only matters on surfaces where the header is shown (TV/tablet).",
+    "rootCause": "VodFragment.kt:83 hides frosted_header wholesale on !isTV. The header carries both decorative TV chrome (center logo, clock) AND the functional search affordance, so hiding the whole bar removes search on phone. header_search_icon is 28x28dp (fragment_vod.xml:154-155).",
+    "fix": "Don't blanket-hide frosted_header on phone. Hide only the decorative children (header_center_logo, header_clock, header_logo) and keep header_search_icon + header_search_input visible, wrapping the icon in a >=48dp touch container. Alternatively, accept that VOD search is delegated to the bottom-nav Search tab and remove this as a defect \u2014 but currently the in-screen search simply vanishes with no replacement surfaced.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Merged/recharacterized the auditor's vod-header-search-icon-target (was P3, confidence medium). The 28dp-target part is technically true but low-impact because the header is GONE on phone. The auditor buried the genuinely more serious issue in prose: hiding frosted_header (VodFragment.kt:83) removes the ONLY in-screen search entry point on phone. Promoted to the title and raised to P2 (functional loss, not polish). Verified: header_search_icon=28dp at fragment_vod.xml:154-155; frosted_header GONE at VodFragment.kt:83; search input/icon live only inside that header.",
+    "page": "vod"
+  },
+  {
+    "id": "vod-longpress-vs-scroll-conflict",
+    "title": "Poster long-press handler unconditionally returns true, lightly competing with drag-scroll",
+    "severity": "P3",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt"
+    ],
+    "symptom": "On phone, a slow press-and-hold on a poster at the start of a drag can pop the More Info overlay instead of scrolling, because the long-press fires and returns true. Minor \u2014 RecyclerView usually claims the drag at touch slop before the long-press timeout, so it only surfaces on a near-stationary slow finger-down.",
+    "rootCause": "setOnLongClickListener (VodFragment.kt:152-166) returns true unconditionally (line 165), claiming the gesture with no check for in-progress scroll. The handler is attached to every poster on all device types (not gated to TV).",
+    "fix": "Acceptable default Android behavior; if it annoys on phone, gate the long-press to !isPhone (it duplicates the tap->detail flow on touch, and the detail screen already exposes favorite/info), or guard it behind RecyclerView.SCROLL_STATE_IDLE before invoking the info overlay.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed as a real but very minor (P3) issue, matching the auditor. Verified setOnLongClickListener returns true at line 165 with no scroll-state guard and no TV gating. Standard Android long-press-vs-scroll arbitration mostly resolves this in the user's favor, so impact is genuinely low.",
+    "page": "vod"
+  },
+  {
+    "id": "vod-skeleton-position-restore-race",
+    "title": "[MISSED] Grid focus restore on back-nav uses grid.post{} \u2014 same race the v3.7.13 fix warned against",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/vod/VodFragment.kt"
+    ],
+    "symptom": "On returning to VOD from a movie detail (back navigation), the saved grid scroll/focus position is restored inside posterGrid.post{} (VodFragment.kt:240-246) on the skeleton->real-adapter swap. This posted restore can lose the race to leanback's deferred layout pass \u2014 the same failure mode the v3.7.13 fix explicitly called out and replaced with a SYNCHRONOUS selectedPosition write in updateMovieListInternal (lines 322-325). Worst case is a position-restore miss or, on slow devices, the historical 'Invalid item position -1' IOOBE family. Not a touch-drag-scroll break.",
+    "rootCause": "Two different position-restore paths exist: updateMovieListInternal sets grid.selectedPosition SYNCHRONOUSLY after setItems (lines 322-325, the v3.7.13 hardening), but the skeleton-swap back-nav restore at lines 240-246 still uses posterGrid.post{ ... selectedPosition = ... }. The comment at lines 315-321 says synchronous is load-bearing precisely because a posted restore can be beaten by the layout pass.",
+    "fix": "Move the savedGridPosition restore out of posterGrid.post{} and set posterGrid.selectedPosition synchronously right after assigning posterGrid.adapter = posterBridgeAdapter (line 238), bounds-coerced against posterAdapter.size()-1, consistent with the synchronous pattern in updateMovieListInternal.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "[MISSED] by the auditor. This is a real inconsistency with the project's own documented v3.7.13 invariant (CLAUDE.md: 'a grid.post{} restore loses the race; synchronous is load-bearing'). It is primarily a focus/restore correctness + slow-device crash-family concern rather than a touch-drag-scroll break on phone, hence P3 and category=scroll. Flagged for completeness; the touch-drag scrollability of the grid itself is unaffected and works (posterGrid passthrough at lines 85-86).",
+    "page": "vod"
+  },
+  {
+    "id": "series-tv-only-sidebyside-no-portrait",
+    "title": "TV-only side-by-side category/grid split has no portrait phone arrangement",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_series.xml",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt"
+    ],
+    "symptom": "On a portrait phone the screen renders a horizontal split: a category sidebar pinned to the left 25% of width (fragment_series.xml series_sidebar layout_weight=25, line 34) and a 3-column poster grid (series_grid layout_weight=75, line 69) in the remaining 75%. Category names (item_category category_name maxLines=1, ellipsize=end) truncate hard in the narrow column, and posters are tiny because poster_columns stays 3 on phone. It reads as a shrunken 10-foot TV screen.",
+    "rootCause": "fragment_series.xml is a single weighted horizontal LinearLayout, both panes layout_height=match_parent, with no outer scroll container. Verified there are only layout/ and layout-television/ resource dirs (no layout-port/ or layout-sw320dp/layout), so phones render this TV layout unchanged. poster_columns is 3 in values/dimens.xml:60 with NO sw320dp override (only sw600dp:30 and television:40 bump it to 4), so phones stay at 3 columns in 75% width. No isPhone()/isTablet() reflow exists in onViewCreated.",
+    "fix": "Gate a phone arrangement on DeviceUtils.isPhone() in onViewCreated: either (a) move categories into a horizontal chip strip across the top with the poster grid full-width below, or (b) collapse the sidebar into a slide-in drawer and give the grid 100% width. At minimum add <integer name=\"poster_columns\">2</integer> to values-sw320dp/dimens.xml and reduce the sidebar weight on phone. The existing CategoryListAdapter can be reused with a horizontal LinearLayoutManager for the top-strip option.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed. Cited line numbers are slightly off (sidebar weight is line 34 not 35, grid weight is line 69 \u2014 close enough). Verified via filesystem: only layout/ and layout-television/ dirs exist, and poster_columns has no sw320dp override so phones get 3 columns in 75% width. Finding stands as written.",
+    "page": "series"
+  },
+  {
+    "id": "series-search-unreachable-on-phone",
+    "title": "Search affordance hidden on phone (frosted header GONE) with no touch fallback",
+    "severity": "P1",
+    "category": "nav",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt",
+      "app/src/main/res/layout/fragment_series.xml"
+    ],
+    "symptom": "A phone (or tablet) user cannot search series from this screen. The entire frosted_header bar \u2014 which holds the search icon (header_search_icon), search input (header_search_input), logo and clock \u2014 is set to GONE on every non-TV device. The only other search box, series_category_search (fragment_series.xml line 42), is android:visibility=gone and is never made visible by any code path. So there is no reachable search entry on touch.",
+    "rootCause": "SeriesFragment.kt:81 sets frosted_header.visibility = GONE inside the !DeviceUtils.isTV() branch. All search wiring (headerSearchIcon click toggle at :173-188, headerSearchInput TextWatcher at :191-199) lives inside that hidden header. Confirmed via grep that series_category_search / category_search has ZERO references in app/src/main/java (NONE FOUND) \u2014 the sidebar EditText is dead code that never appears. Search is unreachable on touch.",
+    "fix": "Either don't blanket-GONE the whole header on touch \u2014 keep header_search_icon (and header_search_input) visible while hiding only TV-decorative pieces (header_center_logo, header_clock) \u2014 OR wire the existing series_category_search sidebar EditText: set it VISIBLE under isPhone() and attach a TextWatcher that drives updateCategoryList()/updateSeriesList() (the filter logic already exists at SeriesFragment.kt:191-199 and can be reused verbatim).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed and slightly UNDERSTATED. The header is hidden for ALL non-TV devices (phones AND tablets), since the gate is !isTV(), not isPhone(). Verified series_category_search has zero Java references (grep NONE FOUND), confirming it never appears. The auditor's cited line :173/:191 for the wiring are accurate. Finding stands; the impact is actually broader than phone-only.",
+    "page": "series"
+  },
+  {
+    "id": "series-category-row-touch-target",
+    "title": "Category rows are 42dp tall \u2014 below the 48dp Material touch minimum",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_category.xml",
+      "app/src/main/java/com/ooustream/iptv/common/CategoryListAdapter.kt"
+    ],
+    "symptom": "Each category row in the left sidebar is 42dp tall (item_category.xml:5) plus a 2dp bottom margin (line 10). On a phone these are tappable but undersized, and because they sit in a narrow ~25%-width sidebar, fingers easily land on the wrong adjacent category. Mis-taps select the wrong category.",
+    "rootCause": "item_category.xml line 5 hardcodes android:layout_height=\"42dp\" \u2014 a literal, NOT @dimen/card_category_height (which is 72dp in values/dimens.xml:14 but is never referenced by this layout). The whole row (category_root) is the click target: CategoryListAdapter.kt:102 sets itemView.setOnClickListener. No phone override exists for the row height.",
+    "fix": "Change item_category.xml:5 to android:layout_height=\"@dimen/card_category_height\" (already 72dp) or at minimum 48dp, and add a tighter value (e.g. 42dp) in values-television/dimens.xml so TV density is preserved. This restores a 48dp+ touch target on phone without changing the TV look.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly. item_category.xml:5 is a literal 42dp; card_category_height=72dp exists at values/dimens.xml:14 but is not referenced; CategoryListAdapter.kt:102 is the click target. P2 severity is appropriate (friction/mis-tap, not unusable). Finding stands.",
+    "page": "series"
+  },
+  {
+    "id": "series-search-icon-touch-target",
+    "title": "Header search icon is 28dp \u2014 below 48dp touch minimum (latent; header is GONE on all touch devices)",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/fragment_series.xml"
+    ],
+    "symptom": "header_search_icon is a 28x28dp tap target with 2dp padding (fragment_series.xml:153-156). In current shipping code it is never presented on any touch device because the entire frosted_header is GONE whenever !isTV (so on BOTH phones and tablets). It becomes a real sub-48dp hit-target defect the moment the header is re-enabled on touch (which the search-unreachable fix above requires).",
+    "rootCause": "fragment_series.xml:153-154 sets layout_width/height=28dp on header_search_icon. frosted_header is hidden for all non-TV devices via SeriesFragment.kt:81 (gate is !isTV, not isPhone), so the icon is currently unreachable on touch \u2014 a LATENT target-size defect tied to the search fix.",
+    "fix": "When re-enabling the search icon on touch (per the series-search-unreachable fix), bump header_search_icon to 48dp width/height and keep the glyph centered via scaleType=centerInside (already set at line 158). Pair the two fixes so a properly-sized, reachable search icon lands together.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "CORRECTED PREMISE: the auditor wrote 'tablets are isTablet, not isPhone, so the header is NOT hidden for them' \u2014 that is WRONG. The visibility gate is !isTV() (SeriesFragment.kt:79-81), and isTablet is a subset of !isTV, so the header IS hidden on tablets too. The 28dp icon is therefore NEVER shown on any touch device in current code \u2014 it is purely latent, not 'hard to hit on tablets today'. The finding is still real as a latent defect coupled to the search fix; severity correctly stays P3. Confidence raised to high since the latency is now fully proven.",
+    "page": "series"
+  },
+  {
+    "id": "series-category-list-no-touch-passthrough-parity",
+    "title": "Category RecyclerView lacks the touch-passthrough treatment applied to the poster grid (minor first-tap focus steal, NOT a scroll lock)",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/series/SeriesFragment.kt",
+      "app/src/main/res/layout/item_category.xml"
+    ],
+    "symptom": "Dragging the category sidebar with a finger works (plain RecyclerView + LinearLayoutManager handles touch drag itself). But because each row is focusable=true + focusableInTouchMode=true (item_category.xml:12-13), the first tap on a row can be consumed as a focus grab rather than a select, occasionally needing a second tap. Not a scroll lock.",
+    "rootCause": "The phone touch fix (descendantFocusability=FOCUS_AFTER_DESCENDANTS + isFocusableInTouchMode=false) is applied ONLY to posterGrid (SeriesFragment.kt:83-84), not to series_categories_list (set up with a plain LinearLayoutManager at :103). item_category.xml:12-13 keeps focusable/focusableInTouchMode=true for TV D-pad. On a plain RecyclerView this does not hard-lock scroll, so impact is minor first-tap focus stealing. Verified ContentInfoHelper.attach() registers no global touch interceptor (only adds an overlay child), so nothing else blocks the category drag.",
+    "fix": "In the !isTV branch, also set series_categories_list.descendantFocusability = FOCUS_AFTER_DESCENDANTS (alongside the existing posterGrid lines at :83-84) so the row click listener wins the first touch. Leave focusableInTouchMode on the rows for TV D-pad. Low priority \u2014 drag-scroll already works.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed, and the auditor's restraint is correct: this is NOT a scroll lock. Category list is match_parent height inside a weighted LinearLayout (fragment_series.xml:57-61), with a plain LinearLayoutManager (SeriesFragment.kt:103) and no NestedScrollView wrapper and no touch interceptor (verified ContentInfoHelper adds no setOnTouchListener) \u2014 so it drag-scrolls by default. P3 is correct. VOD parity confirmed: VodFragment.kt:81-86 applies the same fix to posterGrid only. Finding stands as minor friction.",
+    "page": "series"
+  },
+  {
+    "id": "seriesdetail-requestfocus-autoscroll",
+    "title": "requestFocus() on seasons row + episode list yanks the header off-screen on load (and on touch)",
+    "severity": "P1",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/series/SeriesDetailFragment.kt",
+      "app/src/main/res/layout/fragment_series_detail.xml"
+    ],
+    "symptom": "On a phone, opening a series jumps the page down: the poster/title/plot/season tabs scroll up out of view and the user lands mid-page at the episode list, having to scroll back UP to see artwork and synopsis. The screen 'snaps' away from the top the moment episodes finish loading.",
+    "rootCause": "collectEpisodes() posts episodesList.requestFocus() (SeriesDetailFragment.kt:272-276, guarded only by !seasonsRow.hasFocus()) and collectSeasonTabs() posts seasonsRow.requestFocus() (lines 238-242). Both are pure D-pad focus bootstrapping. The content lives in a NestedScrollView (fragment_series_detail.xml:25-30, focusable=false on the scroll view itself). episodes_list is android:focusable=\"true\" + android:focusableInTouchMode=\"true\" (fragment_series_detail.xml:196-197) and sits BELOW the header in the vertical LinearLayout. A NestedScrollView auto-scrolls (requestChildFocus -> scrollToDescendant) to bring any newly-focused descendant fully into view, so focusing episodes_list forces the page to scroll down past the cover/metadata/seasons. None of these requestFocus() calls are gated behind DeviceUtils.isTV(). VERIFIED: the seasonsRow.requestFocus() (near the top) is comparatively harmless; the episodesList.requestFocus() is the one that destroys the initial scroll position. Note: the auditor cited the XML focusable attrs as lines 196-198, but 196-197 are focusable/focusableInTouchMode and 198 is visibility \u2014 minor citation drift, substance correct.",
+    "fix": "Gate both requestFocus() blocks behind a TV check so phones keep scroll-at-top: wrap SeriesDetailFragment.kt:238-242 (seasonsRow.requestFocus()) and 272-276 (episodesList.requestFocus()) in `if (DeviceUtils.isTV(requireContext())) { ... }`. Additionally, on phone set episodes_list android:focusableInTouchMode=\"false\" (or remove focusable) in fragment_series_detail.xml:196-197 so the list cannot grab focus on a touch re-layout and re-trigger the NestedScrollView auto-scroll.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as real. Line citations accurate except the XML focusable attrs are lines 196-197 (198 is visibility), not 196-198. Severity P1 is correct \u2014 degraded but the user can manually scroll back up, so not P0.",
+    "page": "series_detail"
+  },
+  {
+    "id": "seriesdetail-watchprogress-double-submit",
+    "title": "watchProgressMap setter does submitList(null)+submitList(current), collapsing the list to 0 height and jolting scroll on return from playback",
+    "severity": "P1",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/series/EpisodeRecyclerAdapter.kt",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesDetailFragment.kt"
+    ],
+    "symptom": "After watching an episode and pressing back, the Series Detail page flickers and the scroll position resets \u2014 the user is bounced away from where they were in the episode list. On a long season this is a lose-my-place jolt every time they return from playback.",
+    "rootCause": "EpisodeRecyclerAdapter.watchProgressMap is a custom setter (EpisodeRecyclerAdapter.kt:26-33) that calls submitList(null) then submitList(current). submitList(null) empties the ListAdapter to 0 items; because episodes_list is android:layout_height=\"wrap_content\" with android:nestedScrollingEnabled=\"false\" inside the NestedScrollView (fragment_series_detail.xml:186-198), the RecyclerView momentarily collapses to height 0, shrinking the scrollable content, then re-expands one frame later \u2014 the NestedScrollView clamps/repositions scrollY against the temporarily-shorter content. This setter runs on every onResume: SeriesDetailFragment.onResume() -> viewModel.refreshWatchProgress() (line 133) -> loadWatchProgress -> _episodeWatchProgress emits -> collectWatchProgress() (lines 285-289) reassigns watchProgressMap, executing the null/current round-trip even when the progress data is unchanged (the setter has no equality short-circuit).",
+    "fix": "Remove the empty-then-refill churn. In EpisodeRecyclerAdapter.kt:26-33, early-return when value == field, then rebind in place without going to 0 items: drop the `submitList(null)` line and instead `notifyItemRangeChanged(0, itemCount, PAYLOAD_PROGRESS)` (payload rebind) OR fold progress into Episode equality / areContentsTheSame and just `submitList(current.toList())`. Simplest stable-count fix: `if (field != value) { field = value; notifyItemRangeChanged(0, itemCount) }`.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as real and accurately described. The onResume -> refreshWatchProgress -> collectWatchProgress -> setter chain is verified (SeriesDetailFragment.kt:130-134, 285-289). The setter has no equality guard, so the null/current round-trip runs unconditionally. P1 correct.",
+    "page": "series_detail"
+  },
+  {
+    "id": "seriesdetail-season-tab-touch-target",
+    "title": "Season tabs use raw-pixel padding and rely on a 56dp row, leaving small, dense touch targets",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/series/SeasonTabPresenter.kt",
+      "app/src/main/res/layout/fragment_series_detail.xml"
+    ],
+    "symptom": "On a phone the 'Season 1 / Season 2' tabs are small text chips that are easy to mis-tap, especially short labels. Tapping between adjacent seasons can hit the wrong tab or register nothing near the edge.",
+    "rootCause": "SeasonTabPresenter.onCreateViewHolder (SeasonTabPresenter.kt:14-23) builds a bare TextView with setPadding(32, 16, 32, 16) \u2014 raw PIXELS, not dp (a Leanback Presenter applies no density scaling). On a 3x phone that is ~10.7dp horizontal / ~5.3dp vertical of padding around 15sp text. There is no android:minWidth/minHeight = 48dp on the tab. The row is bounded by seasons_row HorizontalGridView fixed at android:layout_height=\"56dp\" (fragment_series_detail.xml:165), so even if vertical height is OK, short labels stay well under the 48dp Material minimum width.",
+    "fix": "In SeasonTabPresenter.onCreateViewHolder, convert padding to dp and add minimum hit size: `val d = parent.resources.displayMetrics.density; setPadding((20*d).toInt(),(12*d).toInt(),(20*d).toInt(),(12*d).toInt()); minWidth = (64*d).toInt(); minHeight = (48*d).toInt(); gravity = android.view.Gravity.CENTER` so every tab is >= 48dp tall and 64dp wide regardless of label length.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as real. setPadding(32,16,32,16) is raw pixels (verified SeasonTabPresenter.kt:16), textSize=15f, no min dimensions. P2 severity is correct \u2014 friction, not a blocker.",
+    "page": "series_detail"
+  },
+  {
+    "id": "seriesdetail-back-arrow-44dp",
+    "title": "Phone back-arrow button is 44dp, just under the 48dp Material minimum",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/PhoneToolbarHelper.kt",
+      "app/src/main/java/com/ooustream/iptv/series/SeriesDetailFragment.kt"
+    ],
+    "symptom": "The top-left back arrow is slightly small to tap reliably one-handed near the screen edge. Back navigation works (routes through onBackPressedDispatcher), so this is friction, not a blocker.",
+    "rootCause": "PhoneToolbarHelper.attach() sizes the back ImageButton at (44 * density) x (44 * density) (PhoneToolbarHelper.kt:90-92), below the 48dp Material minimum. The button is the only touch path back on phone \u2014 TV returns null at line 43 (Leanback uses D-pad back, no toolbar). SeriesDetailFragment.onViewCreated calls PhoneToolbarHelper.attach at lines 99-101.",
+    "fix": "Bump the back button to 48dp in PhoneToolbarHelper.kt:90-92: `LinearLayout.LayoutParams((48 * density).toInt(), (48 * density).toInt())`. Existing internal padding (10dp each side, lines 93-94) keeps the icon size; only the tappable area grows to meet the Material minimum.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as real. 44dp x 44dp verified at PhoneToolbarHelper.kt:90-92; TV null-return verified at line 43; attach call verified at SeriesDetailFragment.kt:99-101. P3 correct \u2014 minor polish, since back also works via system gesture / onBackPressedDispatcher.",
+    "page": "series_detail"
+  },
+  {
+    "id": "voddetail-tv-layout-no-portrait",
+    "title": "Detail screen is a TV/landscape hero layout with no portrait arrangement",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_vod_detail.xml:9-21",
+      "app/src/main/res/layout/fragment_vod_detail.xml:37-44",
+      "app/src/main/res/layout/fragment_vod_detail.xml:47-62"
+    ],
+    "symptom": "On a phone in portrait, the screen shows a 320dp-tall full-bleed backdrop, then a horizontal row with a 140x210dp poster on the LEFT and all metadata crammed into the remaining narrow column on the right. The 140dp paddingTop plus the 320dp backdrop pushes the poster+metadata block low; the metadata column (weight=1) is starved for width so title (28sp, maxLines=2), director (maxLines=1) and cast (maxLines=2) truncate aggressively. Reads as a 10-foot landscape hero squashed into a tall portrait frame.",
+    "rootCause": "Verified: only res/layout/ and res/layout-television/ exist, and layout-television/ has NO fragment_vod_detail.xml (find returned only ./layout/fragment_vod_detail.xml). So phones render this single shared TV-derived layout. It uses a fixed 320dp backdrop (line 12/21), a horizontal LinearLayout (line 40) with android:paddingTop=140dp (line 43), a fixed 140x210dp poster (lines 49-50) beside a weight=1 metadata column (lines 56-62) \u2014 a side-by-side arrangement designed for landscape width. Backdrop height is a hardcoded 320dp literal (NOT @dimen/hero_height), so the values-sw320dp/sw600dp dimens overrides do not help it.",
+    "fix": "Add a phone arrangement that stacks poster above metadata: set the inner info LinearLayout (line 40) orientation=vertical with gravity=center_horizontal on phone (a layout-port/ variant, or runtime DeviceUtils.isPhone() flip of orientation in onViewCreated). Replace the hardcoded 320dp backdrop height with @dimen/hero_height (already 200dp default / 170dp on sw320dp) so it shrinks on phones, and replace the hardcoded 140dp paddingTop with a dimen that is smaller on phone. Cleanest is a dedicated portrait layout file.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed. Auditor cited line 47-53 for poster; the metadata weight column is lines 56-62 \u2014 broadened the citation. Also note the auditor's fix suggested @dimen/hero_height for the backdrop but the backdrop height is a hardcoded 320dp literal (lines 12/21), not currently a dimen reference, so swapping it to a dimen is part of the fix, not a no-op. Severity P1 is correct: usable (you can still scroll and Play) but badly TV-shaped on portrait.",
+    "page": "vod_detail"
+  },
+  {
+    "id": "voddetail-plot-truncated-no-expand",
+    "title": "Plot capped at 5 lines with ellipsis and no touch way to read the rest",
+    "severity": "P2",
+    "category": "scroll",
+    "files": [
+      "app/src/main/res/layout/fragment_vod_detail.xml:158-170",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:220-224"
+    ],
+    "symptom": "A long synopsis is cut off after 5 lines with a trailing ellipsis. A phone user has no way to read the full plot \u2014 there is no More toggle, the text isn't independently scrollable, and because maxLines clamps the TextView height the page ScrollView has no extra plot height to reveal on drag. The text simply ends at line 5.",
+    "rootCause": "Confirmed: vod_plot sets android:maxLines=5 (line 165) and android:ellipsize=end (line 166). The fragment only assigns plot.text and toggles visibility (lines 221-224) with no expand handler, click listener, or phone gating. maxLines physically clamps the view height so the surrounding ScrollView never grows past the truncated text.",
+    "fix": "On phone (DeviceUtils.isPhone(requireContext())), after populating plot.text in the collector set plot.maxLines = Integer.MAX_VALUE and plot.ellipsize = null so the full plot lays out and the existing working ScrollView reveals it on finger-drag. Alternatively add a tap-to-expand: make plot clickable on phone and toggle maxLines 5 <-> MAX_VALUE in an onClickListener.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Category 'scroll' is defensible (content is unreachable via the page scroller because maxLines clamps height) though it is really a content-reachability/layout issue, not a broken scroller \u2014 the ScrollView itself works. Severity P2 is correct (friction, not unusable: Play still works, metadata is visible).",
+    "page": "vod_detail"
+  },
+  {
+    "id": "voddetail-no-watchnext-row",
+    "title": "No watch-next / similar / recommendations row on Movie Detail",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_vod_detail.xml:24-193"
+    ],
+    "symptom": "From a movie's detail page a phone user cannot discover related/similar movies \u2014 there is no recommendations rail. The screen dead-ends at Play; forward paths are only Play or Back. This is a discoverability gap, NOT a broken scroller.",
+    "rootCause": "Confirmed: grep over fragment_vod_detail.xml for watch_next|similar|recommend|RecyclerView|HorizontalGridView|VerticalGridView returned zero matches. The ScrollView (lines 24-193) wraps only the static poster+metadata+plot+button block.",
+    "fix": "Optional enhancement (not a regression): add a HorizontalGridView 'More Like This' row below the plot inside the existing ScrollView, fixed height so vertical page-drag still works, populated from the existing RecommendationEngine. On phone set isFocusableInTouchMode appropriately so horizontal finger-swipe works.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed. This is an absence/enhancement, not a touch/scroll defect \u2014 P3 is appropriate. The page note's watch-next-row check is satisfied: there is none here.",
+    "page": "vod_detail"
+  },
+  {
+    "id": "voddetail-back-arrow-sub48",
+    "title": "Phone back arrow touch target is 44dp (below 48dp Material minimum)",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/common/PhoneToolbarHelper.kt:90-92",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:56-58"
+    ],
+    "symptom": "The circular back arrow at top-left on phone is a 44dp square \u2014 slightly below the 48dp Material minimum tap size, making it marginally harder to hit reliably one-handed at the screen edge.",
+    "rootCause": "Confirmed: PhoneToolbarHelper.backButton layoutParams are (44*density, 44*density) (lines 90-92). The enclosing bar is 48dp tall but the actual hit-test view is the 44dp ImageButton. VodDetailFragment.attach call is lines 56-58. The same helper is also used by SeriesDetailFragment (line 99), so the fix applies to both.",
+    "fix": "Change the ImageButton layoutParams in PhoneToolbarHelper to (48*density, 48*density) and keep the 10dp internal padding so the visible glyph stays the same size while the touch target reaches 48dp. Fixes VodDetail and SeriesDetail simultaneously.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly. 4dp under minimum \u2014 genuinely P3 polish, only marginally below the guideline.",
+    "page": "vod_detail"
+  },
+  {
+    "id": "voddetail-orphan-focusintouchmode",
+    "title": "Play button focusableInTouchMode + requestFocus pops a focus highlight on phones",
+    "severity": "P3",
+    "category": "focus",
+    "files": [
+      "app/src/main/res/layout/fragment_vod_detail.xml:184-187",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:227",
+      "app/src/main/java/com/ooustream/iptv/vod/VodDetailFragment.kt:256"
+    ],
+    "symptom": "On a phone the Play button grabs focus on entry (and again when vodInfo loads) and, via the onFocusChange handler, paints the gold focused state (gold bg, dark text) even though the user never D-padded to it. Purely cosmetic \u2014 tapping Play still works \u2014 but the gold focused styling on touch looks like a stuck/selected state.",
+    "rootCause": "Confirmed: android:focusableInTouchMode=true (line 185); fragment calls playButton.requestFocus() in the vodInfo collector (line 227) and playButton.post { requestFocus() } (line 256), neither gated on TV. The setOnFocusChangeListener (lines 116-125) recolors to gold (#FFC107) on focus. focusableInTouchMode + requestFocus is a D-pad idiom with no purpose on touch.",
+    "fix": "Gate focus on TV: wrap both requestFocus() calls in if (DeviceUtils.isTV(requireContext())). Remove android:focusableInTouchMode=true from the layout (keep android:focusable=true so D-pad still reaches it on TV). Optionally skip the gold onFocusChange recolor on phone.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed real. Minor correction to the auditor's detail: the onFocusChange UNFOCUSED branch sets background to purple #8B5CF6 / white text (lines 122-123), NOT the gold described loosely \u2014 so on touch the button flips to GOLD-focused while focused, and would only go purple if focus were lost. The visible artifact (gold 'stuck' look on entry) is real. Confidence medium because whether the gold state actually persists visibly depends on touch-mode focus behavior on the specific device (entering touch mode on first tap can clear it), but on initial render before any touch it will show focused-gold. P3 polish is correct.",
+    "page": "vod_detail"
+  },
+  {
+    "id": "search-results-row-wrapcontent-height",
+    "title": "Result rows use WRAP_CONTENT row height inside a vertical scroll parent \u2014 fragile leanback measure",
+    "severity": "P3",
+    "category": "layout",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/search/SearchFragment.kt",
+      "app/src/main/res/layout/fragment_search_aurora.xml"
+    ],
+    "symptom": "Result HorizontalGridView rows are measured with WRAP_CONTENT for both the LayoutParams height and setRowHeight, which is a fragile leanback measure pattern; the codebase's own empty-state trending_row uses a fixed 260dp instead.",
+    "rootCause": "VERIFIED: createResultRow() (SearchFragment.kt:386-393) sets LayoutParams height = WRAP_CONTENT and setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT). Leanback BaseGridView is designed to be measured at an exact height; WRAP_CONTENT row height relies on the first child self-measuring. In practice the PosterPresenter/ChannelPresenter item views have deterministic heights so the rows render correctly, but the pattern is less robust than a fixed dimen. The 'zero-height row' symptom the auditor describes is speculative \u2014 no clipping is demonstrated by the code. trending_row at fragment_search_aurora.xml:159 correctly uses a fixed 260dp, confirming the repo's preferred pattern.",
+    "fix": "Give each result HorizontalGridView an explicit fixed height: poster rows ~210dp (card_poster_height + label), live row ~72dp (card_channel_height + margins). Set the LayoutParams height to a resolved dimen and pass the same px to setRowHeight() in createResultRow(). Matches the trending_row pattern.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed as a real robustness/anti-pattern issue but severity inflated. It does not break touch interaction and no clipping is proven in code; the rows render correctly in practice. Downgraded P2 -> P3 (polish/robustness).",
+    "page": "search"
+  },
+  {
+    "id": "search-voice-clear-icons-under-48dp",
+    "title": "Voice and Clear icon buttons are 28dp \u2014 below the 48dp touch-target minimum on phone",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/fragment_search_aurora.xml"
+    ],
+    "symptom": "On phone the microphone (voice) and X (clear) buttons in the search bar are 28dp square (~24dp glyph after 2dp padding), easy to mis-tap. The clear button appears whenever the query is non-empty and sits at the right edge near the keyboard region, so it is frequently targeted.",
+    "rootCause": "VERIFIED: voice_btn (fragment_search_aurora.xml:65-78) and clear_btn (lines 81-94) are ImageViews with layout_width/height=28dp and padding 2dp. No phone dimen override exists. search_input_bar is 48dp tall (line 27). 28dp < Material 48dp minimum touch target. clear_btn has a real onClickListener (SearchFragment.kt:180) and is toggled visible on non-empty query (line 175), so it is a live, frequently-hit target.",
+    "fix": "On phone, expand the touch region without enlarging the glyph: wrap each ImageView in a 48dp-min container or set a 48dp minWidth/minHeight with the drawable centered via padding, or attach a TouchDelegate on the 48dp search_input_bar. Simplest: bump both ImageViews to ~44-48dp with adjustViewBounds and centered src; the 48dp-tall bar accommodates vertical growth.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "search"
+  },
+  {
+    "id": "search-recent-chips-under-48dp",
+    "title": "Recent search chips are 32dp tall \u2014 below 48dp touch minimum",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_search_chip.xml",
+      "app/src/main/res/layout/fragment_search_aurora.xml"
+    ],
+    "symptom": "Recent-search chips on the empty state are 32dp tall (host recent_row is 44dp), a short tap target that is easy to mis-tap.",
+    "rootCause": "VERIFIED: item_search_chip.xml height=32dp (line 6); recent_row HorizontalGridView height=44dp (fragment_search_aurora.xml:137). No phone-specific override. 32dp < 48dp Material minimum. Chip has foreground=selectableItemBackground (line 14, good ripple) and bindingAdapterPosition click wiring (SearchFragment.kt:268-278, good), so only size is the issue. These chips only appear on the empty state, limiting impact.",
+    "fix": "Raise chip layout_height to 40-48dp (or add vertical padding to reach a 48dp tap area) and raise recent_row to match. Keep the visible pill smaller via background insets if desired.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "search"
+  },
+  {
+    "id": "favorites-viewmode-toggle-stuck-stagger-anim",
+    "title": "Grid/List toggle re-arms the staggered fade-in animation, making subsequent touch scrolling flash/fade rows",
+    "severity": "P1",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesAdapter.kt:34-42",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesAdapter.kt:88-104",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesFragment.kt:262-265",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesViewModel.kt:69-80",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesViewModel.kt:134-136"
+    ],
+    "symptom": "After tapping the Grid/List toggle, every favorite row that scrolls into view animates from alpha 0 -> 1 with a staggered start delay (pos*50ms, capped 500ms). On a phone, dragging the list after a view-mode switch makes freshly-recycled rows appear blank then fade in late, reading as laggy/broken scrolling \u2014 exactly the user's 'menus aren't scrolling properly' symptom.",
+    "rootCause": "FavoritesAdapter.viewMode setter (lines 34-42) sets isFirstLoad=true and calls notifyDataSetChanged(). onViewAttachedToWindow (88-100), while isFirstLoad is true, sets itemView.alpha=0f and runs a delayed staggered fade-in on EVERY attaching holder. isFirstLoad is only cleared by markFirstLoadComplete() (102-104), which is called ONLY inside submitList's completion callback (FavoritesFragment.kt:263-264). Verified in the ViewModel: toggleViewMode() (134-136) flips only _viewMode and does NOT touch _allDisplayItems/_activeFilter/_sortMode, so the displayItems combine (69-80) does NOT re-emit on a toggle. submitList is therefore never re-invoked by the toggle, markFirstLoadComplete() never runs, and the per-item fade-in stays armed during all scrolling in the new mode.",
+    "fix": "In the viewMode setter, do NOT set isFirstLoad=true (the user explicitly toggled \u2014 no entrance animation is needed), leaving isFirstLoad solely for genuine first data load. Alternatively, after notifyDataSetChanged() in the setter, post markFirstLoadComplete() to the next frame (focusHandler.post { isFirstLoad = false }) so only currently-visible items animate, OR gate onViewAttachedToWindow on a one-shot animatedPositions set so it never replays during ongoing scroll.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED. One refinement to 'forever/indefinitely': the flag DOES self-heal on the next genuine displayItems emission \u2014 a filter-tab tap, sort change, favorite add/remove, or the unconditional 60s EPG refresh tick (FavoritesViewModel.kt:118-123 -> epgRefreshTrigger -> _allDisplayItems -> displayItems re-emit -> submitList -> markFirstLoadComplete). So the degraded-scroll window is bounded at up to ~60s, not truly permanent. The defect and P1 severity still stand: for the full window after a toggle, touch scrolling visibly flashes/fades rows, which is the exact complaint.",
+    "page": "favorites"
+  },
+  {
+    "id": "favorites-remove-btn-28dp-touch-target",
+    "title": "Edit-mode remove (X) button is a 28dp touch target, below the 48dp Material minimum",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_favorite_list.xml:133-146",
+      "app/src/main/res/layout/item_favorite_card.xml:85-99",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesAdapter.kt:181-182",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesAdapter.kt:242-243"
+    ],
+    "symptom": "In edit mode on a phone, the red remove (X) button on each favorite is only 28x28dp, so users frequently mis-tap or hit the card body (which navigates to playback) instead of deleting \u2014 especially in the dense list view where it sits at the row's right edge.",
+    "rootCause": "fav_remove_btn is android:layout_width=28dp android:layout_height=28dp with only 5dp internal padding in BOTH item_favorite_list.xml (lines 134-136) and item_favorite_card.xml (lines 86-88). The clickable region equals the 28dp view bounds (onRemove wired at FavoritesAdapter.kt:182 and :243), well under the 48dp guideline. Phone-relevant: edit mode is reachable on touch via editBtn.setOnClickListener { viewModel.toggleEditMode() } (FavoritesFragment.kt:218) and via long-press on live channels (onItemLongClick -> toggleEditMode, FavoritesFragment.kt:431).",
+    "fix": "Increase the hit area to >=48dp on phone: set layout_width/height to 48dp keeping the 28dp visual via padding/scaleType, OR wrap the 28dp ImageView in a 48dp clickable FrameLayout, OR add a TouchDelegate in the ViewHolder bind expanding the X button's touch bounds to 48dp. Gate the larger size to non-TV (DeviceUtils.isTV check) to preserve the dense TV look.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED exactly as described. Line cites are accurate (28dp in both layouts, 5dp padding, onRemove click bound in adapter). Edit mode is genuinely reachable via touch through two paths, so this affects phone users.",
+    "page": "favorites"
+  },
+  {
+    "id": "favorites-filter-tabs-under-48dp",
+    "title": "Filter category tabs are ~30dp tall, under the 48dp touch minimum",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesFragment.kt:140-174",
+      "app/src/main/res/layout/fragment_favorites_aurora.xml:93-106"
+    ],
+    "symptom": "The horizontally-scrolling filter chips (All / Sports / Movies / etc.) are small targets on a phone \u2014 ~13sp text plus 6dp top/bottom padding (~30dp total height) \u2014 so tapping a specific category is fiddly and easy to miss.",
+    "rootCause": "Tabs are built programmatically as WRAP_CONTENT TextViews with textSize=13f (FavoritesFragment.kt:143) and vertical padding of only (6*density) top and bottom (lines 149-152), yielding a tap height well below 48dp. They live in a HorizontalScrollView (fragment_favorites_aurora.xml:93-106) so horizontal scroll of the tab row is fine; the issue is purely per-tab tap size. Click wired at FavoritesFragment.kt:161 (selectFilterTab).",
+    "fix": "When building each tab, on phone (DeviceUtils.isPhone) set tab.minimumHeight = (48*density).toInt() and increase vertical padding to ~12dp, or wrap each tab so its clickable bounds reach 48dp. Keep current compact sizing on TV.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "CONFIRMED. Code matches: 13f text, 6dp vertical padding, WRAP_CONTENT height, no minHeight. ~30dp total tap height is accurate and under the 48dp minimum.",
+    "page": "favorites"
+  },
+  {
+    "id": "favorites-scores-row-leanback-horizontal-touch",
+    "title": "Live Scores row uses a Leanback HorizontalGridView (touch-fling quirk) for sports favorites",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/res/layout/fragment_favorites_aurora.xml:142-146",
+      "app/src/main/java/com/ooustream/iptv/favorites/FavoritesFragment.kt:184-198"
+    ],
+    "symptom": "When the user has live sports favorites with scores, a horizontal 'LIVE SCORES' strip appears. Because it's a Leanback HorizontalGridView (tuned for D-pad focus scrolling, not NestedScrollingChild), horizontal finger-fling can feel less smooth than a plain RecyclerView, and tapping a score card relies on a scroll+requestFocus pattern.",
+    "rootCause": "scores_row is androidx.leanback.widget.HorizontalGridView (fragment_favorites_aurora.xml:142, height 64dp). The click handler (FavoritesFragment.kt:185-196) does favoritesGrid.scrollToPosition(pos) then requestFocus \u2014 a focus-driven pattern that is a no-op for focus on touch but the scroll still works. Non-blocking: the strip only appears for the sports/all filter when score items exist (updateScoresBar, FavoritesFragment.kt:327-344).",
+    "fix": "For the phone path, swap scores_row to a plain androidx.recyclerview.widget.RecyclerView with a horizontal LinearLayoutManager for natural touch fling, or leave as-is on TV. Low priority since the row is conditionally shown and not part of the main vertical scroll.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "CONFIRMED as a genuine-but-minor polish item, P3 is correct. Important clarification the auditor was right about: this HorizontalGridView is a SIBLING above the main RecyclerView (inside scores_bar_container in the vertical LinearLayout), NOT nested inside a NestedScrollView and NOT the main vertical list \u2014 so it does NOT block or steal the page's vertical drag-scroll. The defect is limited to horizontal-fling smoothness within the 64dp strip itself.",
+    "page": "favorites"
+  },
+  {
+    "id": "account-3col-horizontal-no-portrait",
+    "title": "Read-only dashboard forces a 3-column horizontal card row on phones with no portrait variant",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_account_dashboard.xml",
+      "app/src/main/java/com/ooustream/iptv/account/AccountDashboardFragment.kt"
+    ],
+    "symptom": "On a phone the three cards (Account info / Subscription days / Connections) are crammed side-by-side into one screen width. With outer overscan padding of 12dp/side (values/dimens.xml) and two 16dp inter-card margins, on a 360dp phone each weighted card is only ~100dp wide; after each card's 24dp x2 = 48dp internal padding, ~50-53dp of usable width remains. The 72sp days-remaining number, the 'days remaining' label, the server URL, and the gauge are squeezed, wrapped, or clipped. It reads as broken/cramped, not a phone dashboard.",
+    "rootCause": "content_area is hardcoded android:orientation=\"horizontal\" (line 38) with three children each android:layout_weight=\"1\" (lines 42-49, 137-145, 185-192). Verified there is only one layout file: layout/fragment_account_dashboard.xml (find returned no layout-port/, no phone-specific variant; only layout/ and layout-television/ exist, and the TV variant does not include this file). AccountDashboardFragment never branches on DeviceUtils.isPhone()/isTV() (grep of the whole account/ package returned zero device gating and zero orientation manipulation). The 3-up arrangement only makes sense at 10-foot/landscape TV width.",
+    "fix": "Stack the cards vertically on phones. Cleanest: set the content_area LinearLayout to android:orientation=\"vertical\" in the base layout/ XML (each card layout_width=match_parent, layout_weight=0, swap layout_marginEnd->layout_marginBottom) and keep horizontal only in a new layout-television/fragment_account_dashboard.xml. Alternatively, in onViewCreated do: if (DeviceUtils.isPhone(requireContext())) { contentArea.orientation = LinearLayout.VERTICAL; for each card set layoutParams.width = MATCH_PARENT, weight = 0f }. Vertical stacking lets the existing ScrollView scroll the cards naturally.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real, severity P1 correct. Minor inaccuracy in the auditor's summary/symptom: the '48dp internal padding' is the per-card 24dpx2, NOT the outer page padding. The outer overscan_horizontal is 12dp on phones (values/dimens.xml), not 48dp (48dp is values-television only). Real per-card width is ~100dp, not the auditor's ~112dp, with ~50-53dp usable, not ~64dp. The defect itself stands exactly as described. Line citation 34-220 corrected to specific lines 38/42-49/137-145/185-192.",
+    "page": "account"
+  },
+  {
+    "id": "account-gauge-140dp-fixed-overflows-column",
+    "title": "ConnectionGaugeView fixed at 140dp x 140dp overflows the ~100dp phone column",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_account_dashboard.xml",
+      "app/src/main/java/com/ooustream/iptv/account/ConnectionGaugeView.kt"
+    ],
+    "symptom": "On a phone the circular connections gauge is declared 140dp wide but lives in a weighted column only ~100dp wide (~50dp after the card's 24dp x2 padding). The right card visibly overflows/clips the gauge and the '<active>/<max>' center text; the right edge of the gauge is cut off by the card background.",
+    "rootCause": "The gauge has fixed android:layout_width=\"140dp\" android:layout_height=\"140dp\" (lines 206-207). Because the dimension is fixed, the parent passes an EXACTLY=140dp MeasureSpec, so ConnectionGaugeView.onMeasure (lines 69-76) computes minOf(140,140)=140 and calls setMeasuredDimension(140,140) regardless of the ~100dp column width -> the view measures larger than its slot and overflows/clips. No values-sw320dp/values-sw600dp override exists for this size and there is no responsive sizing.",
+    "fix": "Primary fix is the vertical stack (account-3col-horizontal-no-portrait), after which the column is full-width and 140dp fits. Defense-in-depth: extract @dimen/connection_gauge_size (140dp in values/, e.g. 120dp in values-sw320dp/dimens.xml) and reference it from the XML so onMeasure (which already clamps to a square) adapts. Note: making it wrap_content alone will NOT help because onMeasure ignores the incoming mode and forces a square from the spec SIZE; the real lever is the layout_width value / a responsive dimen.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real, severity P1 correct, onMeasure citation (lines 69-76) accurate. Correction: column is ~100dp not ~112dp. Also clarified the onMeasure mechanism: with a FIXED 140dp layout_width the child receives an EXACTLY spec of 140, so it always measures 140 and overflows; the auditor's 'still tries to honor 140dp' is right but the fix note that onMeasure 'will adapt to whatever width the stacked card gives it' is only true once layout_width stops being a hardcoded 140dp -- onMeasure does not currently respect the incoming constraint, it derives size purely from the spec SIZE values.",
+    "page": "account"
+  },
+  {
+    "id": "account-no-touch-back-affordance",
+    "title": "No on-screen back button - phone users rely solely on the system back gesture to leave the dashboard",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_account_dashboard.xml",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt"
+    ],
+    "symptom": "After opening Account Dashboard from Settings, a touch user sees a full-screen 'Account Dashboard' header (TextView at lines 15-22) with no back arrow. They can only return via the OS back gesture/button; there is no in-screen touch affordance to go back.",
+    "rootCause": "Navigated via supportFragmentManager.beginTransaction().replace(R.id.main_container, fragment).addToBackStack(null).commit() (SettingsFragment.navigateToFragment, lines 353-358) so system Back DOES pop it (reachability intact). But the layout has only a static title TextView, no toolbar/back button, and no PhoneToolbarHelper is applied in AccountDashboardFragment (unlike VodDetail/SeriesDetail which got phone back-arrows in v3.7.11). Consistency/polish gap, not a hard blocker.",
+    "fix": "Add a phone-only back affordance consistent with the app: apply the existing common/PhoneToolbarHelper (gradient scrim + circular back button) in onViewCreated when DeviceUtils.isPhone(), wired to requireActivity().onBackPressedDispatcher.onBackPressed(). Gate off on TV (D-pad back handles it).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real, severity P3 correct. navigateToFragment verified at SettingsFragment.kt:353-358 (replace + addToBackStack(null) + commit). Action dispatch confirmed at line 239 (ACTION_ACCOUNT). Layout confirmed to have no back/toolbar widget. Auditor accurate on all points.",
+    "page": "account"
+  },
+  {
+    "id": "parental-pin-guidedstep-tv-only",
+    "title": "PIN entry is a Leanback GuidedStepSupportFragment \u2014 the only gateway into Parental Settings, and it is a TV D-pad UI on phones",
+    "severity": "P1",
+    "category": "nav",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/parental/ParentalPinFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt"
+    ],
+    "symptom": "On a phone, Settings > Parental Controls lands the user in a full-screen Leanback two-pane guidance UI (title/description pane + vertical actions list) with 10-foot type, large left margins, and a focus/highlight model built for a remote. The PIN field is a GuidedAction with descriptionEditable=true (ParentalPinFragment.kt:99-104); the IME does come up when tapped, but advancing from the PIN field to the Unlock action relies on onGuidedActionEditedAndProceed returning ACTION_ID_NEXT (line 171-175), a D-pad navigation concept with no touch-native equivalent. This is the sole entry point to every parental setting (SettingsFragment.kt:240 navigateToFragment(ParentalPinFragment())).",
+    "rootCause": "ParentalPinFragment extends androidx.leanback.app.GuidedStepSupportFragment (line 22) with zero DeviceUtils.isPhone() gating and no phone alternative (verified: no isPhone/isTV references anywhere in the parental package). SettingsFragment is itself a GuidedStepSupportFragment (SettingsFragment.kt:35) and launches it directly at line 240. There are no layout-port/ or phone-variant resources \u2014 phones render the TV GuidedStep chrome.",
+    "fix": "Gate on DeviceUtils.isPhone(): branch in SettingsFragment.onGuidedActionClicked ACTION_PARENTAL (line 240) to present a Material AlertDialog/BottomSheet PIN entry (EditText inputType=numberPassword + Unlock/Cancel) on phone instead of navigateToFragment(ParentalPinFragment()); keep the GuidedStep path only for isTV(). Same treatment for the Change-PIN entry launched from ParentalSettingsFragment.setupQuickActions (line 88-96).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly as described. Files cited correctly; verified ParentalPinFragment.kt:22 extends GuidedStepSupportFragment, the editable PIN GuidedActions, the ACTION_ID_NEXT D-pad advance at line 174, and SettingsFragment.kt:240 as the sole entry. One nuance the auditor under-weighted: the Change-PIN flow (ParentalSettingsFragment.kt:88-96) also re-enters this same GuidedStep fragment, so the TV-shaped PIN UI is hit on a second path too. Severity P1 is correct \u2014 it is usable on touch (IME works, fields are tappable) but badly TV-shaped, not fully broken.",
+    "page": "parental"
+  },
+  {
+    "id": "parental-quick-actions-overflow",
+    "title": "Quick-action buttons row is wrap_content + centered + non-scrolling \u2014 overflows/clips on narrow phones",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_parental_settings.xml"
+    ],
+    "symptom": "The bottom action row (lines 114-159) holds three wrap_content buttons \u2014 'Block All Adult', 'Allow All', 'Change PIN' \u2014 each with 16dp+16dp internal padding and 12dp inter-button margins, in a horizontal LinearLayout with gravity=center and no HorizontalScrollView. Estimated intrinsic width ~320dp. With the root LinearLayout's android:padding=48dp (line 8) consuming 96dp, available width is ~264dp on a 360dp phone and ~224dp on a 320dp phone \u2014 so the row overflows and gets clipped. Because gravity=center, BOTH outer buttons ('Block All Adult' on the left and 'Change PIN' on the right) are cut off at the edges, and there is no horizontal scroll to reach them, so the user cannot fully tap the clipped actions.",
+    "rootCause": "fragment_parental_settings.xml lines 114-159: three android:layout_width=wrap_content buttons in a single non-wrapping, non-scrolling gravity=center horizontal LinearLayout. The drawables (bg_action_button_red/green/gold) carry no min-width, so width is pure intrinsic content. The outer 48dp root padding (line 8) is a TV overscan value applied identically to phones, stealing ~96dp before any content.",
+    "fix": "Make the buttons reflow: set each to android:layout_width=0dp android:layout_weight=1 and drop gravity=center (equal thirds), or wrap the row in a FlexboxLayout / stack to two rows on narrow widths. Also replace android:padding=48dp on the root (line 8) with @dimen/overscan_horizontal (12dp phone / 8dp sw320dp / 48dp values-television) so phones recover ~84-88dp of width \u2014 this dimen already exists in the project.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real. Correction to the auditor's description: the container uses android:gravity=\"center\" (line 119), so on overflow the clipping is SYMMETRIC \u2014 both the leftmost ('Block All Adult') and rightmost ('Change PIN') buttons are cut, not just the rightmost as the auditor claimed. Severity P1 retained because a center-clipped non-scrolling row can leave a primary action (Change PIN / Block All Adult) partially or fully unreachable on a 320-360dp phone. The fix correctly leans on the already-existing @dimen/overscan_horizontal (verified: 48dp TV / 12dp default / 8dp sw320dp), which this layout does not use.",
+    "page": "parental"
+  },
+  {
+    "id": "parental-row-focusabletouchmode",
+    "title": "Category rows + tabs set focusableInTouchMode=true \u2014 TV-only attribute that hurts touch scroll/fling, not a double-tap toggle bug",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/item_category_toggle.xml",
+      "app/src/main/res/layout/fragment_parental_settings.xml",
+      "app/src/main/java/com/ooustream/iptv/parental/CategoryToggleAdapter.kt"
+    ],
+    "symptom": "Each category row is android:focusable=true android:focusableInTouchMode=true (item_category_toggle.xml:10-11) and so are all three tab TextViews (fragment_parental_settings.xml:65-66, 79-80, 92-93). focusableInTouchMode on RecyclerView list items makes the framework try to retain a focused child during touch scroll/fling, which can cause minor scroll jank and unexpected auto-scroll-to-focused behavior on phone. It is a TV-only attribute that has no benefit on touch.",
+    "rootCause": "item_category_toggle.xml:10-11 and the tab TextViews hardcode focusableInTouchMode=true for D-pad/TV focus. The toggle Switch is correctly focusable=false/clickable=false (lines 19-20) and the row click toggles via bindingAdapterPosition (CategoryToggleAdapter.kt:34-39), so toggling itself works on a single tap.",
+    "fix": "Remove android:focusableInTouchMode=true from item_category_toggle.xml (keep android:focusable for D-pad) and from the three tab TextViews, or set it conditionally for TV only via a values-television style. Add android:foreground=?android:attr/selectableItemBackground to the row for a visible touch ripple.",
+    "isReal": true,
+    "verifierConfidence": "low",
+    "correction": "Real that the attribute is TV-only and inappropriate on phone rows, BUT the auditor's headline symptom ('first tap grabs focus instead of firing the click, user must tap twice to toggle') is wrong. In Android touch mode a tap on a clickable view fires its OnClickListener on the first tap regardless of focusableInTouchMode \u2014 the double-tap pathology is specific to EditText/IME widgets, not a plain clickable row with a click listener (CategoryToggleAdapter.kt:34-39 fires on first tap). The genuine, lower-grade concern is focus-retention jank during fling. Downgraded confidence to low and re-scoped the symptom; severity P2 retained but it is closer to polish than friction.",
+    "page": "parental"
+  },
+  {
+    "id": "parental-settings-no-phone-layout",
+    "title": "fragment_parental_settings.xml is a single TV-derived layout (48dp overscan padding, 24dp row insets) with no phone variant",
+    "severity": "P2",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_parental_settings.xml",
+      "app/src/main/res/layout/item_category_toggle.xml"
+    ],
+    "symptom": "On a phone the screen wastes scarce width: the root LinearLayout has android:padding=48dp on all sides (line 8 \u2014 a 10-foot overscan margin, ~96dp horizontal + ~96dp vertical lost) and each list row has android:paddingStart/End=24dp (item_category_toggle.xml:8-9). Category names get squeezed into a narrow central column and long names truncate, with large empty borders \u2014 visibly a TV layout on a phone. The list itself still scrolls fine; this is density/whitespace degradation, not a scroll break.",
+    "rootCause": "Only one layout/ variant exists for this screen (no layout-port/ or sw-qualified layout) and the paddings are hardcoded dp instead of referencing the project's existing @dimen/overscan_horizontal (12dp phone / 8dp sw320dp / 48dp values-television). The 48dp root padding and 24dp row insets are TV overscan values applied identically to phones.",
+    "fix": "Replace android:padding=48dp on the root (line 8) with @dimen/overscan_horizontal for horizontal and a small/zero vertical dimen, and replace the 24dp paddingStart/End in item_category_toggle.xml (lines 8-9) with @dimen/spacing_md (16dp) or a phone-appropriate dimen. This reuses the existing values-television override pattern already used elsewhere in the app.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed exactly. Verified the hardcoded 48dp root padding (line 8) and 24dp row insets (item_category_toggle.xml:8-9), and confirmed the @dimen/overscan_horizontal token already exists at 48dp(TV)/12dp(default)/8dp(sw320dp) but is NOT referenced by this layout. Severity P2 correct \u2014 degraded density, list still scrolls.",
+    "page": "parental"
+  },
+  {
+    "id": "parental-settings-no-back-affordance",
+    "title": "No on-screen back/up affordance \u2014 phone user relies on system Back only; PhoneToolbarHelper pattern not applied here",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_parental_settings.xml",
+      "app/src/main/java/com/ooustream/iptv/parental/ParentalPinFragment.kt"
+    ],
+    "symptom": "fragment_parental_settings.xml has a header row ('Parental Controls' + ON status, lines 10-35) but no visible back arrow / up button, so a phone user can only leave via system Back. After unlock, ParentalPinFragment.navigateToSettings() (lines 328-338) pops the PIN fragment then replaces with ParentalSettingsFragment + addToBackStack(null); returning lands on the GuidedStep Settings screen. Reachability works via system Back, but there is no touch-native toolbar/back control like the rest of the phone overhaul.",
+    "rootCause": "The layout has no Toolbar or back-button view; navigation is pure FragmentManager back-stack. Detail screens received common/PhoneToolbarHelper in v3.7.11 (verified: used by VodDetailFragment and SeriesDetailFragment) but the parental screens were not included.",
+    "fix": "On phone (DeviceUtils.isPhone()), call PhoneToolbarHelper.attach(this, view as ViewGroup, title = \"Parental Controls\") at the top of ParentalSettingsFragment.onViewCreated to add a programmatic gradient-scrim back arrow, and expose a touch-reachable cancel/back on the PIN screen. Low priority \u2014 system Back already works.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed. Verified the header layout has no back view, the navigateToSettings pop/replace logic (lines 328-338), and that PhoneToolbarHelper.attach exists and is wired into VodDetailFragment + SeriesDetailFragment but not the parental screens. P3 is correct since system Back is functional; this is a consistency/polish gap.",
+    "page": "parental"
+  },
+  {
+    "id": "parental-touch-targets-under-48dp",
+    "title": "[MISSED] Quick-action buttons (40dp) and section tabs (44dp) are below the 48dp Material touch-target minimum",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/fragment_parental_settings.xml"
+    ],
+    "symptom": "The three Quick-Action buttons are android:layout_height=40dp (lines 125, 138, 151) and the three section tabs are android:layout_height=44dp (lines 56, 71, 85), both under the 48dp Material/Android touch-target minimum. On a phone these are finger-tapped, so the slightly short targets are marginally harder to hit accurately, especially combined with the overflow clipping on the button row.",
+    "rootCause": "Heights hardcoded at TV-comfortable sizes (40dp/44dp) where D-pad focus makes target size irrelevant; never bumped to 48dp for the touch build, and no values-television override to keep them compact on TV while enlarging on phone.",
+    "fix": "Set the tab and quick-action heights to 48dp (or @dimen/min_touch_target) for the default/phone resources, optionally overriding back to 40/44dp in values-television/ if the smaller TV look is preferred. Pair this with the layout-weight reflow fix from parental-quick-actions-overflow so the buttons are both reachable and tall enough.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "[MISSED] The auditor flagged focusableInTouchMode and the button overflow but did not separately call out that the action buttons (40dp) and tabs (44dp) fall short of the 48dp touch-target minimum. Verified heights at fragment_parental_settings.xml lines 56/71/85 (tabs=44dp) and 125/138/151 (buttons=40dp). Minor (P3) \u2014 within a few dp of the minimum \u2014 but a legitimate touch-target miss on the phone build. Note: the 56dp category rows and the row-as-target pattern for the toggle ARE correct and meet the minimum.",
+    "page": "parental"
+  },
+  {
+    "id": "speedtest-fixed-400dp-clips-narrow-phones",
+    "title": "Content column hard-coded to 400dp width clips on small/narrow phones",
+    "severity": "P2",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_speed_test.xml"
+    ],
+    "symptom": "On a small/narrow phone (~320dp wide), the centered Speed Test column is wider than the usable screen (320dp - 2*8dp overscan = ~304dp). The left/right edges of the column overflow and are clipped by the non-scrolling FrameLayout. The progress bar and Run Test button are layout_width=match_parent so they size to the 400dp parent and lose ~48dp off each side. The button's centered 'Run Test' text and the bulk of its tap area stay on-screen and remain tappable, so the screen is still usable; the defect is the edges looking truncated/broken, not loss of function.",
+    "rootCause": "fragment_speed_test.xml line 9: the inner LinearLayout uses a fixed android:layout_width=\"400dp\" inside a FrameLayout (line 2-6) with layout_gravity=\"center\". 400dp exceeds usable width on sw320dp (~304dp) and 360dp (~336dp) phones. FrameLayout does not scroll horizontally, so overflow is clipped. progress_bar (line 64) and run_test_button (line 84) are match_parent and inherit the 400dp width.",
+    "fix": "Change line 9 from android:layout_width=\"400dp\" to android:layout_width=\"match_parent\" and add android:layout_marginHorizontal=\"24dp\" (and optionally keep the 400dp look on tablets/TV via a @dimen reference defined per qualifier). Since the content is just stacked centered text plus one full-width button, match_parent with horizontal margins always fits and keeps the button/progress bar within screen bounds.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed the 400dp overflow on narrow phones. Severity downgraded P1 -> P2: nothing becomes non-functional. The button text 'Run Test' is centered and its tap area stays on-screen even when the ~400dp button overflows; there is no list to lose access to. This is cosmetic edge-clipping / friction, not a badly-degraded-but-usable screen-level break. Also corrected the citation: the dimens are inherited via match_parent children, not separate overriding dimens; values-sw320dp/dimens.xml line 4 only changes overscan_margin (8dp), it does NOT define a speed-test card width, so the auditor's suggestion to add a per-qualifier dimen is valid but the file as-cited contains no card-width dimen.",
+    "page": "speedtest"
+  },
+  {
+    "id": "speedtest-no-touch-back-affordance",
+    "title": "No on-screen back affordance; relies on system/gesture Back only",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_speed_test.xml",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt"
+    ],
+    "symptom": "A phone user opening Speed Test from Settings sees no visible back arrow or close button. To leave they must use system/gesture Back. It works (added to back stack) but there is no in-app touch affordance.",
+    "rootCause": "navigateToFragment() uses supportFragmentManager replace() + addToBackStack(null) (SettingsFragment.kt lines 353-358, verified), and fragment_speed_test.xml has no toolbar/back button. The PhoneToolbarHelper pattern (v3.7.11) exists for VOD/Series detail but is not applied here.",
+    "fix": "On phone only (DeviceUtils.isPhone()), overlay a small circular back button via PhoneToolbarHelper that calls requireActivity().onBackPressedDispatcher.onBackPressed(). TV path unchanged. Low priority since gesture Back works.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Verified SettingsFragment.kt lines 353-358 match (replace + addToBackStack(null) + commit) and fragment_speed_test.xml has no back affordance. P3 is correct. Note: SpeedTestFragment.onKeyEvent always returns false (line 121), so it does not intercept the D-pad/Back key \u2014 back is handled by the activity's normal back-stack pop, which gesture Back also triggers, so the path genuinely works on touch.",
+    "page": "speedtest"
+  },
+  {
+    "id": "settings-guidedstep-no-portrait-twopane",
+    "title": "Settings is a TV-only side-by-side GuidedStep two-pane layout with no phone/portrait path \u2014 guidance pane eats ~58% of width, the menu is jammed into ~42%",
+    "severity": "P0",
+    "category": "layout",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SubtitleSettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsConfirmFragment.kt"
+    ],
+    "symptom": "On a phone in portrait the Settings screen renders exactly as on a 10-foot TV: the 'Settings / Manage your Ooustream account and preferences' title block occupies the LEFT ~58% of the screen as a fixed pane while the entire actionable menu (Account, Parental Controls, Subtitle Settings, Backup, Speed Test, etc.) is squeezed into the RIGHT ~42% column. Row titles/descriptions wrap and feel cramped; there is no full-width vertical list a phone user expects.",
+    "rootCause": "Verified: SettingsFragment.kt:35, SubtitleSettingsFragment.kt:15, SettingsConfirmFragment.kt:13 all extend androidx.leanback.app.GuidedStepSupportFragment with zero DeviceUtils.isPhone()/isTV() gating anywhere in the settings package (grep returned NONE). App theme is parent=\"Theme.Leanback\" (themes.xml:3) with no GuidanceStylist/GuidedActionsStylist/onProvideTheme override. The stock leanback-1.0.0 lb_guidedstep_fragment.xml (verified from the extracted AAR) lays out content_frame as a HORIZONTAL LinearLayout (line 35): content_fragment (guidance) at layout_weight=1, action_fragment_root at layout_weight=?attr/guidedActionContentWidthWeight. Verified value lb_guidedactions_width_weight=0.71428571428 (values.xml:753) \u2192 guidance 1/1.714\u224858.3%, actions 0.714/1.714\u224841.7%. guidedStepHeightWeight=2.0 of weightSum=2 fills the full screen. Only layout/ and layout-television/ resource dirs exist \u2014 no layout-port/layout-sw320dp variant.",
+    "fix": "Add a phone branch that bypasses GuidedStep. Gate on DeviceUtils.isPhone(requireContext()) at the Settings entry points (MainActivity.kt:234 'settings' -> SettingsFragment(); HomeFragment.kt:1901). On phone, render a full-width vertical androidx.recyclerview.RecyclerView (LinearLayoutManager) of settings rows in a normal Fragment with a Material toolbar + back arrow (reuse PhoneToolbarHelper from v3.7.11), or a BottomSheetDialogFragment list following the established PhoneTrackPickerSheet/PhoneContentInfoSheet pattern. Keep the GuidedStep path for isTV(). This is the deferred work noted in CLAUDE.md ('Deferred to v3.7.12: GuidedStepSupportFragment phone replacements (Settings...)').",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Minor cited-line nit: the auditor pinned exact lines (SettingsFragment.kt:35 etc.) which are the class declarations \u2014 correct. Navigation entries MainActivity.kt:234 and HomeFragment.kt:1901 also verified accurate.",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "settings-actions-verticalgridview-no-touch-scroll",
+    "title": "Settings menu is a focus-tuned Leanback VerticalGridView \u2014 finger drag DOES scroll, but tapping a row snaps it to the keyline (jarring), and the cramped ~42% width hurts more than the scroll mechanics",
+    "severity": "P2",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SubtitleSettingsFragment.kt"
+    ],
+    "symptom": "Verified actual behavior: a finger drag/fling DOES scroll the actions list (it is a normal RecyclerView at its core), so the bottom 'Logout' item is reachable by dragging. The real friction is that on a TAP, the tapped row gains focus and the list re-aligns/snaps that row to the fixed ~40%-from-top keyline (focusScrollStrategy=FOCUS_SCROLL_ALIGNED), which feels like the list 'jumps' under the finger. Combined with the menu being squeezed into ~42% of portrait width, the experience is awkward \u2014 but it is NOT 'unscrollable / cannot reach the bottom'.",
+    "rootCause": "The actions list IS androidx.leanback.widget.VerticalGridView (id=guidedactions_list, verified in extracted lb_guidedactions.xml lines 42-45) with style Widget.Leanback.GuidedActionsListStyle (values.xml:1421): focusable=false, focusableInTouchMode=false, layout_height=match_parent (NOT wrap_content \u2014 so it fills the pane and is the genuine scroll container; there is NO outer ScrollView, so NO nested-scroll conflict). Decompiled BaseGridView.class constant pool: NO 'NestedScroll*' tokens (so the auditor is right it lacks NestedScrollingChild) BUT also NO onTouchEvent override and NO suppressLayout/setLayoutFrozen \u2014 it inherits RecyclerView.onTouchEvent, which performs standard drag/fling scrolling. GridLayoutManager.class exposes canScrollVertically + scrollVerticallyBy + smoothScrollBy. Therefore touch drag-scroll works. SettingsFragment.onCreateActions adds 15 actions (verified: 15 GuidedAction.Builder calls, not 16 \u2014 the 'Reset Playback Recovery' action was removed in v3.7.0, see comment at line 199-200). lb_guidedstep_keyline=40.0 (values.xml:758) is the focus-alignment keyline, confirmed.",
+    "fix": "Resolved by the phone replacement list in settings-guidedstep-no-portrait-twopane: a plain RecyclerView + LinearLayoutManager scrolls naturally on touch with no keyline-snap and at full width. Do NOT wrap the GuidedStep in a ScrollView (that WOULD create a nested-scroll conflict). No standalone P0 fix is warranted because the grid is not actually unscrollable.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Auditor OVERSTATED this. (1) Severity P0->P2: the list IS drag-scrollable on touch (RecyclerView onTouchEvent inherited; GridLayoutManager.scrollVerticallyBy/canScrollVertically present; match_parent height, no outer scroll parent = no nested-scroll conflict). The 'cannot reliably scroll to the bottom / Logout unreachable by drag' claim is the exact type-(b) mistake (calling a working RecyclerView 'can't scroll'). (2) Action count is 15, not 16. (3) The genuine residual friction (keyline focus-snap on tap + 42% width crunch) overlaps with the layout P0, so this is not an independent P0 scroll defect.",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "settings-guidance-pane-fixed-nonscrollable",
+    "title": "Guidance/title pane is a fixed non-scrollable pane that permanently steals ~58% of portrait width from the menu",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SubtitleSettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsConfirmFragment.kt"
+    ],
+    "symptom": "The left guidance column ('Settings' + 'Manage your Ooustream account and preferences') is dead, non-interactive space on a phone \u2014 it never scrolls, never collapses, and consumes ~58% of portrait width while the real menu is choked into the remainder. On SettingsConfirmFragment the same waste applies to a simple Confirm/Cancel screen.",
+    "rootCause": "Verified: onCreateGuidance() in all three fragments returns a GuidanceStylist.Guidance (SettingsFragment.kt:63-70, SubtitleSettingsFragment.kt:28-35, SettingsConfirmFragment.kt:15-22). The stock lb_guidance.xml (extracted) is a FrameLayout containing a GuidanceStylingRelativeLayout of TextViews (icon/breadcrumb/title/description) with NO ScrollView \u2014 a fixed 10-foot title pane. In the horizontal content_frame it is pinned at layout_weight=1 (~58% width, match_parent height). There is no phone arrangement that stacks guidance above a full-width list.",
+    "fix": "In the phone replacement screen, drop the guidance pane entirely (or render the title as a compact top app-bar header) and give 100% width to the vertical settings list \u2014 resolved automatically by implementing the phone RecyclerView/BottomSheet replacement in settings-guidedstep-no-portrait-twopane.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is, though this is effectively the same root defect as settings-guidedstep-no-portrait-twopane (the 58/42 split is one horizontal LinearLayout). Kept as a distinct P1 facet because it specifically flags the guidance pane's non-scrollable wasted width; both are fixed by the single phone-replacement change.",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "settings-action-rows-below-48dp-touch-target",
+    "title": "Settings action rows have no enforced 48dp minimum touch height \u2014 TV-density rows can fall below Material minimum on phone",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SubtitleSettingsFragment.kt"
+    ],
+    "symptom": "On a phone, single-line settings rows (e.g. SubtitleSettings 'Auto-Enable Subtitles' = 'On', or 'About') are short and tightly packed, making them easy to mis-tap or to hit the adjacent row when tapping after a scroll.",
+    "rootCause": "Verified: the GuidedStep item container is androidx.leanback.widget.GuidedActionItemContainer (extracted lb_guidedactions_item.xml) styled via ?attr/guidedActionItemContainerStyle. The app defines no override for that style in res/values (grep found none), so rows inherit the TV-tuned container whose height is driven by title/description text metrics + small paddings with NO android:minHeight=48dp. values/dimens.xml and values-sw320dp/dimens.xml define no guided-action row height. Row height is therefore not pinned to the Material 48dp touch-target minimum on phone.",
+    "fix": "Resolved by the phone replacement list: size each phone settings row to minHeight=48dp (ideally 56dp list-item height). If an interim TV-shared tweak is wanted, add a Widget.Leanback.GuidedActionItemContainerStyle override with android:minHeight=\"48dp\" in res/values \u2014 but the proper fix is the phone list.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "Confirmed plausible. Could not measure the exact rendered pixel height of a single-line row from static resources alone (it depends on text metrics + the inherited style's paddings, which resolve at runtime), hence medium confidence \u2014 but the absence of any minHeight override is verified, so rows are NOT guaranteed >=48dp. Severity P2 is correct (friction, not blocking).",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "settings-confirm-back-only-reachability",
+    "title": "SettingsConfirmFragment / sub-screens have no in-screen touch back arrow \u2014 dismiss relies on system/gesture back (but Cancel button and back gesture both work)",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsConfirmFragment.kt",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt"
+    ],
+    "symptom": "Clear Cache and Logout push a full-screen GuidedStep confirm (SettingsConfirmFragment) with Confirm/Cancel actions in the cramped right pane; sub-navigations (Account, Parental, Subtitle, Backup, Speed Test, Update) are pushed via supportFragmentManager.replace + addToBackStack with no in-screen back arrow. A phone user must use the system/gesture back to return \u2014 there is no on-screen back affordance in the Settings flow itself.",
+    "rootCause": "Verified: SettingsConfirmFragment is GuidedStepSupportFragment-based and dismisses via parentFragmentManager.popBackStack() (lines 43, 46) with no toolbar/back button. navigateToFragment (SettingsFragment.kt:353-358) does replace(R.id.main_container) + addToBackStack(null) with no back UI. Reachability of BACK is fine: MainActivity overrides onBackPressed() (line 250) and the global back dispatcher pops the stack, and each confirm screen has an explicit tappable 'Cancel' guided action. So the user is NOT stranded.",
+    "fix": "When the settings flow is reimplemented for phone, give confirm dialogs a real Material android.app.AlertDialog (the codebase already uses it for Clear History at SettingsFragment.kt:448-458 \u2014 make Clear Cache and Logout consistent instead of GuidedStep confirms) and add a touch back affordance to each pushed sub-screen (reuse PhoneToolbarHelper from v3.7.11).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Severity DOWNGRADED P2->P3. The auditor framed this near a reachability risk, but verification shows return is fully reachable on touch: MainActivity.onBackPressed() + global back gesture pops the stack, and confirm screens expose a tappable Cancel action. So it is polish/consistency (no native-feeling back arrow, GuidedStep confirm instead of AlertDialog), not a real navigation dead-end.",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "settings-confirm-onconfirm-static-callback-leak",
+    "title": "[MISSED] SettingsConfirmFragment stores the onConfirm callback in a companion (static) field \u2014 process-death / config recreation drops or cross-wires the confirm action",
+    "severity": "P3",
+    "category": "nav",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsConfirmFragment.kt"
+    ],
+    "symptom": "Not a touch/scroll defect per the user complaint, but a correctness foot-gun adjacent to the confirm flow: if the Clear-Cache or Logout confirm screen is recreated by the system (process death while backgrounded), or if two confirm screens are ever opened in sequence, the tapped 'Confirm' may invoke the wrong action or no action, because the callback isn't part of the saved fragment state.",
+    "rootCause": "Verified: SettingsConfirmFragment.newInstance() assigns onConfirm to a companion-object var onConfirmCallback (lines 63, 71). It is a single static slot, not retained via arguments or a ViewModel. After process death the static is null on restore (Confirm does nothing); if a second confirm is created it overwrites the first's callback. MainActivity sets configChanges to avoid recreation on rotation, which masks this in the common case, but it is still fragile. The class comment even notes it mirrors ClearConfirmFragment's pattern \u2014 so the same issue may exist there.",
+    "fix": "Replace the GuidedStep confirms with android.app.AlertDialog (already the pattern for Clear History at SettingsFragment.kt:448) so the callback lives in the calling fragment's scope, OR route the result via a Fragment Result API (setFragmentResult/setFragmentResultListener) / shared ViewModel keyed by an action id, so the confirm survives recreation. This naturally folds into the phone-replacement work.",
+    "isReal": true,
+    "verifierConfidence": "medium",
+    "correction": "[MISSED] by the auditor. Flagged as low-severity (P3) because it is a correctness/lifecycle issue, not the touch-scroll problem the user reported; included for completeness since it sits directly in the Settings confirm path the auditor was reviewing.",
+    "page": "Settings (GuidedStep) \u2014 settings_guided"
+  },
+  {
+    "id": "guided-actions-list-focus-scroll-on-touch",
+    "title": "GuidedStep actions list is a focus-aligned VerticalGridView \u2014 finger scroll re-aligns to focus, but lists here all fit on screen",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/update/UpdateFragment.kt:17",
+      "app/src/main/java/com/ooustream/iptv/update/UpdateFragment.kt:41",
+      "app/src/main/java/com/ooustream/iptv/backup/BackupFragment.kt:17",
+      "app/src/main/java/com/ooustream/iptv/backup/BackupFragment.kt:30",
+      "app/src/main/java/com/ooustream/iptv/backup/ClearConfirmFragment.kt:8",
+      "app/src/main/res/values/themes.xml:3"
+    ],
+    "symptom": "On a phone the guided actions render in a Leanback VerticalGridView (lb_guidedactions.xml id guidedactions_list). Finger drag DOES move the list (RecyclerView touch path is intact), but the grid re-aligns scroll to the focused row, so a flick that lands focus elsewhere snaps the list back. In practice this is invisible on these three screens because every list fits on a phone screen: Update has exactly 2 actions (UpdateFragment.kt:44-58), ClearConfirm has 2 (ClearConfirmFragment.kt:20-31), Backup has 4 short rows (BackupFragment.kt:31-63). There is no overflow to scroll, so 'can't reach Clear All Data' does not actually occur in portrait on a normal phone.",
+    "rootCause": "All three extend androidx.leanback.app.GuidedStepSupportFragment (UpdateFragment.kt:17, BackupFragment.kt:17, ClearConfirmFragment.kt:8). The actions pane is a Leanback VerticalGridView styled by guidedActionsListStyle (verified in leanback-1.0.0.aar res/layout/lb_guidedactions.xml line 42-45). VERIFIED AGAINST THE LIBRARY: leanback GridLayoutManager overrides canScrollVertically() and scrollVerticallyBy() and has setScrollEnabled(true) by default, and BaseGridView.dispatchTouchEvent only intercepts when an OnTouchInterceptListener is set (none is set here) \u2014 otherwise it delegates straight to RecyclerView.dispatchTouchEvent. So the list IS touch-scrollable; the only quirk is focus-aligned re-snap, not a hard scroll lock. The theme is Theme.Ooustream which has parent=\"Theme.Leanback\" (themes.xml:3).",
+    "fix": "Low urgency since these lists never overflow on phone. The correct long-term fix is to gate on DeviceUtils.isPhone() (common/DeviceUtils.kt) and present a plain RecyclerView/LinearLayoutManager (or AlertDialog for ClearConfirm) on phone, only using GuidedStep when DeviceUtils.isTV(). If kept as GuidedStep, no scroll-specific change is needed for these three because content fits; do NOT claim the list is unscrollable.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Severity downgraded P1 -> P3 and the mechanism claim corrected. The auditor wrote 'Leanback grids do not implement NestedScrollingChild correctly, so free touch panning is not provided' and 'a drag either snaps the list back to the focused item or barely moves; the list feels stuck.' That is an overstatement of the bug. Decompiling leanback-1.0.0.aar shows GridLayoutManager DOES override scrollVerticallyBy()/canScrollVertically() and BaseGridView.dispatchTouchEvent does NOT intercept touch unless an (unset) listener exists \u2014 so finger drag scrolls the list normally; it merely re-aligns to focus. More importantly, all three screens' action lists fit on a phone screen (2/2/4 short rows), so there is no overflow to scroll and the 'can't reach Clear All Data' scenario does not manifest. Real but cosmetic -> P3, not a P1 scroll-broken defect.",
+    "page": "update_backup_guided (Update / Backup / ClearConfirm GuidedStep)"
+  },
+  {
+    "id": "backup-editable-json-paste-tv-ime",
+    "title": "Backup 'Import' requires typing/pasting JSON into an editable GuidedAction inline editor \u2014 a 10-foot IME flow that is hostile on phone",
+    "severity": "P1",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/backup/BackupFragment.kt:39-47",
+      "app/src/main/java/com/ooustream/iptv/backup/BackupFragment.kt:70-77",
+      "app/src/main/java/com/ooustream/iptv/backup/BackupViewModel.kt:39-44"
+    ],
+    "symptom": "On a phone, restoring a backup means tapping the 'Import Backup' row, which opens Leanback's inline guided edit field, and pasting a long multi-line JSON blob into it, then tapping 'Restore from Backup'. There is no file picker, no clipboard affordance, and the inline editor plus soft keyboard fight for the small portrait screen. The .ooubackup file that Export produces can't be selected back \u2014 the user must manually obtain its JSON text and paste it. Most phone users cannot complete a restore.",
+    "rootCause": "ACTION_IMPORT is built .descriptionEditable(true) with TYPE_CLASS_TEXT | TYPE_TEXT_FLAG_MULTI_LINE (BackupFragment.kt:44-45). The restore handler reads that editable description back as the JSON source (BackupFragment.kt:71) and passes it to viewModel.importBackup(json) (BackupViewModel.kt:39-44 -> backupService.importBackup(json)). VERIFIED: grep for ACTION_OPEN_DOCUMENT / registerForActivityResult / GetContent across the backup package returns nothing \u2014 there is no Storage Access Framework picker anywhere. The only restore input path is the pasted text.",
+    "fix": "On phone (DeviceUtils.isPhone()), replace the editable-action paste flow with ACTION_OPEN_DOCUMENT (SAF) for the .ooubackup file, read the stream, and feed it to viewModel.importBackup(). For export, surface ACTION_CREATE_DOCUMENT or a share sheet. Keep the editable-GuidedAction paste path only for TV. This also removes the inline editor from expanding inside the actions list.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "update_backup_guided (Update / Backup / ClearConfirm GuidedStep)"
+  },
+  {
+    "id": "guidedstep-no-portrait-path",
+    "title": "Update/Backup/Clear screens are a horizontal two-pane TV guidance layout with no phone/portrait arrangement",
+    "severity": "P2",
+    "category": "layout",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/update/UpdateFragment.kt:32-59",
+      "app/src/main/java/com/ooustream/iptv/backup/BackupFragment.kt:21-64",
+      "app/src/main/java/com/ooustream/iptv/backup/ClearConfirmFragment.kt:10-32",
+      "app/src/main/java/com/ooustream/iptv/settings/SettingsFragment.kt:242-244"
+    ],
+    "symptom": "On a phone these render as the Leanback two-pane guidance composition: a guidance block (title/description/breadcrumb) on the LEFT and focus-styled action rows on the RIGHT, side-by-side, squeezed into portrait. It reads as a TV settings panel, not a Material screen, with oversized guidance text and big focus-tinted rows occupying only ~half the width.",
+    "rootCause": "VERIFIED in leanback-1.0.0.aar res/layout/lb_guidedstep_fragment.xml: the root content_frame is a HORIZONTAL LinearLayout (line 35) with content_fragment (guidance, weight 1, line 40-44) and action_fragment_root (actions pane, line 46-56) side-by-side. Each fragment only supplies GuidanceStylist.Guidance + GuidedAction lists (UpdateFragment.kt:32-59, BackupFragment.kt:21-64, ClearConfirmFragment.kt:10-32) \u2014 the layout is framework-driven, so there is no layout/ vs layout-television/ variant to give phones a portrait composition. SettingsFragment.navigateToFragment (SettingsFragment.kt:353-358) routes to BackupFragment()/UpdateFragment() with no DeviceUtils.isPhone() branch (verified: grep for isPhone/isTV/DeviceUtils in SettingsFragment returns nothing).",
+    "fix": "Branch on DeviceUtils.isPhone() in SettingsFragment.onGuidedActionClicked (lines 242/244): route ACTION_UPDATE/ACTION_BACKUP to phone-native fragments (Material toolbar + vertical scrolling list/buttons) on phone, GuidedStep only on TV. Make ClearConfirm an android.app.AlertDialog on phone (matching the app's other Leanback-safe confirm dialogs). Note SettingsFragment itself is also a GuidedStepSupportFragment (SettingsFragment.kt:35), so the whole settings entry is TV-shaped on phone \u2014 consolidate with the broader Settings/Parental/Subtitle GuidedStep phone-rewrite (already noted as deferred to a future release in CLAUDE.md v3.7.11).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "update_backup_guided (Update / Backup / ClearConfirm GuidedStep)"
+  },
+  {
+    "id": "multiview-empty-slot-no-tap-picker",
+    "title": "Tapping an empty slot does nothing on phone \u2014 channel picker only opens on long-press; both entry points seed nothing",
+    "severity": "P0",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:198-211",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:679-683",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt:438-444",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt:694",
+      "app/src/main/java/com/ooustream/iptv/livetv/LiveTvFragment.kt:218"
+    ],
+    "symptom": "A phone user enters MultiView from the Home hero card or the Live TV header icon \u2014 BOTH call navigateToMultiView() with no seed channel \u2014 and lands on four empty 'Welcome to MultiView' slots. Tapping any empty slot does nothing visible (it only re-selects the slot and flashes controls). The empty-state overlay says 'Press OK to pick a channel', but a phone has no OK button. The only way to fill a slot is an undiscoverable long-press. The screen is effectively unusable on touch entry.",
+    "rootCause": "In setupSlotViews() the phone branch (gated on !DeviceUtils.isTV, MultiViewFragment.kt:198) wires slotFrames[i].setOnClickListener (lines 199-205) to only setFocusedSlot / setAudioSlot / requestFocus / showControls() \u2014 it never calls openChannelPicker. The D-pad path opens the picker for an empty slot at onFullKeyEvent ACTION_UP line 682 (slot.channel == null -> openChannelPicker(focused)); touch has no equivalent. setOnLongClickListener (line 206) opens the picker, but only via long-press. Verified that MainActivity.navigateToMultiView (line 438) defaults seedChannel=null, and both real callers (HomeFragment.kt:694, LiveTvFragment.kt:218) pass nothing \u2014 so a touch user always starts with empty slots and cannot fill them by tapping.",
+    "fix": "In the phone setOnClickListener at MultiViewFragment.kt:199, branch on slot occupancy: if viewModel.slots.value[i].channel == null, call openChannelPicker(i) (mirroring the D-pad empty-slot path at line 682); only when occupied should it fall through to setAudioSlot/showControls. Keep long-press as the change/swap/remove menu for occupied slots. Also fix the empty-state instruction (fragment_multiview.xml:154 'Press OK to pick a channel') to be touch-aware, e.g. 'Tap a screen to pick a channel' on phone.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Severity raised P1 -> P0. The auditor under-rated this: because BOTH MultiView entry points (HomeFragment.kt:694 and LiveTvFragment.kt:218) call navigateToMultiView() with no seed, every touch user lands on four empty slots, and tap is the only intuitive gesture. With tap doing nothing and the on-screen hint telling them to 'Press OK' (a button phones lack), the feature is unusable on touch entry, not merely degraded. Long-press technically works but is undiscoverable, which does not save it from P0. Root cause and fix as written are accurate.",
+    "page": "multiview"
+  },
+  {
+    "id": "multiview-layout-switcher-unreachable-touch",
+    "title": "Layout-mode switcher (2x2/1+3/Dual/Triple) and the whole top/bottom control bar start GONE and auto-hide in 8s",
+    "severity": "P2",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_multiview.xml:107-122",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:580-599",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:199-205",
+      "app/src/main/res/layout/view_multiview_top_bar.xml:56-121"
+    ],
+    "symptom": "A phone user has no obvious way to change the grid layout or pick the audio slot. The top bar (layout buttons) AND the bottom bar (audio slot buttons) are both hidden on entry; they only appear after tapping a slot, then disappear again after 8 seconds. Users may never realize the layouts exist.",
+    "rootCause": "Both <include android:id=\"@+id/top_bar\"> (fragment_multiview.xml:113) and <include android:id=\"@+id/bottom_bar\"> (line 122) are android:visibility=\"gone\" by default. They are only revealed by showControls() (line 580-586, sets both VISIBLE), whose only phone trigger is a slot tap (setOnClickListener line 204). resetControlsTimer() (line 593-599) then hides them after CONTROLS_TIMEOUT_MS = 8000ms (line 85). The layout buttons themselves have working click listeners (MultiViewTopBarController.setLayoutClickListener line 63-83), so the issue is purely discoverability/reachability of the bars, not click handling.",
+    "fix": "On phone (DeviceUtils.isPhone), keep the top and bottom bars visible (skip the gone default and/or skip the auto-hide timer on phone entry), or add a persistent floating layout/menu FAB. At minimum, do not start the controls auto-hide timer on a phone so the bars stay up until a deliberate dismiss.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed at P2; root cause verified. Note the auditor scoped this to the top bar only \u2014 the BOTTOM bar (audio-slot selector) is gone-by-default and auto-hides with the SAME root cause (showControls() at line 580 toggles both, resetControlsTimer hides both). The audio-slot buttons are therefore equally unreachable on touch. Folding it into this finding rather than a separate one since the mechanism is identical.",
+    "page": "multiview"
+  },
+  {
+    "id": "multiview-layout-buttons-under-48dp",
+    "title": "Top-bar layout buttons and bottom-bar audio buttons are well under the 48dp touch-target minimum",
+    "severity": "P2",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/view_multiview_top_bar.xml:66-120",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewBottomBarController.kt:48-77"
+    ],
+    "symptom": "The 2x2/1+3/Dual/Triple buttons and the numbered audio buttons are small, tightly-packed text pills that are hard to hit accurately with a finger; mis-taps land on the adjacent button.",
+    "rootCause": "Layout buttons are TextViews with textSize 10sp and paddingVertical 6dp only (view_multiview_top_bar.xml:72-75) \u2014 roughly 13-17dp text box + 12dp vertical padding = ~27-29dp total height, far below 48dp; horizontal padding is 14dp with no inter-button margin so they abut. Audio buttons are built in MultiViewBottomBarController.setupAudioButtons with textSize 11f and 6dp vertical padding (lines 51-58) = ~27dp, also under 48dp, with only a 4dp marginStart between them (line 71).",
+    "fix": "On phone, set minWidth/minHeight to 48dp (programmatically minimumHeight = (48 * density) in MultiViewTopBarController/MultiViewBottomBarController, or via values-sw320dp dimens applied to these views) and increase inter-button spacing to >=8dp so finger targets don't overlap.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "multiview"
+  },
+  {
+    "id": "multiview-no-onscreen-back",
+    "title": "No on-screen back/close control \u2014 exit depends entirely on the system back gesture",
+    "severity": "P2",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/fragment_multiview.xml:1-162",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:699-720",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewFragment.kt:1067-1073"
+    ],
+    "symptom": "On a phone there is no visible way to leave MultiView; the user must know to use the system back gesture/button. With the control bars hidden by default and no close icon, a touch user can feel trapped. (System back does work \u2014 it is routed correctly \u2014 so this is friction, not a dead end.)",
+    "rootCause": "Grep of fragment_multiview.xml, view_multiview_top_bar.xml, and view_multiview_bottom_bar.xml confirms there is no back/close affordance \u2014 only a non-interactive '[Back] Exit' text hint (view_multiview_bottom_bar.xml:108). Exit is wired solely through onKeyEvent KEYCODE_BACK -> showExitDialog() (MultiViewFragment.kt:699-719), and showExitDialog() (line 1067) calls parentFragmentManager.popBackStack() (line 1072). System back reaches this via MainActivity.dispatchKeyEvent -> fragment.onKeyEvent (MainActivity.kt:292-294), so back is functional; there is just no touch button.",
+    "fix": "Add a phone-only circular back/close button overlaid top-left of the grid (reuse the PhoneToolbarHelper pattern used on VodDetail/SeriesDetail) that calls showExitDialog() (or parentFragmentManager.popBackStack() directly).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed at P2. The auditor's claim that the user is 'trapped' is overstated \u2014 the system back gesture/button IS correctly routed (MainActivity.kt:292 -> onKeyEvent KEYCODE_BACK -> showExitDialog -> popBackStack), so exit works. This is discoverability friction, not an unescapable screen. P2 (noticeable friction) is the right severity; it is not a P0/P1 dead end.",
+    "page": "multiview"
+  },
+  {
+    "id": "multiview-ticker-not-draggable",
+    "title": "Bottom-bar EPG ticker is an auto-scroll marquee that cannot be finger-dragged",
+    "severity": "P3",
+    "category": "scroll",
+    "files": [
+      "app/src/main/res/layout/view_multiview_bottom_bar.xml:34-48",
+      "app/src/main/java/com/ooustream/iptv/multiview/MultiViewBottomBarController.kt:159-173"
+    ],
+    "symptom": "The 'NOW PLAYING' ticker scrolls itself back and forth; a phone user who tries to swipe it to read ahead cannot \u2014 the running animator immediately overrides the drag and the ticker keeps its own ping-pong pace.",
+    "rootCause": "ticker_scroll is a HorizontalScrollView (view_multiview_bottom_bar.xml:34) whose scrollX is driven by an ObjectAnimator (startTickerScroll, MultiViewBottomBarController.kt:159-173) with repeatCount INFINITE and repeatMode REVERSE. A HorizontalScrollView is touch-draggable by default, but because the animator continuously writes scrollX every frame, any user drag is instantly overwritten. There is also no affordance suggesting it is interactive \u2014 it is a marquee, not a scroll surface.",
+    "fix": "Acceptable as a marquee at this priority. If touch-read-ahead is desired, pause the animator on ACTION_DOWN and resume on ACTION_UP/idle so the user can drag-scroll. Otherwise leave as-is.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "multiview"
+  },
+  {
+    "id": "player-action-row-overflow-no-scroll",
+    "title": "Bottom action-button row overflows / squashes below 48dp on phones with no horizontal scroll",
+    "severity": "P1",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/res/layout/overlay_player_controls.xml:229-236",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:383-398",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:472-529"
+    ],
+    "symptom": "On a ~360dp phone the VOD/Series controls bar packs 10 action buttons into a fixed full-width row with no horizontal scroll (Prev, -10s, Play, +10s, Next, Aspect, CC, Audio, External, Stats \u2014 Stats is phone-only so phone is the worst case with 10 vs TV's 9). With each button now carrying minimumWidth=48dp the row's measured content (~480dp) exceeds the screen; gravity=center then centers the overflow and clips the leftmost (Prev) and rightmost (Stats/External) buttons off both edges, making them untappable. Where weight wins instead, every button is squeezed icon+label below the 48dp Material tap target and is hard to hit precisely.",
+    "rootCause": "action_buttons_row (overlay_player_controls.xml:230) is a plain horizontal LinearLayout, layout_width=match_parent, gravity=center, NOT wrapped in a HorizontalScrollView. Each button is added by addActionButton()/addCcButton() with LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) (PlayerControlsBar.kt:476, 404) so they share width by weight, AND v3.7.11 added minimumWidth = dp(48) (PlayerControlsBar.kt:485). 10 children \u00d7 48dp = 480dp + bottom_controls 32dp+32dp side margins exceeds a phone's usable width. LinearLayout's horizontal measure honors each child's minimumWidth, so the row overflows its (non-scrollable) parent and the centered overflow is clipped. There is no scroll affordance to reach overflowed buttons. Confirmed VOD/Series count = 10 (setupVodActionButtons, lines 383-398) and Live = 7 on phone (setupLiveActionButtons, 369-381). No clipChildren=false on the row or bottom_controls.",
+    "fix": "Wrap action_buttons_row in a HorizontalScrollView (android:scrollbars=none, fillViewport=false) so the full set is reachable by horizontal drag on phone; switch addActionButton/addCcButton from weight (0dp,1f) to WRAP_CONTENT width with a fixed marginEnd and a real 48dp tap zone so they scroll instead of squash. Or, on phone (!DeviceUtils.isTV), collapse secondary actions (External, Stats, CC) into an overflow '\u2026' button. Keep the weighted full-width layout for TV only (gravity=center reads well at 10ft).",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real. Verified VOD/Series row is 10 buttons on phone (setupVodActionButtons 383-398 + phone-only Stats), TV is 9, and minimumWidth=dp(48) is applied per button (PlayerControlsBar.kt:485). The row is a plain LinearLayout not inside a HorizontalScrollView, with gravity=center and no clipChildren override. The auditor's overflow/clip-vs-squash analysis is accurate; the exact split between 'clipped off-edge' and 'squashed under 48dp' is device-width dependent but the user-observable harm (edge buttons unreachable / hard to hit) holds either way. Severity P1 confirmed: player still functions, but some controls are not reliably tappable.",
+    "page": "player"
+  },
+  {
+    "id": "player-gestures-dead-when-controls-visible",
+    "title": "Phone gesture suite (double-tap seek, drag volume/brightness, fling zap, long-press 2x, pinch) is dead while the controls bar is visible",
+    "severity": "P1",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:748-755",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:776",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2521-2555",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsBar.kt:97-101",
+      "app/src/main/java/com/ooustream/iptv/player/PlayerControlsManager.kt:21"
+    ],
+    "symptom": "After the user single-taps to reveal the controls bar (or it auto-shows on double-tap/seek), every phone gesture \u2014 double-tap-to-seek, vertical drag for brightness/volume, horizontal fling to zap channel / coarse-seek, long-press 2\u00d7 speed, pinch aspect \u2014 stops working for the full 15s auto-hide window. A touch anywhere over the video only dismisses the bar. The gesture suite feels intermittent/broken.",
+    "rootCause": "The PlayerControlsBar is added to the fragment root as a MATCH_PARENT/MATCH_PARENT FrameLayout (OoustreamPlaybackFragment.kt:748-755), added AFTER the SurfaceView/TextureView so it sits on top in z-order. Its root FrameLayout has setOnClickListener { onScrimTap?.invoke() } (PlayerControlsBar.kt:98), wired to controlsManager?.hide() (OoustreamPlaybackFragment.kt:776), which makes the entire overlay clickable and therefore touch-consuming. The fragment's gesture touchListener is attached only to rootView (line 2542) and to descendant SurfaceView/TextureView (attachToSurfaces, 2547-2555) \u2014 NOT to the controls bar overlay. So while the bar is VISIBLE it intercepts ACTION_DOWN over the whole screen before the gesture pipeline (gestureDetector/scaleDetector) ever sees it. Auto-hide is 15s (PlayerControlsManager.kt:21), so the dead window is long.",
+    "fix": "Forward touches from the controls bar to the gesture pipeline when they fall outside the actual control widgets. Either (a) give the bar's full-screen scrim its own GestureDetector mirroring the fragment's (double-tap/drag/fling) and treat only a simple tap as hide; or (b) make the bar root non-clickable and attach the fragment's same touchListener to the controls bar root, letting onSingleTapConfirmed toggle visibility. Children (action button row, seek bar, play/pause) keep their own click handling because they're above the scrim. Reset the auto-hide timer on any forwarded gesture.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real. Verified: setupTouchGestures(view) is called with the same 'view' the controls bar is added to (line 923 + 749), the bar is MATCH_PARENT and z-ordered above the surfaces, the bar root has a click listener (PlayerControlsBar.kt:98) wired to hide (line 776), and the gesture touchListener is bound only to rootView + SurfaceView/TextureView (2542-2555), never to the controls bar. Auditor's mechanism is exactly right. Added detail: auto-hide is 15s (PlayerControlsManager.kt:21), so the gesture-dead window is a full 15 seconds per reveal \u2014 strengthens P1.",
+    "page": "player"
+  },
+  {
+    "id": "player-pinch-aspect-non-reversible",
+    "title": "Pinch-to-zoom aspect gesture is non-reversible (zoom-out does the same thing as zoom-in)",
+    "severity": "P3",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:2513-2517",
+      "app/src/main/java/com/ooustream/iptv/player/OoustreamPlaybackFragment.kt:3068-3080"
+    ],
+    "symptom": "Pinching out (zoom in) and pinching in (zoom out) both advance the aspect-ratio cycle in the same direction. A user cannot pinch the opposite way to step back. Contradicts the natural 'pinch in = less zoom' mental model. In practice the impact is tiny because there are only two modes (Fit / Crop-Fill), so a single pinch either way always lands on the other mode \u2014 you can never actually get 'stuck'.",
+    "rootCause": "onScaleEnd calls cycleAspectRatio() for BOTH accumulatedScale > 1.15f and accumulatedScale < 0.85f (OoustreamPlaybackFragment.kt:2514-2515, explicit comment 'single direction list \u2014 same call'). cycleAspectRatio() only does currentScalingMode = (currentScalingMode + 1) % scalingModes.size (line 3076), and scalingModes has just 2 entries (line 3069-3072, labels 'Fit'/'Crop/Fill' at 3073) \u2014 no decrement path.",
+    "fix": "On accumulatedScale < 0.85f step backward: currentScalingMode = (currentScalingMode - 1 + scalingModes.size) % scalingModes.size, instead of calling the forward cycle. One-line branch. With only 2 modes the visible difference is negligible, so this is pure polish.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed real but practically moot. Verified scalingModes has exactly 2 entries (lines 3069-3073) and both pinch directions call the same forward cycleAspectRatio(). Because there are only two modes, one pinch in EITHER direction always reaches the other mode, so the 'can't go back' symptom never actually strands the user. P3 is correct (arguably even cosmetic). Auditor's code reading is accurate.",
+    "page": "player"
+  },
+  {
+    "id": "login-no-scroll-keyboard-occludes-button",
+    "title": "Login card has no scroll container and the Activity sets no windowSoftInputMode \u2014 soft keyboard can hide the Sign In button and error text",
+    "severity": "P0",
+    "category": "scroll",
+    "files": [
+      "app/src/main/res/layout/fragment_login.xml:2-15",
+      "app/src/main/res/layout/activity_main.xml:10-14",
+      "app/src/main/AndroidManifest.xml:34-39",
+      "app/src/main/res/values/themes_mobile.xml:3-13",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt:65-67",
+      "app/src/main/java/com/ooustream/iptv/auth/LoginFragment.kt:84"
+    ],
+    "symptom": "On a phone, the username field auto-focuses on load (LoginFragment.kt:84 usernameInput.post { requestFocus() }), so the soft keyboard pops up immediately on first run. The login card cannot scroll, and the window has no defined keyboard behavior, so on a short phone the IME can push/cover the lower form. The 'Sign In' Button (4th child) and the status/error TextView (5th child, where login errors render) sit below the password field and can be occluded by the keyboard with no scroll recovery \u2014 user can type credentials but can't reach Submit and never sees error text.",
+    "rootCause": "fragment_login.xml root is a FrameLayout (match_parent) wrapping a single centered LinearLayout (480dp wide, height=wrap_content, layout_gravity=center) \u2014 VERIFIED: no ScrollView/NestedScrollView anywhere in the file. The host container main_container (activity_main.xml:10-14) is a bare FrameLayout that even carries layout_marginBottom=@dimen/bottom_nav_height (reserving space for the bottom nav), further compressing vertical room \u2014 and it has no scroll wrapper either. On phone, MainActivity.kt:65-67 applies Theme.Ooustream.Mobile (Theme.MaterialComponents.NoActionBar); neither that theme (themes_mobile.xml) nor the manifest .MainActivity entry (AndroidManifest.xml:34-39) sets android:windowSoftInputMode, and a project-wide grep for windowSoftInputMode/SOFT_INPUT returns NOTHING \u2014 so the IME runs with the default SOFT_INPUT_ADJUST_UNSPECIFIED. With non-scrollable content the system pan/resize behavior can clip the bottom controls with no scroll fallback. LoginFragment.kt:84 force-focuses the username field on load, triggering the IME on entry.",
+    "fix": "Wrap the centered LinearLayout in a ScrollView/NestedScrollView with android:fillViewport=\"true\" and android:layout_height=\"match_parent\" (set the ScrollView's gravity=center so the card stays centered when there's room but can scroll when the IME is up). AND set android:windowSoftInputMode=\"adjustResize\" \u2014 either on the .MainActivity entry in AndroidManifest.xml:34-39, or in Theme.Ooustream.Mobile (themes_mobile.xml) so only the phone path gets it. Additionally guard the auto-focus at LoginFragment.kt:84 to only requestFocus() on TV (if (DeviceUtils.isTV(requireContext()))) so phones don't auto-pop the keyboard on first launch.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. All claims verified against code: no scroll container in fragment_login.xml, no windowSoftInputMode anywhere in src, auto-focus at line 84 fires the IME on load. One added detail the auditor missed: the host main_container (activity_main.xml:14) also reserves bottom_nav_height as a bottom margin, eating additional vertical space and making the occlusion worse on short phones \u2014 reinforces P0.",
+    "page": "login_splash"
+  },
+  {
+    "id": "login-card-fixed-480dp-overflows-phone",
+    "title": "Login card hardcoded to 480dp width \u2014 wider than most phones in portrait, content clipped with no horizontal scroll",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/fragment_login.xml:9-15"
+    ],
+    "symptom": "On a typical 360dp-wide phone (and worse on 320dp small phones), the centered login card (fixed 480dp) is wider than the screen. Because the root FrameLayout centers it (layout_gravity=center), the card's left/right edges and its rounded bg_login_card background are clipped equally on both sides, and the 40dp internal padding eats further into usable width. There is no horizontal scroll, so the card just gets cut off and looks broken / not phone-designed.",
+    "rootCause": "fragment_login.xml line 10: the card LinearLayout uses a hardcoded android:layout_width=\"480dp\" with android:padding=\"40dp\" (line 15). 480dp exceeds common phone widths (360dp) and small phones (320dp). VERIFIED there is no phone/portrait layout variant \u2014 only layout/ and layout-television/ exist (fragment_login.xml exists ONLY in layout/, shared by phone and TV), and no dimen indirection for this width, so the TV-sized card renders verbatim on phones. The child EditTexts are layout_width=match_parent so they stay within the (clipped) card, which is why the inputs remain partially usable \u2014 degraded, not unusable.",
+    "fix": "Make the card width responsive: change line 10 to android:layout_width=\"match_parent\" with horizontal margins (e.g. android:layout_marginStart/End=\"24dp\"), or wrap in a ConstraintLayout with android:maxWidth=\"480dp\". Extract 480dp to @dimen/login_card_width and override in values-television/ (keep 480dp for TV) vs values/ (match_parent/responsive for phone). Reduce padding from 40dp to a smaller @dimen on phones.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Verified line 10 is android:layout_width=\"480dp\" and confirmed no portrait/phone layout variant exists (only layout/ and layout-television/). P1 severity is correct \u2014 clipping is centered so inputs stay reachable, screen is degraded but usable.",
+    "page": "login_splash"
+  },
+  {
+    "id": "login-button-permanent-dim-on-phone",
+    "title": "Login button rendered permanently at alpha 0.9 (and dims further) on phones with no focus concept",
+    "severity": "P3",
+    "category": "touch-target",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/auth/LoginFragment.kt:57-81",
+      "app/src/main/java/com/ooustream/iptv/auth/LoginFragment.kt:99-114"
+    ],
+    "symptom": "On a phone the 'Sign In' button always appears slightly faded (90% opacity) because the alpha=0.9 dim is a TV focus affordance that never gets restored to 1.0 \u2014 the restore only happens on a D-pad focus event, which never fires on touch. During loading it correctly drops to 0.5 alpha, but in idle/error states it stays at 0.9, looking subtly disabled rather than tappable. There is also no ripple/touch feedback on tap.",
+    "rootCause": "LoginFragment.kt line 81 sets loginButton.alpha = 0.9f as an unfocused-state dim; the focus listener (lines 57-78) only restores alpha=1.0f inside the hasFocus branch (line 67), which never triggers on touch. The auth-state observer resets to 0.9f on Idle (line 114) and Error (line 109). VERIFIED there is no android:foreground/selectableItemBackground ripple on the button in fragment_login.xml. This is a 10-foot focus cue applied unconditionally to phones.",
+    "fix": "Gate the alpha dim + focus-scale animation behind DeviceUtils.isTV(requireContext()): on phone, set loginButton.alpha = 1.0f always and skip setOnFocusChangeListener; in the auth-state observer use 1.0f (not 0.9f) for Idle/Error on phone. Add android:foreground=\"?android:attr/selectableItemBackground\" (or a ripple) to the Button in fragment_login.xml for touch feedback.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Verified lines 81, 99, 109, 114 set alpha and the focus listener only restores full alpha on D-pad focus. Confirmed no ripple foreground on the button. P3 polish severity is correct.",
+    "page": "login_splash"
+  },
+  {
+    "id": "splash-no-touch-to-skip",
+    "title": "Intro splash can only be skipped by a key/D-pad event, not by tapping the screen",
+    "severity": "P3",
+    "category": "gesture",
+    "files": [
+      "app/src/main/java/com/ooustream/iptv/splash/IntroSplashFragment.kt:32-41",
+      "app/src/main/java/com/ooustream/iptv/splash/IntroSplashFragment.kt:68-103",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt:77-93"
+    ],
+    "symptom": "On a phone, a user who wants to skip the intro video taps the screen and nothing happens \u2014 they must wait for the video to end (STATE_ENDED) or the 5s timeout. There is no touch affordance to skip.",
+    "rootCause": "IntroSplashFragment dismisses only via onKeyEvent (lines 97-103, fired by MainActivity key dispatch / D-pad), STATE_ENDED (line 56), onPlayerError (line 59), or the 5000ms timeout (lines 68-71). The PlayerView is created with useController=false (line 38) and no setOnClickListener / GestureDetector is attached. VERIFIED MainActivity has no dispatchTouchEvent/onTouchEvent path to forward a tap to the splash. So touch events do nothing.",
+    "fix": "In onViewCreated, on phone (if (!DeviceUtils.isTV(requireContext()))) add playerView?.setOnClickListener { skip() } (or a GestureDetector single-tap) so a tap skips the intro, mirroring the key-to-skip behavior. Low urgency since the 5s cap bounds the wait.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed as-is. Verified useController=false (line 38), skip paths are key/timeout/end-only, and no touch listener is attached. Also confirmed MainActivity has no dispatchTouchEvent/onTouchEvent forwarding, so a tap truly cannot reach skip(). P3 is correct (5s cap bounds the wait).",
+    "page": "login_splash"
+  },
+  {
+    "id": "login-ime-done-not-wired",
+    "title": "[MISSED] Password field declares imeOptions=actionDone but no editor-action listener \u2014 pressing keyboard Done does nothing, so the only IME fallback to submit when the button is occluded also fails",
+    "severity": "P1",
+    "category": "gesture",
+    "files": [
+      "app/src/main/res/layout/fragment_login.xml:73",
+      "app/src/main/java/com/ooustream/iptv/auth/LoginFragment.kt:49-54"
+    ],
+    "symptom": "On a phone, after typing the password the user presses the keyboard's Done/checkmark key (the natural way to submit when the on-screen button is hidden under the IME) \u2014 and nothing happens. The form does not log in. Combined with the P0 button-occlusion, this leaves the user with NO way to submit: the Sign In button is under the keyboard and the keyboard's own Done action is dead.",
+    "rootCause": "passwordInput declares android:imeOptions=\"actionDone\" (fragment_login.xml line 73), which paints a Done action on the IME \u2014 but LoginFragment never calls passwordInput.setOnEditorActionListener(...) (VERIFIED: grep for setOnEditorActionListener/OnEditorAction/IME_ACTION returns nothing). The only path that calls viewModel.login(...) is loginButton.setOnClickListener (LoginFragment.kt:49-54). So the Done key is wired to nothing.",
+    "fix": "In onViewCreated add passwordInput.setOnEditorActionListener { _, actionId, _ -> if (actionId == EditorInfo.IME_ACTION_DONE) { loginButton.performClick(); true } else false }. This gives a working IME-driven submit that survives the keyboard-occlusion case (and is the standard mobile login pattern). Should ship together with the P0 scroll/adjustResize fix.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "[MISSED] The auditor flagged the button occlusion (P0) but did not notice that the keyboard's own Done action \u2014 the natural fallback submit when the button is hidden \u2014 is unwired. Verified: imeOptions=actionDone is set in XML but no setOnEditorActionListener exists in LoginFragment. This turns the P0 occlusion into a hard dead-end on short phones, so it's a real P1 touch-usability defect.",
+    "page": "login_splash"
+  },
+  {
+    "id": "nav-deadmargin-under-player",
+    "title": "Permanent 56dp bottom margin on main_container leaves a dead black bar under fullscreen player / MultiView / Login on phone",
+    "severity": "P1",
+    "category": "layout",
+    "files": [
+      "app/src/main/res/layout/activity_main.xml",
+      "app/src/main/res/values/dimens.xml",
+      "app/src/main/res/values-television/dimens.xml",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt"
+    ],
+    "symptom": "On a phone, opening fullscreen video, MultiView, the splash, or Login leaves a ~56dp black strip pinned to the bottom of the screen. The bottom nav is correctly hidden (View.GONE via syncBottomNav), but the hosted fragment content does not expand to fill that reserved space \u2014 it stays inset, so 'fullscreen' video/MultiView is visibly short at the bottom.",
+    "rootCause": "layout/activity_main.xml line 14: main_container has a static android:layout_marginBottom=\"@dimen/bottom_nav_height\". On phone @dimen/bottom_nav_height = 56dp (values/dimens.xml line 69); on TV it is 0dp (values-television/dimens.xml line 46, and the TV layout-television/activity_main.xml omits the attribute entirely). main_container and the BottomNavigationView are siblings in a FrameLayout, so setting the nav GONE (MainActivity.syncBottomNav line 172) does NOT collapse main_container's fixed margin. Verified there is NO code anywhere that zeroes/restores bottomMargin (grep for main_container+margin/layoutParams and bottomMargin/setMargins in MainActivity both empty). The player and MultiView are committed into R.id.main_container via .replace(), with no separate full-window surface (no addContentView; only window FLAG_KEEP_SCREEN_ON / brightness flags touched), so the margin truly insets their content.",
+    "fix": "Toggle the margin alongside visibility, or restructure to a weighted layout. Lowest-risk: in syncBottomNav(), when hideNav==true set ((ViewGroup.MarginLayoutParams) mainContainer.layoutParams).bottomMargin = 0 and requestLayout(); when false restore resources.getDimensionPixelSize(R.dimen.bottom_nav_height). Cleaner long-term: wrap main_container + bottom_navigation in a vertical LinearLayout (container height=0dp, weight=1) and drop the marginBottom; that also resolves the splash/login overlap in nav-bottomnav-over-login-splash.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "navigation"
+  },
+  {
+    "id": "nav-bottomnav-over-login-splash",
+    "title": "Bottom nav is shown over the splash and the first-launch Login screen; tabs are tappable while unauthenticated",
+    "severity": "P1",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/layout/activity_main.xml",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt"
+    ],
+    "symptom": "On first launch (not yet logged in) a phone user sees the bottom nav (Home/Live/Movies/Series/Search) overlaid on the splash and then on Login. The tabs are tappable before login \u2014 tapping one (navigateFromSidebar) replaces the LoginFragment with a content fragment that has no credentials, dropping the user into an empty/broken screen instead of letting them log in. Same on logout-to-login.",
+    "rootCause": "BottomNavigationView in activity_main.xml (lines 23-32) has NO android:visibility, so it defaults VISIBLE. The only code that hides it is syncBottomNav() (MainActivity lines 157-172), which is invoked ONLY from the back-stack-changed listener (line 153) and from navigateToHome() (line 435). The splash is committed with .commit() (lines 90-92) and the first-launch LoginFragment with .commitAllowingStateLoss() (lines 85-88) \u2014 neither uses addToBackStack, so neither fires a back-stack change and syncBottomNav() never runs; the nav stays VISIBLE. syncBottomNav() already classifies IntroSplashFragment and LoginFragment as hideNav==true (line 171), so it WOULD hide the bar if it were called. The auto-login path is fine (it routes through navigateToHome \u2192 syncBottomNav). Also confirmed: navigateToLogin() (lines 446-453) does NOT call syncBottomNav() either, so logout also strands the bar over Login.",
+    "fix": "Set android:visibility=\"gone\" on the BottomNavigationView in XML so it is hidden until an authenticated top-level fragment is shown, AND/OR explicitly call syncBottomNav() after the splash commit (line 92), after the first-launch LoginFragment commit (line 88), and in navigateToLogin() (after line 452). Because syncBottomNav already treats both fragments as hideNav==true, invoking it on those paths fixes the overlap with no further logic.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "",
+    "page": "navigation"
+  },
+  {
+    "id": "nav-no-favorites-settings-on-non-home",
+    "title": "Favorites and Settings are unreachable by touch from Live TV / VOD / Series / Search",
+    "severity": "P2",
+    "category": "nav",
+    "files": [
+      "app/src/main/res/menu/bottom_nav_menu.xml",
+      "app/src/main/java/com/ooustream/iptv/MainActivity.kt",
+      "app/src/main/java/com/ooustream/iptv/home/HomeFragment.kt"
+    ],
+    "symptom": "A phone user browsing Live TV, Movies, Series, or Search has no on-screen control to open Favorites or Settings. They must tap the Home tab (or press Back) to return to Home, then tap the Favorites section card or the gear icon in the Home header. Settings/Favorites are effectively two steps deep and hidden from most of the app.",
+    "rootCause": "bottom_nav_menu.xml defines only 5 destinations (nav_home, nav_live, nav_movies, nav_series, nav_search) \u2014 no Favorites, no Settings. Those two are surfaced ONLY on Home: Settings via the header_settings icon (HomeFragment.setupHeaderIcons line 623-624 \u2192 navigateToSection(\"settings\")) and Favorites via a section card dispatched in navigateToSection (HomeFragment line 1899). grep of livetv/, vod/, series/, search/ packages for SettingsFragment/FavoritesFragment returns nothing \u2014 no entry point there. On TV these are reached via QuickSidebar, but the sidebar is gated TV-only (MainActivity.isSidebarAllowedForCurrentFragment line 196 returns false on phone), leaving phone with no global access.",
+    "fix": "Give phone a persistent route to Settings and Favorites from any screen. Lowest-risk: add a shared top header (reuse include_screen_header) carrying the existing Settings gear + a Favorites star to LiveTvFragment / VodFragment / SeriesFragment / SearchFragment, OR add an overflow/'More' action. Keep the bottom nav at 5 items rather than cramming 6+ tabs on small phones.",
+    "isReal": true,
+    "verifierConfidence": "high",
+    "correction": "Confirmed reachability gap, but recategorize the user impact: this is a nav-reachability/UX-depth issue, NOT the user's 'menus not scrolling' complaint. P2 is correct (friction, not unusable \u2014 the destinations ARE reachable via Home in 2 taps). Not a scroll/touch-target defect.",
+    "page": "navigation"
+  }
+]
