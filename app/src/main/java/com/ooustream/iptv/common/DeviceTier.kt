@@ -182,8 +182,11 @@ object DeviceTierDetector {
         val hardware = Build.HARDWARE.lowercase()
         val badMtk = BAD_MTK_HARDWARE.any { hardware.contains(it) }
         val goodMtk = GOOD_MTK_HARDWARE.any { hardware.contains(it) }
+        // Allwinner sunxi boxes (sun50iw9p1 = H616, etc.) — generic 4K Android TV boxes whose
+        // HW HEVC decoder hides its 10-bit profile, so 4K HEVC Main 10 routes to FFmpeg SW.
+        val allwinner = hardware.startsWith("sun") || hardware.contains("allwinner")
         return "tier=${tier(context)}, hw=${Build.HARDWARE}, model=${Build.MODEL}, " +
-            "memoryClass=${am.memoryClass}MB, badMtk=$badMtk, goodMtk=$goodMtk"
+            "memoryClass=${am.memoryClass}MB, badMtk=$badMtk, goodMtk=$goodMtk, allwinner=$allwinner"
     }
 
     /**

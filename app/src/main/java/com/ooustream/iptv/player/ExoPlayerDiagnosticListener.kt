@@ -27,6 +27,9 @@ class ExoPlayerDiagnosticListener(
     /** Invoked on a non-fatal audio sink fault — the fragment routes it into audio-stall recovery. */
     var onAudioSinkFault: (() -> Unit)? = null
 
+    /** Invoked with the video decoder name on init — the fragment uses it to know HW vs SW for watchdog decisions. */
+    var onVideoDecoder: ((String) -> Unit)? = null
+
     private var lastBufferingStart = 0L
     private var lastBandwidthLogTime = 0L
 
@@ -103,6 +106,7 @@ class ExoPlayerDiagnosticListener(
         logger.logDecoderInfo("video", isHardware, decoderName)
         logger.logAppEvent("DECODER_INIT",
             "decoder=$decoderName, hw=$isHardware, took=${initializationDurationMs}ms")
+        onVideoDecoder?.invoke(decoderName)
     }
 
     override fun onAudioDecoderInitialized(

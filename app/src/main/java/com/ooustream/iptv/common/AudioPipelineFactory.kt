@@ -102,11 +102,15 @@ object AudioPipelineFactory {
      * frame-level multithreading (FF_THREAD_FRAME). Our [ExperimentalFfmpegVideoRenderer]
      * (from PR #1591 in our locally-built AAR) wraps the same libavcodec.
      *
-     * Note: [ExperimentalFfmpegVideoRenderer] is not auto-registered by
-     * [DefaultRenderersFactory.buildVideoRenderers] — the standard reflection probe in
-     * Media3 only knows about [androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer].
-     * We instantiate it manually and prepend it to the renderer list so the track
-     * selector picks it before the MediaCodec video renderer.
+     * Note: with Media3 1.10.0 the bundled [ExperimentalFfmpegVideoRenderer] IS present in the
+     * default renderer list whenever an extension renderer mode (ON/PREFER) is set. Verified by
+     * observation, NOT assumption: the default [createRenderersFactory] (MODE_ON) selects FFmpeg
+     * software HEVC for HEVC Main 10 that a hardware decoder won't advertise — see the Allwinner
+     * sun50iw9p1 4K reports and the v3.7.0 MODE_PREFER note on [createFfmpegPreferredRenderersFactory].
+     * Under MODE_ON it ranks AFTER the MediaCodec video renderer, so hardware still wins when it
+     * advertises support. This factory additionally instantiates it manually and PREPENDS it so the
+     * track selector prefers it FIRST — forcing software video even past a hardware decoder that
+     * merely stalls. (An earlier version of this note wrongly claimed it was not auto-registered.)
      *
      * Audio chain identical to [createRenderersFactory] (full downmix matrices).
      */

@@ -232,6 +232,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // (e.g. HEVC Main 10) even after a SW rebuild where videoFormat becomes null
     private var cachedVideoCodecs: String = ""
     private var cachedVideoMime: String = ""
+    // Cache video resolution from TRACKS_CHANGED so the watchdog can recognise 4K content
+    // even after a rebuild where videoFormat momentarily reads null.
+    private var cachedVideoWidth: Int = 0
+    private var cachedVideoHeight: Int = 0
+    // Name of the video decoder that ExoPlayer most recently initialised (e.g.
+    // "ffmpegLavc60.3.100-hevc", "OMX.allwinner.video.decoder.hevc", "c2.android.hevc.decoder").
+    // Captured from onVideoDecoderInitialized so the watchdog knows whether it's running on a
+    // SOFTWARE decoder — needed because the FFmpeg video renderer can be auto-selected by Media3's
+    // default factory (for HEVC Main 10 the HW decoder won't advertise) WITHOUT setting
+    // usingSoftwareVideoDecoder/usingFfmpegVideoDecoder, which only track explicit rebuilds.
+    private var activeVideoDecoderName: String = ""
     // Subtitle pipeline self-test — flipped true once per play session so we don't spam logs
     private var subtitleSelfTestRan = false
     private var corePlayerListener: Player.Listener? = null
@@ -415,6 +426,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             showBufferingOverlay(false)
         }
         diagnosticListener!!.onAudioSinkFault = { recoverFromAudioStall("sink_error") }
+        // Track which video decoder is live so the watchdog can tell HW from SW even when the
+        // FFmpeg renderer is auto-selected by the default factory (HEVC Main 10 the HW decoder
+        // won't advertise). Survives rebuilds — the same listener object is re-attached.
+        diagnosticListener!!.onVideoDecoder = { name -> activeVideoDecoderName = name }
         player!!.addListener(diagnosticListener!!)
         player!!.addAnalyticsListener(diagnosticListener!!)
         // Initial play is a guaranteed black moment — show the title art immediately.
@@ -1373,6 +1388,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         val videoFormat = group.getTrackFormat(0)
                         cachedVideoMime = videoFormat.sampleMimeType ?: ""
                         cachedVideoCodecs = videoFormat.codecs ?: ""
+                        if (videoFormat.width > 0) cachedVideoWidth = videoFormat.width
+                        if (videoFormat.height > 0) cachedVideoHeight = videoFormat.height
                     }
                 }
                 // v3.7.9: removed the upfront HEVC Main 10 refusal that previously
@@ -1874,6 +1891,63 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         noNewFramesSinceMs = 0L
                         lastRenderedFrameCount = -1
                         val channelName = healthMonitor?.channelName ?: "unknown"
+
+                        // ── 4K HEVC handling (Allwinner / generic Android-box decoder gap) ─────────
+                        // No software decoder in this CPU class can sustain realtime 4K HEVC, so the
+                        // normal HW→SW escalation ladder below is futile for 4K HEVC — it thrashes for
+                        // ~2.5 minutes and ends on "format not supported". Handle 4K HEVC explicitly:
+                        //   • already on a SOFTWARE video decoder → unwinnable, fail fast + honest.
+                        //     HEVC Main 10 lands here because OMX.allwinner HEVC hides its 10-bit
+                        //     profile, so Media3's default factory auto-picks the FFmpeg SW renderer
+                        //     (which sets neither usingSoftwareVideoDecoder nor usingFfmpegVideoDecoder —
+                        //     that's why we sniff the live decoder name).
+                        //   • on the HARDWARE decoder → a stall is a transient network dip or sustained
+                        //     starvation on a thin connection. Hard-reset to recover, but NEVER swap to
+                        //     software (can't do 4K HEVC + the rebuild re-buffers from scratch, making a
+                        //     thin pipe worse). Give up honestly after a few resets unless the HW decoder
+                        //     has proven it can sustain frames.
+                        val vf4kW = p.videoFormat?.width?.takeIf { it > 0 } ?: cachedVideoWidth
+                        val vf4kH = p.videoFormat?.height?.takeIf { it > 0 } ?: cachedVideoHeight
+                        val mime4k = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
+                        val is4kHevc = (vf4kH >= 1440 || vf4kW >= 2560) &&
+                            mime4k == androidx.media3.common.MimeTypes.VIDEO_H265
+                        if (is4kHevc) {
+                            val codecs4k = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
+                            val decoderLc = activeVideoDecoderName.lowercase()
+                            val onSoftwareVideo = usingSoftwareVideoDecoder || usingFfmpegVideoDecoder ||
+                                decoderLc.contains("ffmpeg") ||
+                                decoderLc.startsWith("c2.android") ||
+                                decoderLc.startsWith("omx.google")
+                            if (onSoftwareVideo) {
+                                val isMain10 = codecs4k.startsWith("hvc1.2") || codecs4k.startsWith("hev1.2")
+                                AudioLogger.log("Frame watchdog: software 4K HEVC unplayable — fast give-up (decoder=$activeVideoDecoderName)")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
+                                    "reason=sw_4k_hevc_unplayable, decoder=$activeVideoDecoderName, res=${vf4kW}x${vf4kH}, codecs=$codecs4k, channel=$channelName")
+                                withContext(Dispatchers.Main) {
+                                    showFriendlyError(
+                                        if (isMain10) "This is a 4K HDR (10-bit) title — this device can't decode it. Try a 1080p or HD version."
+                                        else "This is a 4K title — this device can't decode it. Try a 1080p or HD version."
+                                    )
+                                }
+                                return@launch
+                            }
+                            // Hardware decoder stalled on 4K HEVC — recover, never swap to software.
+                            if (watchdogResetCount <= FOURK_HW_HARD_RESET_LIMIT || hwDecoderProvenGood) {
+                                AudioLogger.log("Frame watchdog: HW 4K HEVC stall — hard reset (step $watchdogResetCount, no SW swap)")
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_HW_4K_RESET",
+                                    "reset=$watchdogResetCount, hwProven=$hwDecoderProvenGood, res=${vf4kW}x${vf4kH}, channel=$channelName")
+                                val pos = p.currentPosition
+                                p.stop(); p.seekTo(pos); p.prepare(); p.play()
+                                continue
+                            }
+                            streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
+                                "reason=hw_4k_hevc_stalled, resets=$watchdogResetCount, res=${vf4kW}x${vf4kH}, codecs=$codecs4k, channel=$channelName")
+                            withContext(Dispatchers.Main) {
+                                showFriendlyError("This 4K title won't play smoothly on your current connection. Try a 1080p or HD version.")
+                            }
+                            return@launch
+                        }
+                        // ──────────────────────────────────────────────────────────────────────────
 
                         // Fast-fail: if we're already on the SW decoder and its counters are still
                         // null, the decoder never initialized. No point running steps 3/4 (they just
@@ -2835,6 +2909,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         mtkMultichannelFfmpegApplied = false
         upwardReprobeAttempted = false
         subtitleSelfTestRan = false
+        // Drop the previous title's decoder identity + resolution so the 4K-HEVC watchdog
+        // path reads the new content, not a stale value from the prior title.
+        activeVideoDecoderName = ""
+        cachedVideoWidth = 0
+        cachedVideoHeight = 0
         player?.trackSelectionParameters = player?.trackSelectionParameters
             ?.buildUpon()
             ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)            // undo Stage-2 audio disable
@@ -4089,6 +4168,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val FRAME_WATCHDOG_INTERVAL_MS = 2_000L
         private const val FRAME_WATCHDOG_FROZEN_MS = 3_000L
         private const val MAX_WATCHDOG_RESETS = 4
+        // 4K HEVC on a HW decoder that stalled: number of hard-reset recovery attempts (network-dip
+        // recovery) before giving up honestly. We never swap 4K HEVC to a software decoder — no SW
+        // decoder in this device class does realtime 4K HEVC, and the swap re-buffers from scratch.
+        private const val FOURK_HW_HARD_RESET_LIMIT = 3
         private const val SOFTWARE_FALLBACK_THRESHOLD = 1
         // Require 3 consecutive polls with new frames (6s) before resetting recovery ladder
         // Prevents MTK single-frame-then-black from resetting watchdogResetCount
