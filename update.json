@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.4",
-  "version_code": 92,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.4/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.4/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.4/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.4 — 4K movie playback fix\n\n• 4K movies (including Dolby Vision) now play in HARDWARE on 4K-capable devices like the Fire TV Stick 4K and 4K Max — no more stuttering, slideshow, black screen, or crashing on these titles.\n• If your device is NOT 4K-capable, 4K titles now tell you right away (\"This is a 4K title — this device can't decode it. Try a 1080p or HD version.\") instead of freezing or crashing. 4K movies require a 4K streaming device.\n• Smoother 4K playback on capable devices — a bigger buffer rides out brief connection dips instead of stalling.\n• Fixed a rare app crash on some 4K HDR titles.\n• Fixed movies in \"Continue Watching\" failing to play after your provider changed servers — broken shortcuts are now cleaned up automatically and rebuilt against the current server.\n• Fixed some generic Android TV boxes getting stuck on the Home screen.\n\nNon-4K playback is unchanged.",
+  "version_name": "4.2.5",
+  "version_code": 93,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.5 — 4K playback fix, part 2\n\n• Fixes more 4K movies that played audio over a black screen and then showed \"won't play smoothly on your current connection\" — even on 4K devices with a fast connection. Many 4K files over-declare their video level; the app now checks what your hardware can actually decode instead of trusting the file's claim.\n• 4K fixes now stick through the player's internal audio-decoder switch (5.1 audio titles were losing the video fix mid-start).\n• Includes everything from v4.2.4: 4K Dolby Vision hardware decode, crash fix, smoother 4K buffering, Continue Watching repair.\n\nAs before: 4K titles require a 4K-capable streaming device (Fire TV Stick 4K / 4K Max). Non-4K playback is unchanged.",
   "mandatory": false
 }

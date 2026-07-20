@@ -76,6 +76,11 @@ object DolbyVisionBaseLayer {
      * otherwise return [format] unchanged.
      */
     fun maybeRewrite(context: Context, format: Format): Format {
+        // Second rewrite class handled here (same seam, same fail-open philosophy): plain HEVC whose
+        // codec string over-declares its tier/level. See maybeNormalizeHevcLevel.
+        if (format.sampleMimeType == MimeTypes.VIDEO_H265) {
+            return maybeNormalizeHevcLevel(context, format)
+        }
         if (format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION) return format
 
         val codecs = format.codecs?.lowercase() ?: ""
@@ -105,6 +110,102 @@ object DolbyVisionBaseLayer {
                 "(was $codecs) — sampleMimeType→video/hevc"
         )
         return rewritten
+    }
+
+    /**
+     * Normalize an over-declared HEVC tier/level so a hardware decoder that genuinely handles the
+     * content isn't rejected on paper.
+     *
+     * Real case ("Black and Blue (2019)" 4K remux): codecs `hvc1.2.4.H156.B0` declares High tier
+     * Level 5.2 (a 4K@120-class claim) on content that is actually 4K@24. The mt8696 HW decoder
+     * advertises up to ~Level 5.1, so the profile-level check reports EXCEEDS_CAPABILITIES, and with
+     * `setExceedRendererCapabilitiesIfNecessary(false)` on the track selector (an audio-crash safety
+     * kept deliberately), NO video renderer is selected at all — audio plays over a black screen and
+     * the watchdog eventually gives up. FFmpeg-based players (IPTV Smarters) play the same file
+     * because they ignore declared levels entirely and just decode.
+     *
+     * We split the difference: keep capability checking, but re-declare the LEVEL from the actual
+     * resolution/frame-rate when — and only when — every gate proves the paper claim is the sole
+     * blocker:
+     *   1. The declared codec string fails `isFormatSupported` on EVERY vendor HW HEVC decoder.
+     *   2. The actual width×height@fps IS supported by a vendor HW decoder (so the hardware truly
+     *      can decode this stream — level checks are conservative by design).
+     *   3. The rewritten candidate verifiably PASSES `isFormatSupported` on a vendor HW decoder.
+     * Only the tier+level token is replaced — the PROFILE stays untouched, so a device whose
+     * hardware lacks Main 10 (Allwinner) still correctly declines 10-bit content and keeps its
+     * software fallback. Any gate inconclusive → the format is returned unchanged.
+     */
+    private fun maybeNormalizeHevcLevel(context: Context, format: Format): Format {
+        val codecs = format.codecs ?: return format
+        val parts = codecs.split('.')
+        // hvc1/hev1 . <profile> . <compat> . <tier+level> . <constraints...>
+        if (parts.size < 4) return format
+        val base = parts[0].lowercase()
+        if (base != "hvc1" && base != "hev1") return format
+
+        val width = format.width
+        val height = format.height
+        if (width <= 0 || height <= 0) return format
+
+        return try {
+            val vendors = MediaCodecUtil.getDecoderInfos(MimeTypes.VIDEO_H265, false, false)
+                .filter { info ->
+                    val name = info.name.lowercase()
+                    !name.startsWith("c2.android") && !name.startsWith("omx.google") &&
+                        info.capabilities?.videoCapabilities != null
+                }
+            if (vendors.isEmpty()) {
+                AudioLogger.log("HEVC normalize: no vendor HW decoders — no-op ($codecs)")
+                return format
+            }
+
+            // Gate 1: paper claim rejected everywhere. If any vendor already accepts it, no-op.
+            val paperOk = vendors.filter { it.isFormatSupported(context, format) }
+            if (paperOk.isNotEmpty()) {
+                AudioLogger.log(
+                    "HEVC normalize: declared $codecs ALREADY accepted by " +
+                        paperOk.joinToString { it.name } + " — no-op (selection blocker is elsewhere)"
+                )
+                return format
+            }
+
+            // Gate 2: the actual pixels are within real hardware ability.
+            val fps = format.frameRate.takeIf { it > 0f }?.toDouble() ?: 0.0
+            if (vendors.none { it.isVideoSizeAndRateSupportedV21(width, height, fps) }) {
+                AudioLogger.log(
+                    "HEVC normalize: ${width}x$height@$fps exceeds real HW ability — no-op ($codecs)"
+                )
+                return format
+            }
+
+            // Re-declare the level honestly from actual size/rate; keep profile + constraints.
+            val is4k = height >= 1440 || width >= 2560
+            val level = when {
+                is4k && format.frameRate > 30f -> "L153"  // 5.1 (4K@60)
+                is4k -> "L150"                            // 5.0 (4K@30)
+                else -> "L123"                            // 4.1 (1080p@60)
+            }
+            val normalized = parts.toMutableList().also { it[3] = level }.joinToString(".")
+            val candidate = format.buildUpon().setCodecs(normalized).build()
+
+            // Gate 3: only ship the rewrite if it provably unblocks a vendor decoder.
+            if (vendors.none { it.isFormatSupported(context, candidate) }) {
+                AudioLogger.log(
+                    "HEVC normalize: candidate $normalized STILL rejected by all vendors " +
+                        "(${describeHevcDecoders()}) — no-op"
+                )
+                return format
+            }
+
+            AudioLogger.log(
+                "HEVC level normalized for hardware decode: ${width}x$height " +
+                    "codecs $codecs → $normalized"
+            )
+            candidate
+        } catch (t: Throwable) {
+            AudioLogger.log("HEVC normalize: threw ${t.javaClass.simpleName}: ${t.message} — no-op")
+            format
+        }
     }
 
     /** True only if the connected display advertises Dolby Vision (HDR type 1). */

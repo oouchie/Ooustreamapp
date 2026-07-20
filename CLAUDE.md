@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.4 (versionCode 92)
+- **Current Version**: 4.2.5 (versionCode 93)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -491,6 +491,37 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.5** — 4K playback fix part 2: over-declared HEVC levels + rebuild-path format fixes (versionCode
+  93). Fast-follow to v4.2.4 (which was emailed to 348 customers the same day but did NOT contain this fix).
+  ON-DEVICE VERIFIED on AFTKRT with "4K: Black and Blue (2019)". **Bug class:** many 4K remuxes over-declare
+  their HEVC tier/level — Black and Blue's codec string is `hvc1.2.4.H156.B0` (High tier Level 5.2, a
+  4K@120-class claim) on 4K@24 content. The mt8696 HW decoder advertises ~L5.1, so Media3's paper
+  profile-level check reports EXCEEDS_CAPABILITIES, and with our deliberate
+  `setExceedRendererCapabilitiesIfNecessary(false)` the selector picks NO video renderer at all → audio over
+  a black screen, fps=0.0 with a HEALTHY 10s buffer at 60-78Mbps, then the (misleading) "won't play smoothly
+  on your current connection" watchdog give-up. FFmpeg players (IPTV Smarters) play the same file because
+  they ignore declared levels. **Fix 1 (level normalization):** `DolbyVisionBaseLayer.maybeNormalizeHevcLevel`
+  — at the same extractor seam as the DV rewrite, re-declare ONLY the tier+level token (H156→L150 etc.,
+  derived from actual resolution/fps) under a triple fail-open gate: (1) declared string rejected by EVERY
+  vendor HW HEVC decoder (`isFormatSupported`), (2) actual WxH@fps IS hardware-supported
+  (`isVideoSizeAndRateSupportedV21`), (3) the normalized candidate provably passes. Profile byte untouched →
+  Allwinner Main-10 protection intact. Every gate outcome logs (`HEVC normalize: ...`). **Fix 2 (the actual
+  root of the on-device failure):** the v4.2.4 rewriter wrapped ONLY the main player's ExtractorsFactory;
+  all three `rebuildPlayerWith*` paths were left unwrapped ("keep software fallback pristine" — wrong call:
+  the rewrites are FORMAT-level, orthogonal to renderer choice). Black and Blue's EAC3 6ch audio triggers
+  the v3.7.3 `MTK_MULTICHANNEL_FFMPEG_REBUILD` **3ms after** the main player had selected the normalized
+  track; the rebuilt player re-extracted the raw H156 → video deselected again. Instrumented proof:
+  `support=4 selected=true codecs=L150` → rebuild → `support=3 selected=false codecs=H156`. Now all four
+  media-source-factory sites wrap with `DolbyVisionBaseLayer.wrap(...)`, so DV P7 + level fixes survive every
+  rebuild. (This is also why Back to the Future worked in v4.2.4: TrueHD audio doesn't trigger that rebuild.)
+  **Fix 3 (diagnostics):** permanent `VIDEO_TRACK_SUPPORT` event in onTracksChanged logging the selector's
+  per-track verdict (`support=` 4 HANDLED / 3 EXCEEDS / 1 UNSUPPORTED_SUBTYPE, `selected=`, mime, codecs,
+  res) — the audio-over-black-screen class is now identifiable from any customer debug export.
+  **Verified sequence (15:43):** main player L150 selected → MTK audio rebuild → rebuilt player STILL L150
+  selected → `DECODER_INIT OMX.MTK.VIDEO.DECODER.HEVC hw=true 46ms` → FIRST_FRAME in <1s → 24fps, dropped=0,
+  buffer 15-24s. User-confirmed on screen. Files: `player/DolbyVisionBaseLayer.kt`,
+  `player/OoustreamPlaybackFragment.kt` (4 factory sites + VIDEO_TRACK_SUPPORT).
 
 - **v4.2.4** — 4K Dolby Vision → hardware decode + crash fix + buffer/CW fixes (versionCode 92). ON-DEVICE
   VERIFIED on AFTKRT (Fire TV Stick 4K Max, mt8696, 192.168.1.84) across a full diagnostic session.

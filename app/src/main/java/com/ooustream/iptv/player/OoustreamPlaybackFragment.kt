@@ -1422,6 +1422,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.let { group ->
                     if (group.length > 0) {
                         val videoFormat = group.getTrackFormat(0)
+                        // The selector's actual verdict on the video track. support: 4=HANDLED,
+                        // 3=EXCEEDS_CAPABILITIES, 1=UNSUPPORTED_SUBTYPE, 0=UNSUPPORTED_TYPE.
+                        // selected=false with support<4 is the audio-plays-over-black-screen bug class
+                        // (e.g. over-declared HEVC level + exceedRendererCapabilities=false).
+                        streamDiagnosticLogger.logAppEvent(
+                            "VIDEO_TRACK_SUPPORT",
+                            "support=${group.getTrackSupport(0)}, selected=${group.isTrackSelected(0)}, " +
+                                "mime=${videoFormat.sampleMimeType}, codecs=${videoFormat.codecs}, " +
+                                "res=${videoFormat.width}x${videoFormat.height}@${videoFormat.frameRate}"
+                        )
                         cachedVideoMime = videoFormat.sampleMimeType ?: ""
                         cachedVideoCodecs = videoFormat.codecs ?: ""
                         if (videoFormat.width > 0) cachedVideoWidth = videoFormat.width
@@ -2373,7 +2383,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(swLoadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
+            // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
+            // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after
+            // the main player selected a normalized 4K HEVC track and its unwrapped extractor brought
+            // the bogus H156 level back → video track deselected → audio over black screen.
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    dataSourceFactory,
+                    DolbyVisionBaseLayer.wrap(requireContext(), StreamingDataFactories.buildExtractorsFactory())
+                )
+            )
             // Hold CPU+WiFi awake while playing/buffering — without this the radio can
             // power-save mid-stall and turn a recoverable dip into a long rebuffer.
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -2512,7 +2532,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
+            // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
+            // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after
+            // the main player selected a normalized 4K HEVC track and its unwrapped extractor brought
+            // the bogus H156 level back → video track deselected → audio over black screen.
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    dataSourceFactory,
+                    DolbyVisionBaseLayer.wrap(requireContext(), StreamingDataFactories.buildExtractorsFactory())
+                )
+            )
             // Hold CPU+WiFi awake while playing/buffering — without this the radio can
             // power-save mid-stall and turn a recoverable dip into a long rebuffer.
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -2606,7 +2636,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
+            // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
+            // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after
+            // the main player selected a normalized 4K HEVC track and its unwrapped extractor brought
+            // the bogus H156 level back → video track deselected → audio over black screen.
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    dataSourceFactory,
+                    DolbyVisionBaseLayer.wrap(requireContext(), StreamingDataFactories.buildExtractorsFactory())
+                )
+            )
             // Hold CPU+WiFi awake while playing/buffering — without this the radio can
             // power-save mid-stall and turn a recoverable dip into a long rebuffer.
             .setWakeMode(C.WAKE_MODE_NETWORK)
