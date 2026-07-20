@@ -67,7 +67,14 @@ class MainActivity : FragmentActivity() {
             setTheme(R.style.Theme_Ooustream_Mobile)
         }
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        // Pick the layout by the SAME signal that picked the theme above, rather than by the
+        // -television resource qualifier. Generic boxes (Ooustick/Allwinner) report
+        // UI_MODE_TYPE_NORMAL, so the qualifier hands them the phone layout — whose
+        // BottomNavigationView is a Material widget that cannot inflate under the Leanback theme
+        // and hard-crashes setContentView. Runtime selection keeps theme and layout in agreement.
+        setContentView(
+            if (DeviceUtils.isTV(this)) R.layout.activity_main_tv else R.layout.activity_main
+        )
 
         // Phone: resize the window when the soft keyboard appears so scrollable forms (Login,
         // search inputs) can pan their focused field above the IME. TV has no soft keyboard.
@@ -145,7 +152,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun setupBottomNavigation() {
-        // bottomNav is null on TV (layout-television/activity_main.xml has no BottomNavigationView)
+        // bottomNav is null on TV (layout/activity_main_tv.xml has no BottomNavigationView)
         bottomNav = findViewById(R.id.bottom_navigation) ?: return
 
         bottomNav?.setOnItemSelectedListener { item ->

@@ -26,4 +26,8 @@ interface SeriesTrackingDao {
 
     @Query("DELETE FROM series_tracking")
     suspend fun clearAll()
+
+    /** Delete by explicit id list — pass the dead set only (see WatchProgressDao.deleteByStreamIds). */
+    @Query("DELETE FROM series_tracking WHERE seriesId IN (:seriesIds)")
+    suspend fun deleteBySeriesIds(seriesIds: List<Int>)
 }

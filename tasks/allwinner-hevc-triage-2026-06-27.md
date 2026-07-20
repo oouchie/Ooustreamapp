@@ -123,7 +123,10 @@ New diagnostic events for future triage: `WATCHDOG_GIVE_UP reason=sw_4k_hevc_unp
       "never swap 4K HEVC to software" is intentional — software can't do realtime 4K HEVC).
 - [x] Corrected a stale comment in `AudioPipelineFactory.kt` (it wrongly claimed the FFmpeg video
       renderer isn't auto-registered — it IS, in Media3 1.10.0 with MODE_ON; that's the whole root cause).
-- [ ] Version bump + release build + GitHub release (awaiting user go-ahead — outward-facing)
+- [x] **v4.2.3 released** (versionCode 91). Commit `15b52e1` pushed to main; GitHub release
+      `v4.2.3` cut with both ABI APKs (arm64 19MB, armeabi-v7a 18MB). OTA endpoint verified:
+      `raw.githubusercontent.com/.../main/update.json` serves version_code 91 + v4.2.3 URLs; arm64
+      asset returns HTTP 200. Existing v4.2.2 installs will auto-update.
 
 ## NOT app-fixable (tell the customer / provider)
 - The 1080p AVC rebuffer loops + the 4K stalls are bounded by the customer's ~1 Mbps connection (4K

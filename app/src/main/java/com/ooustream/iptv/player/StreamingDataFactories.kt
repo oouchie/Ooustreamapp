@@ -6,6 +6,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.TsExtractor
 import com.ooustream.iptv.BuildConfig
+import com.ooustream.iptv.data.remote.AuthInterceptor
 import okhttp3.OkHttpClient
 
 /**
@@ -54,13 +55,26 @@ object StreamingDataFactories {
     }
 
     /**
-     * Build an OkHttpDataSource.Factory with the Ooustream User-Agent attached.
-     * Reuses the app's shared OkHttpClient (connection pool, SSL config, etc.)
-     * — this only adds the UA header to stream-byte requests, it doesn't touch
-     * the Retrofit API path.
+     * Build an OkHttpDataSource.Factory for fetching stream bytes.
+     *
+     * CRITICAL: this must NOT carry the JSON-API request headers. The shared @Singleton client has
+     * `AuthInterceptor`, which `addHeader`s `Accept: application/json` and a second `User-Agent`
+     * (`OoustreamIPTV/1.0`) onto EVERY request. On a video byte-fetch that means each 4K segment
+     * request goes out advertising "I want JSON" with a duplicate/conflicting UA — exactly the kind
+     * of malformed media request IPTV CDNs throttle or de-prioritize. IPTV Smarters (IJKPlayer) sends
+     * a clean media GET and saturates the link; we were sending an API-shaped request and getting
+     * ~real-time throughput, so the buffer never built past ~2s and 4K stuttered.
+     *
+     * Fix: derive a streaming client from the shared one via `newBuilder()` — inheriting its
+     * connection pool, timeouts, and self-signed-SSL config — but strip `AuthInterceptor` so stream
+     * requests carry ONLY our single player User-Agent (set by OkHttpDataSource below) and no bogus
+     * Accept header. The Retrofit/API path keeps the shared client untouched.
      */
     fun buildDataSourceFactory(okHttpClient: OkHttpClient): OkHttpDataSource.Factory {
-        return OkHttpDataSource.Factory(okHttpClient)
+        val streamingClient = okHttpClient.newBuilder()
+            .apply { interceptors().removeAll { it is AuthInterceptor } }
+            .build()
+        return OkHttpDataSource.Factory(streamingClient)
             .setUserAgent(userAgent)
     }
 

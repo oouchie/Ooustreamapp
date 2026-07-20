@@ -66,4 +66,15 @@ interface WatchProgressDao {
 
     @Query("DELETE FROM watch_progress")
     suspend fun clearAll()
+
+    /** One-shot read of every row, for validating saved ids against the provider's live catalog. */
+    @Query("SELECT * FROM watch_progress")
+    suspend fun getAllOnce(): List<WatchProgressEntity>
+
+    /**
+     * Delete by explicit id list. Callers MUST pass the (small) dead set, never the live catalog as a
+     * `NOT IN` — the catalog runs to thousands of ids and SQLite on API 23 caps host parameters at 999.
+     */
+    @Query("DELETE FROM watch_progress WHERE streamId IN (:streamIds)")
+    suspend fun deleteByStreamIds(streamIds: List<String>)
 }

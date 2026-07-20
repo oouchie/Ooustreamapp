@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.2 (versionCode 90)
+- **Current Version**: 4.2.4 (versionCode 92)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -420,6 +420,45 @@ Conventions for interpreting the exported debug report so customer reports aren'
 - **ADB (sideload)**: `adb connect <firestick-ip>:5555 && adb install -r app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk` (or `app-arm64-v8a-debug.apk` — must match device ABI; AFTKRT and older Fire TV Sticks are `armeabi-v7a`).
 - **GitHub Auto-Update**: App fetches `update.json` from repo root (`raw.githubusercontent.com`), compares `versionCode`, downloads the per-ABI APK via `UpdateService`. `UpdateService.MAX_APK_SIZE` is 400MB (v3.6.1). `UpdateManifest.resolveDownloadUrl()` (v3.6.2) reads `Build.SUPPORTED_ABIS[0]` and picks `download_url_arm64` or `download_url_arm32`, falling back to `download_url` for pre-v3.6.2 installs. Fallback `download_url` must always point at the armeabi-v7a APK — 64-bit devices can install 32-bit APKs, but 32-bit devices cannot install arm64 (fails with `INSTALL_FAILED_NO_MATCHING_ABIS -113`).
 - **Primary test devices**: Fire TV Stick at 192.168.1.82, 192.168.1.84 (AFTKRT mt8696 — `armeabi-v7a`), Ooustick at 192.168.1.222.
+- **A Fire TV pass is NOT sufficient sign-off.** Fire TV and Ooustick take *opposite* branches at every
+  `DeviceUtils.isTV()` call (see "DEVICE CLASSIFICATION"). Any release touching UI, focus, navigation, or
+  layout must be walked on an Ooustick too — v4.2.0 shipped Fire-TV-verified and bricked every Ooustick.
+
+## DEVICE CLASSIFICATION (TV vs phone) — non-negotiable
+
+Every TV-vs-phone branch in the app hangs off `DeviceUtils.isTV()` — **72 call sites across 37
+files**. Getting it wrong on a set-top box is catastrophic, not cosmetic: the touch paths strip
+`isFocusable` off every card (`TouchGridSetup.stripItemFocusForTouch`) and disable the quick sidebar,
+leaving a D-pad user with no cursor and no menu.
+
+**The Ooustick does NOT identify itself as a TV.** Allwinner H616 (`ro.hardware=sun50iw9p1`, model
+`OOUSTICK`, droidlogic launcherH616, 1280x720 @ 213dpi → `sw540dp`):
+- `mCurUiMode=0x11` (UI_MODE_TYPE_**NORMAL**) — Fire TV AFTKRT reports `0x14` (TELEVISION)
+- declares **no** `android.software.leanback`, **no** `android.hardware.type.television`,
+  **no** `android.hardware.touchscreen`
+
+Rules:
+1. **Never classify by `UI_MODE_TYPE_TELEVISION` alone.** `isTV()` ORs: leanback feature ‖ television
+   feature ‖ uiMode television ‖ **no touchscreen**. The touchscreen test is the one that catches
+   generic boxes — every certified phone/tablet must declare `FEATURE_TOUCHSCREEN`; a box cannot.
+2. **Fail safe toward TV.** A TV-shaped UI is still usable by finger; a phone-shaped UI is unusable
+   by remote. Phones are served by the separate Flutter app (`ooustream-mobile`).
+3. **`-television` resource qualifiers are chosen by the OS from uiMode — Kotlin CANNOT change that.**
+   The Ooustick still gets `values/` and `layout/` (phone) resources even with `isTV()` fixed.
+   Therefore: **if a code path is gated on `isTV()`, its layout must be gated on `isTV()` too, never
+   on the `-television` qualifier.** This is why `activity_main_tv.xml` lives in plain `layout/` and
+   is selected at runtime — the phone `activity_main.xml`'s Material `BottomNavigationView` cannot
+   inflate under the Leanback theme and hard-crashes `setContentView`.
+4. **Before shipping any "mobile/touch UX" pass, ask which shipping devices get classified as phones,
+   and test on an Ooustick — not just a Fire TV.** They take opposite branches. v4.2.0's phone touch
+   overhaul bricked navigation on every Ooustick in the field for this exact reason.
+5. `DEVICE_CLASS` is logged at startup (`OoustreamApp`) via `DeviceUtils.describe()` — a debug-log
+   export now shows the raw classification signals, so a misclassified box self-identifies.
+
+Known residual on Ooustick (accepted): still gets phone `values/` dimens (posters 110x165dp instead
+of TV 180x270dp, hero 45% not 65%) and phone `layout/fragment_{vod,series,live_tv}.xml`, which
+inflate a plain `RecyclerView` instead of a Leanback `VerticalGridView` — so focus-driven EPG loading
+and preview-on-dwell don't fire on Live TV. Fix is the same de-qualification pattern as rule 3.
 
 ## Memory Constraints
 Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves memory by disabling video decoder. Low-memory buffer capping (BufferConfigs.forLowMemory()) for devices with memoryClass <= 128MB.
@@ -452,6 +491,70 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.4** — 4K Dolby Vision → hardware decode + crash fix + buffer/CW fixes (versionCode 92). ON-DEVICE
+  VERIFIED on AFTKRT (Fire TV Stick 4K Max, mt8696, 192.168.1.84) across a full diagnostic session.
+  **Root cause (verified in Media3 1.10.0 source + on-device diagnostic logs):** the provider's "4K" catalog
+  is largely **Dolby Vision Profile 7** remuxes (`dvhe.07.06`, 3840x2160 .mkv, + TrueHD 8ch). On a display
+  that isn't Dolby Vision (the test TV is HDR10+HLG only), ExoPlayer must decode the DV **HEVC Main 10 base
+  layer** — but `MediaCodecUtil.getAlternativeCodecMimeType()` maps DV profiles 4/8→hevc and returns **null
+  for Profile 7** (deliberate: "deprecated / not always backward compatible"). So no HEVC decoder is ever
+  offered; only the DV decoders (which reject P7) are tried → MediaCodecVideoRenderer reports
+  FORMAT_EXCEEDS_CAPABILITIES(3) while the auto-registered FFmpeg video renderer reports FORMAT_HANDLED(4),
+  and MappingTrackSelector picks the strictly-higher level → **single-threaded FFmpeg software HEVC** →
+  ~0fps slideshow, black screen, and a **native SIGSEGV** (a ~4GB `malloc` integer-underflow allocating a 4K
+  frame). The mt8696 HW HEVC decoder does Main 10 4K fine — it was simply never asked. IPTV Smarters plays
+  the same files because IJKPlayer forces the HW HEVC decoder on the base layer.
+  **Fixes (all this session, all device-verified on AFTKRT):**
+  (1) **`player/DolbyVisionBaseLayer.kt`** (new) — wraps the main player's ExtractorsFactory and rewrites a
+  DV Profile 7 video Format's `sampleMimeType` from `video/dolby-vision`→`video/hevc` (with a real Main 10
+  codecs string), preserving the already-valid base-layer HEVC CSD (`initializationData`), colorInfo, and
+  size/rate. Then the normal HEVC path selects `OMX.MTK.VIDEO.DECODER.HEVC` (index 0, FORMAT_HANDLED) over
+  FFmpeg automatically. **Fail-open gate:** only fires when (a) mime==dolby-vision, (b) DV Profile 7 (codecs
+  startsWith dvhe.07/dvh1.07 — NOT 4/8 which Media3 handles, NOT 5/9/10), (c) the display does NOT natively
+  support DV, and (d) a real vendor HW HEVC decoder advertises Main 10 for the resolution (this is what keeps
+  Allwinner/no-HW-HEVC boxes on the existing FFmpeg fallback). Verified: `DECODER_INIT=OMX.MTK.VIDEO.DECODER.HEVC`
+  on the exact `dvhe.07.06` "Back to the Future 4K" title, steady 24fps, 0 dropped.
+  (2) **Watchdog starvation guard** (`OoustreamPlaybackFragment.startFrameWatchdog`) — the frame watchdog was
+  hard-resetting the (now hardware) decoder on a thin-buffer dip (throughput ≈ bitrate on these ~12Mbps
+  files), which re-opened the connection and re-buffered from scratch in a 9-17s loop. Now: if
+  `bufferedPosition − currentPosition < WATCHDOG_STARVATION_BUFFER_MS (2.5s)` when frames aren't advancing,
+  it's data STARVATION, not a decoder stall — skip the reset and let ExoPlayer's own buffering ride it out.
+  A genuinely stalled decoder stops consuming so its buffer GROWS → still caught. Verified: zero
+  `WATCHDOG_HARD_RESET` after the guard; ~99s continuous play, then only brief settling.
+  (3) **4K-DV watchdog crash guard** — the v4.2.3 4K-HEVC watchdog guard only matched `video/hevc`, so DV
+  (`video/dolby-vision`) slipped past it into the generic ladder that rebuilds onto FFmpeg → the native
+  crash. `is4kHevc` now also matches `VIDEO_DOLBY_VISION`, so 4K DV takes the HW-only recovery path and NEVER
+  escalates to software. **Defense-in-depth:** `rebuildPlayerWithFfmpegVideoDecoder()` now hard-refuses any
+  4K content (`FFMPEG_VIDEO_REBUILD_BLOCKED` + friendly error) since the FFmpeg renderer native-crashes on 4K.
+  Verified: Back to the Future 4K DV played on the fix build (10:47) on HW with no crash, process stable 10+ min.
+  (4) **RAM-gated bigger buffer** — a device can report `memoryClass<=192` (heapgrowthlimit) yet have plenty
+  of RAM; AFTKRT is memoryClass 192 with 1.63GB total. It was being capped to the low-memory 30s buffer,
+  starving high-bitrate 4K. Now `memoryClass<=192 && totalMem<1.4GB` gates `forLowMemory`; devices ≥1.4GB
+  (AFTKRT) get the normal tier buffer (45-60s) — Ooustick (1GB) and AFTMM (1.28GB) stay capped. Safe now that
+  video is off the Java heap (on HW). Verified: `BUFFER_CONFIG ... totalMem=1.63GB, lowMem=false`, deep 10-30s
+  buffers on subsequent content.
+  **Also bundled (per user "ship whole working tree" decision):** the Continue Watching provider-migration fix
+  (`HomeFragment` rebuilds CW/Pick-Up URLs from current creds instead of replaying the frozen `watch_progress.extra`
+  URL; new `WatchHistoryPruner` drops bookmarks whose ids are gone from the live catalog — see
+  `[[project_frozen_stream_urls]]`), the upfront 4K refusal gate (`common/VideoDecoderCapability.kt`, fail-open),
+  the streaming-client header fix (stream requests no longer carry the API `Accept: application/json` + double
+  UA), and the Ooustick `isTV()` fix (`DeviceUtils` uses `!FEATURE_TOUCHSCREEN`; `layout-television/activity_main.xml`
+  → runtime-selected `layout/activity_main_tv.xml` — see `[[project_ooustick_not_detected_as_tv]]`). **Verification
+  status honestly split:** the DV/watchdog/buffer/crash fixes are device-verified on AFTKRT; the CW-migration +
+  prune + 4K gate are build-verified + adversarially reviewed (4 rounds, all findings fixed) but NOT
+  device-verified; the Ooustick fix is NOT verified here (no Ooustick connected). **Color caveat:** decoding the
+  DV base layer as HDR10 drops the DV RPU/enhancement metadata — for dvhe.07.06 (HDR10-compatible base) it should
+  look right, but not bit-for-bit the DV master. **Files:** new `player/DolbyVisionBaseLayer.kt`,
+  `data/repository/WatchHistoryPruner.kt`, `common/VideoDecoderCapability.kt`; modified
+  `player/OoustreamPlaybackFragment.kt`, `player/BufferConfigs.kt`, `player/StreamingDataFactories.kt`,
+  `home/HomeFragment.kt`, `home/HomeViewModel.kt`, `common/DeviceTier.kt`, `common/DeviceUtils.kt`,
+  `MainActivity.kt`, `OoustreamApp.kt`, DAOs, layout rename.
+
+- **v4.2.3** — 4K HEVC fast-fail on Allwinner / generic Android-box decoders (versionCode 91). The frame
+  watchdog recognizes a 4K HEVC title on a software decoder that can't sustain it and fails fast with an honest
+  "this device can't decode it" message (~5s) instead of the ~2.5-minute thrash-then-error; on a HW decoder a
+  4K stall hard-resets (network-dip recovery) and never swaps to software. See `[[project_allwinner_4k_hevc]]`.
 
 - **v4.2.2** — Provider "dead listing" detection + message (versionCode 90). Follow-up to the v4.2.1 series
   triage. PROVEN root cause of the "series won't play" reports (direct fetch from flarecoral with a real

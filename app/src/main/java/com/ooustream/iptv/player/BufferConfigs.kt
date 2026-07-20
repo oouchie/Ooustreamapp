@@ -15,11 +15,16 @@ object BufferConfigs {
             .setBufferDurationsMs(5_000, 15_000, 500, 1_500)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        // prioritizeTimeOverSizeThresholds(true): buffer purely by TIME (up to maxBufferMs), never
+        // stopping early on a byte threshold. Matches the LIVE path and guarantees a high-bitrate 4K
+        // stream builds a real time cushion instead of a few MB.
         ContentType.VOD -> DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 45_000, 2_000, 5_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         ContentType.SERIES -> DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 45_000, 1_500, 3_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
     }
 
@@ -34,7 +39,7 @@ object BufferConfigs {
                         if (type == ContentType.LIVE) 500 else 1_000,
                         if (type == ContentType.LIVE) 1_000 else 2_000
                     )
-                    .apply { if (type == ContentType.LIVE) setPrioritizeTimeOverSizeThresholds(true) }
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
             }
             QualityTier.MEDIUM -> forContentType(type)
@@ -47,7 +52,7 @@ object BufferConfigs {
                         if (type == ContentType.LIVE) 500 else 2_000,
                         if (type == ContentType.LIVE) 2_000 else 5_000
                     )
-                    .apply { if (type == ContentType.LIVE) setPrioritizeTimeOverSizeThresholds(true) }
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
             }
         }
@@ -63,6 +68,7 @@ object BufferConfigs {
             .build()
         ContentType.VOD, ContentType.SERIES -> DefaultLoadControl.Builder()
             .setBufferDurationsMs(10_000, 30_000, 1_500, 2_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
     }
 }

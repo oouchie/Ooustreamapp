@@ -1172,13 +1172,14 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                 openSeriesDetail(item.seriesId, item.name)
                             } else {
                                 val id = item.streamId.toIntOrNull() ?: return@setOnClickListener
-                                // Reuse the saved stream URL — it carries the corrected container
-                                // extension from a prior play (e.g. Kung Fu Panda = .m2ts). Rebuilding
-                                // with a hardcoded "mp4" makes such a title fail its first attempt here
-                                // before the container-ext retry recovers it (matches the Continue
-                                // Watching path, which already reuses item.extra).
-                                val url = item.extra?.takeIf { it.isNotBlank() }
-                                    ?: viewModel.buildVodStreamUrl(id, "mp4")
+                                // Rebuild from current credentials, keeping only the container
+                                // extension the previous play proved correct (e.g. Kung Fu Panda =
+                                // .m2ts; a hardcoded "mp4" fails such a title on first attempt).
+                                // See navigateToContinueWatching for why the saved URL is not reused.
+                                val url = viewModel.buildVodStreamUrl(
+                                    id,
+                                    containerExtFrom(item.extra) ?: "mp4"
+                                )
                                 playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
                             }
                         }
@@ -1841,6 +1842,23 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // ── Navigation ───────────────────────────────────────────────────────
 
+    /**
+     * Pull the container extension out of a stored `watch_progress.extra` stream URL.
+     *
+     * The rest of that URL (host, credentials, stream id) is deliberately discarded — it is a frozen
+     * snapshot of a previous play and goes stale the moment the provider moves a backend. Only the
+     * extension is worth carrying forward, because it was proven by a real successful play.
+     *
+     * Returns null for anything that is not plausibly an extension, so callers fall back to "mp4".
+     */
+    private fun containerExtFrom(savedUrl: String?): String? {
+        val url = savedUrl?.takeIf { it.isNotBlank() } ?: return null
+        val path = url.substringBefore('?').substringBefore('#').substringAfterLast('/')
+        if (!path.contains('.')) return null
+        val ext = path.substringAfterLast('.')
+        return ext.takeIf { it.length in 2..5 && it.all(Char::isLetterOrDigit) }?.lowercase()
+    }
+
     private fun navigateToContinueWatching(item: WatchProgressEntity) {
         val contentType = when (item.type.lowercase()) {
             "live" -> ContentType.LIVE
@@ -1849,16 +1867,19 @@ class HomeFragment : Fragment(), KeyEventHandler {
             else -> ContentType.VOD
         }
 
-        // Use the saved stream URL if available, otherwise build from streamId
-        val streamUrl = if (!item.extra.isNullOrBlank()) {
-            item.extra
-        } else {
-            val id = item.streamId.toIntOrNull() ?: return
-            when (contentType) {
-                ContentType.LIVE -> viewModel.buildLiveStreamUrl(id)
-                ContentType.VOD -> viewModel.buildVodStreamUrl(id, "mp4")
-                ContentType.SERIES -> viewModel.buildSeriesStreamUrl(id, "mp4")
-            }
+        // ALWAYS rebuild the URL from the CURRENT credentials. `item.extra` holds the absolute URL
+        // captured at the previous play (host + creds + id + extension) and nothing ever expires it,
+        // so replaying it verbatim survives a provider server/catalog migration as a dead link — the
+        // July 2026 VOD backend move renumbered every movie id and broke this whole row.
+        // The one part of `extra` still worth keeping is its container extension: that value was
+        // proven correct by an actual play, and a hardcoded "mp4" fails .m2ts titles on first attempt
+        // (v4.2.1).
+        val id = item.streamId.toIntOrNull() ?: return
+        val ext = containerExtFrom(item.extra) ?: "mp4"
+        val streamUrl = when (contentType) {
+            ContentType.LIVE -> viewModel.buildLiveStreamUrl(id)
+            ContentType.VOD -> viewModel.buildVodStreamUrl(id, ext)
+            ContentType.SERIES -> viewModel.buildSeriesStreamUrl(id, ext)
         }
 
         val fragment = OoustreamPlaybackFragment.newInstance(

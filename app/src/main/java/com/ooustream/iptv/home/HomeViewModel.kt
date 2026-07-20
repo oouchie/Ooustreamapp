@@ -13,6 +13,7 @@ import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
+import com.ooustream.iptv.data.repository.WatchHistoryPruner
 import com.ooustream.iptv.data.repository.WatchProgressRepository
 import com.ooustream.iptv.parental.ContentFilterManager
 import kotlin.math.ln
@@ -24,6 +25,7 @@ import com.ooustream.iptv.recommendation.ChannelRecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendationEngine
 import com.ooustream.iptv.recommendation.RecommendedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -68,7 +70,8 @@ class HomeViewModel @Inject constructor(
     private val seriesTrackingDao: SeriesTrackingDao,
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
     private val favoriteDao: FavoriteDao,
-    private val contentFilterManager: ContentFilterManager
+    private val contentFilterManager: ContentFilterManager,
+    private val watchHistoryPruner: WatchHistoryPruner
 ) : BaseViewModel() {
 
     init {
@@ -227,6 +230,11 @@ class HomeViewModel @Inject constructor(
     suspend fun loadFeaturedContent() {
         try {
             val rawVodStreams = contentRepository.getVodStreams()
+            // Ids for the Continue Watching prune (movies renumbered by the July 2026 VOD backend
+            // migration). Validated against the RAW list — the parental-filtered one would make
+            // blocked categories look deleted. The prune itself runs off the hero critical path
+            // (in the parallel block below) so it never delays first paint.
+            val vodIdsForPrune = rawVodStreams.map { it.streamId }
             val vodStreams = contentFilterManager.filterContent("vod", rawVodStreams) { it.categoryId }
             val sorted = vodStreams.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
             val heroVods = sorted.take(6)
@@ -252,12 +260,31 @@ class HomeViewModel @Inject constructor(
 
             // Fetch banner/backdrop images + trending series + genre rows in parallel
             coroutineScope {
+                // Prune dead Continue Watching / Pick Up & New bookmarks against the live catalog,
+                // off the hero critical path. Own launch so it never gates a content row. Isolate it
+                // from the sibling launches: swallow any real error (incl. the rare case where the
+                // pruner's own failure-logging throws during log rotation) so it can't cancel the
+                // coroutineScope and blank the other rows, but rethrow cancellation so navigating
+                // away from Home still tears this down cleanly.
+                launch {
+                    try {
+                        watchHistoryPruner.pruneVod(vodIdsForPrune)
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (_: Exception) {
+                    }
+                }
+
                 // Trending Series: rating × recency, boosted by user preferences
                 launch {
                     try {
                         val rawSeries = contentRepository.getSeries()
                         val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
+                        // Prune AFTER the row is published so it doesn't delay first paint.
+                        watchHistoryPruner.pruneSeries(rawSeries.map { it.seriesId })
+                    } catch (c: CancellationException) {
+                        throw c
                     } catch (_: Exception) { }
                 }
 

@@ -57,6 +57,7 @@ import com.ooustream.iptv.R
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.DeviceTier
 import com.ooustream.iptv.common.DeviceTierDetector
+import com.ooustream.iptv.common.VideoDecoderCapability
 import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.common.DeviceUtils
@@ -236,6 +237,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // even after a rebuild where videoFormat momentarily reads null.
     private var cachedVideoWidth: Int = 0
     private var cachedVideoHeight: Int = 0
+    // Set once the upfront "no decoder handles this resolution" refusal has fired for the current
+    // content, so a later onTracksChanged can't stack a second error dialog on top of it.
+    //
+    // Deliberately NOT cleared by the error dialog's Retry button. Retry is the escape hatch if the
+    // capability probe was wrong about this device: leaving the flag set lets a second attempt run
+    // the normal decoder path (and, if it really is undecodable, the v4.2.3 watchdog give-up still
+    // ends it). Clearing it here would instead re-show the same modal the instant Retry is pressed.
+    private var oversizedVideoRefused: Boolean = false
     // Name of the video decoder that ExoPlayer most recently initialised (e.g.
     // "ffmpegLavc60.3.100-hevc", "OMX.allwinner.video.decoder.hevc", "c2.android.hevc.decoder").
     // Captured from onVideoDecoderInitialized so the watchdog knows whether it's running on a
@@ -286,11 +295,28 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // AFTMM (mt8695, 1285MB RAM) has memoryClass ~160 but only 164-184MB actual heap.
         // 60s buffer at HIGH quality fills the heap and causes OOM in PlayerControlsBar.formatDuration().
         // Threshold raised from 128 to 192 to match watchdog's low-memory classification.
-        val loadControl = if (am.memoryClass <= 192) {
+        //
+        // BUT a device can report memoryClass<=192 (heapgrowthlimit) yet have plenty of total RAM —
+        // the Fire TV Stick 4K Max (AFTKRT) is memoryClass 192 with 1.6GB RAM and largeHeap 384MB.
+        // Capping it to the low-memory 30s buffer starves high-bitrate 4K (esp. Dolby Vision remuxes
+        // now that the base layer decodes in hardware, off the Java heap): the buffer can't build a
+        // cushion, so it dips into brief re-buffers. Devices with >=1.4GB total get the normal
+        // tier buffer (45-60s) so they ride out throughput wobble; 1GB/1.28GB sticks (Ooustick,
+        // AFTMM) stay capped. Mirrors UserPlanManager.isDeviceCapable()'s 1.4GB gate.
+        val totalMemGb = run {
+            val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            mi.totalMem / (1024f * 1024f * 1024f)
+        }
+        val loadControl = if (am.memoryClass <= 192 && totalMemGb < 1.4f) {
             BufferConfigs.forLowMemory(viewModel.contentType)
         } else {
             BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
         }
+        streamDiagnosticLogger.logAppEvent(
+            "BUFFER_CONFIG",
+            "memoryClass=${am.memoryClass}, totalMem=${"%.2f".format(totalMemGb)}GB, " +
+                "lowMem=${am.memoryClass <= 192 && totalMemGb < 1.4f}, type=${viewModel.contentType}"
+        )
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
         // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
@@ -337,10 +363,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         streamDiagnosticLogger.logAppEvent("PREBUFFER_GATE",
             "enabled=$preBufferEnabled, tier=$deviceTier, maxConnections=$maxConnections")
 
-        // Apply tier-appropriate video resolution cap. ULTRA_LOW/LOW: cap at 1080p
-        // to block 4K variants (rare on IPTV but a safety net). 1080p AVC hardware
-        // decode usually works fine on these devices — HEVC Main 10 is filtered
-        // separately in onTracksChanged via canDecodeHevcMain10().
+        // Apply the tier-appropriate video resolution PREFERENCE. ULTRA_LOW/LOW prefer 1080p.
+        // This does NOT block 4K: exceedVideoConstraintsIfNecessary defaults to true, so a
+        // single-track 2160p IPTV stream is still selected (see DeviceTierDetector.maxVideoSize).
+        // Oversized video is actually refused upfront in onTracksChanged, by asking the device's
+        // real MediaCodec decoders via VideoDecoderCapability.
         val maxSize = DeviceTierDetector.maxVideoSize(requireContext())
         if (maxSize != null) {
             trackSelector!!.setParameters(
@@ -381,7 +408,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, StreamingDataFactories.buildExtractorsFactory()))
+            // DolbyVisionBaseLayer.wrap: routes DV Profile 7 to the hardware HEVC decoder (see the
+            // class doc). Only the MAIN player path is wrapped — the watchdog-rebuild paths below
+            // stay unwrapped so, if the HW decoder ever chokes on a specific P7 encode, escalation
+            // still falls back to the FFmpeg software path.
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    dataSourceFactory,
+                    DolbyVisionBaseLayer.wrap(requireContext(), StreamingDataFactories.buildExtractorsFactory())
+                )
+            )
             // Hold CPU+WiFi awake while playing/buffering — without this the radio can
             // power-save mid-stall and turn a recoverable dip into a long rebuffer.
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -1390,6 +1426,58 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         cachedVideoCodecs = videoFormat.codecs ?: ""
                         if (videoFormat.width > 0) cachedVideoWidth = videoFormat.width
                         if (videoFormat.height > 0) cachedVideoHeight = videoFormat.height
+
+                        // Upfront oversized-video refusal (4K on a stick with no 4K decoder).
+                        //
+                        // Read straight from THIS emission's videoFormat — never the cached fields.
+                        // The cache survives across channels and the empty-tracks emission that
+                        // `setMediaItem` fires on every zap would otherwise let us refuse the NEXT
+                        // channel using the PREVIOUS channel's resolution. Living inside this `let`
+                        // guarantees we only judge a track that actually exists in `tracks`.
+                        //
+                        // Ask the device's real MediaCodec decoders about the exact dimensions rather
+                        // than a fixed 2160 threshold — a 3840x1600 ultrawide the hardware genuinely
+                        // handles still plays. Nothing else catches this: the tier's setMaxVideoSize
+                        // cap is bypassed by Media3's exceedVideoConstraintsIfNecessary default, and
+                        // the auto-registered FFmpeg software renderer claims support then decodes at
+                        // ~0fps. Only a definitive `false` refuses; unknown (null) always proceeds
+                        // (see VideoDecoderCapability). The v4.2.3 watchdog give-up is the backstop —
+                        // this just turns a ~2.5-minute thrash into an immediate, honest message.
+                        if (!oversizedVideoRefused &&
+                            videoFormat.width > 0 && videoFormat.height > 0
+                        ) {
+                            val decodable = VideoDecoderCapability.canDecode(
+                                cachedVideoMime, videoFormat.width, videoFormat.height,
+                                videoFormat.frameRate
+                            )
+                            if (decodable == false) {
+                                oversizedVideoRefused = true
+                                val isMain10 = cachedVideoCodecs.startsWith("hvc1.2") ||
+                                    cachedVideoCodecs.startsWith("hev1.2")
+                                val is4k = videoFormat.height >= 1440 || videoFormat.width >= 2560
+                                streamDiagnosticLogger.logAppEvent(
+                                    "VIDEO_SIZE_UNSUPPORTED",
+                                    "res=${videoFormat.width}x${videoFormat.height}, " +
+                                        "mime=$cachedVideoMime, codecs=$cachedVideoCodecs, " +
+                                        "fps=${videoFormat.frameRate}, " +
+                                        "${DeviceTierDetector.describe(requireContext())}, " +
+                                        "channel=${healthMonitor?.channelName ?: "unknown"}"
+                                )
+                                AudioLogger.log(
+                                    "No MediaCodec decoder handles " +
+                                        "${videoFormat.width}x${videoFormat.height} " +
+                                        "$cachedVideoMime — refusing upfront"
+                                )
+                                showFriendlyError(
+                                    when {
+                                        is4k && isMain10 -> "This is a 4K HDR (10-bit) title — this device can't decode it. Try a 1080p or HD version."
+                                        is4k -> "This is a 4K title — this device can't decode it. Try a 1080p or HD version."
+                                        else -> "This video is too high-resolution for this device. Try an HD version."
+                                    }
+                                )
+                                return
+                            }
+                        }
                     }
                 }
                 // v3.7.9: removed the upfront HEVC Main 10 refusal that previously
@@ -1874,6 +1962,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
                 if (currentFrames == lastRenderedFrameCount) {
                     consecutiveGoodPolls = 0  // Reset sustained-playback counter
+                    // Data starvation vs decoder stall. If the buffer is nearly empty, "no new
+                    // frames" means the network can't feed the decoder — a hard reset here would
+                    // re-buffer from scratch (re-opening the connection) and loop, which is exactly
+                    // what happened once 4K Dolby Vision moved onto the HW decoder: brief throughput
+                    // dips got misread as decoder freezes and the resets prevented any buffer from
+                    // ever building. Let ExoPlayer's own buffering ride it out; only a stall WITH a
+                    // healthy buffer (data present, frames not advancing) is a real decoder fault.
+                    val bufferedAheadMs = (p.bufferedPosition - p.currentPosition).coerceAtLeast(0L)
+                    if (bufferedAheadMs < WATCHDOG_STARVATION_BUFFER_MS) {
+                        noNewFramesSinceMs = 0L
+                        continue
+                    }
                     if (noNewFramesSinceMs == 0L) {
                         noNewFramesSinceMs = android.os.SystemClock.elapsedRealtime()
                     }
@@ -1909,8 +2009,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         val vf4kW = p.videoFormat?.width?.takeIf { it > 0 } ?: cachedVideoWidth
                         val vf4kH = p.videoFormat?.height?.takeIf { it > 0 } ?: cachedVideoHeight
                         val mime4k = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
+                        // Treat 4K Dolby Vision as 4K-HEVC-class. Its base layer IS HEVC (we route it to
+                        // the HW HEVC decoder via DolbyVisionBaseLayer), and — critically — the FFmpeg
+                        // software video renderer NATIVE-CRASHES (SIGSEGV / malloc integer-underflow on a
+                        // 4K frame) trying to decode it. So DV 4K must take this HW-only recovery path
+                        // and NEVER fall into the generic ladder below that rebuilds onto FFmpeg video.
                         val is4kHevc = (vf4kH >= 1440 || vf4kW >= 2560) &&
-                            mime4k == androidx.media3.common.MimeTypes.VIDEO_H265
+                            (mime4k == androidx.media3.common.MimeTypes.VIDEO_H265 ||
+                                mime4k == androidx.media3.common.MimeTypes.VIDEO_DOLBY_VISION)
                         if (is4kHevc) {
                             val codecs4k = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
                             val decoderLc = activeVideoDecoderName.lowercase()
@@ -2355,6 +2461,19 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      */
     private fun rebuildPlayerWithFfmpegVideoDecoder() {
         val p = player ?: return
+        // Defense-in-depth: the FFmpeg software video renderer NATIVE-CRASHES (SIGSEGV / a ~4GB
+        // malloc integer-underflow) trying to allocate a 4K frame — it cannot decode 4K in this CPU
+        // class anyway. Never rebuild onto it for 4K content; fail honestly instead of taking down
+        // the whole process. The watchdog's is4kHevc branch already routes 4K HEVC/DV away from here,
+        // so this only fires if a future path slips through.
+        val rbW = p.videoFormat?.width?.takeIf { it > 0 } ?: cachedVideoWidth
+        val rbH = p.videoFormat?.height?.takeIf { it > 0 } ?: cachedVideoHeight
+        if (rbH >= 1440 || rbW >= 2560) {
+            streamDiagnosticLogger.logAppEvent("FFMPEG_VIDEO_REBUILD_BLOCKED",
+                "reason=4k_would_crash, res=${rbW}x${rbH}, channel=${healthMonitor?.channelName ?: "unknown"}")
+            showFriendlyError("This 4K title can't be decoded on this device. Try a 1080p or HD version.")
+            return
+        }
         dropPendingNextEpisode()   // rebuild setMediaItems a single item — boundary falls back to legacy advance
         val currentPosition = p.currentPosition
         rebuildInProgress = true   // suppress progress saves until position is restored
@@ -2914,6 +3033,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         activeVideoDecoderName = ""
         cachedVideoWidth = 0
         cachedVideoHeight = 0
+        oversizedVideoRefused = false
         player?.trackSelectionParameters = player?.trackSelectionParameters
             ?.buildUpon()
             ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)            // undo Stage-2 audio disable
@@ -3350,6 +3470,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         ffmpegRebuildAttemptedForBufferStorm = false
         mtkMultichannelFfmpegApplied = false
         upwardReprobeAttempted = false
+        // Re-arm the upfront oversized-video refusal, so zapping from a refused 4K channel to
+        // another one still fails fast instead of falling through to the watchdog ladder. Also drop
+        // the previous channel's cached resolution/mime — tuneToChannel doesn't call
+        // resetTrackStateForNewContent(), and a stale value here would feed both this gate and the
+        // watchdog the wrong channel's numbers until the new tracks arrive.
+        oversizedVideoRefused = false
+        cachedVideoWidth = 0
+        cachedVideoHeight = 0
+        cachedVideoMime = ""
+        cachedVideoCodecs = ""
         // Force-restart watchdog so the new channel gets a fresh escalation ladder
         frameWatchdogJob?.cancel()
         frameWatchdogJob = null
@@ -4167,6 +4297,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val STALL_TIMEOUT_VOD_MS = 30_000L
         private const val FRAME_WATCHDOG_INTERVAL_MS = 2_000L
         private const val FRAME_WATCHDOG_FROZEN_MS = 3_000L
+        // Below this much buffered-ahead media, "no new frames" is data STARVATION (the network can't
+        // feed the decoder), NOT a decoder stall — so the watchdog must not hard-reset (a reset just
+        // re-buffers from scratch and loops). Only a frame stall WITH a healthy buffer is a real
+        // decoder fault. Set above the LIVE bufferForPlayback floor so a normally-refilling stream
+        // isn't mistaken for a stall.
+        private const val WATCHDOG_STARVATION_BUFFER_MS = 2_500L
         private const val MAX_WATCHDOG_RESETS = 4
         // 4K HEVC on a HW decoder that stalled: number of hard-reset recovery attempts (network-dip
         // recovery) before giving up honestly. We never swap 4K HEVC to a software decoder — no SW

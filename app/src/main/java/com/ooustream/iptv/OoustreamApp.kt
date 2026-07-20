@@ -14,6 +14,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.ooustream.iptv.common.CrashLogger
+import com.ooustream.iptv.common.DeviceUtils
 import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.ProgressiveImageLoader
@@ -55,6 +56,11 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
         networkMonitor.diagnosticLogger = streamDiagnosticLogger
         streamDiagnosticLogger.logAppEvent("APP_START",
             "version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        // Every TV-vs-phone branch in the app hangs off DeviceUtils.isTV(). A generic box that
+        // misreports itself silently flips ALL of them to the touch paths, which strips D-pad
+        // focus and strands the user (Ooustick/Allwinner, v4.2.0-v4.2.3). Log the raw signals so a
+        // debug-log export identifies a misclassified device immediately, without a live adb session.
+        streamDiagnosticLogger.logAppEvent("DEVICE_CLASS", DeviceUtils.describe(this))
 
         scheduleScoreRefresh()
         scheduleNewEpisodeSync()
