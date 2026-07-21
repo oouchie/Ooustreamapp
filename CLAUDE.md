@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.5 (versionCode 93)
+- **Current Version**: 4.2.6 (versionCode 94)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -491,6 +491,28 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.6** — mt8695/mt8167 Dolby-audio-at-any-channel-count → FFmpeg (versionCode 94). Triaged from
+  customer kiarawil's `Repport.docx` (AFTSS Fire TV Stick Lite, mt8695, 900MB, v4.2.5): BMF series MKVs
+  (1080p AVC High + **EAC3 2ch**) froze after the FIRST video frame with a full, byte-frozen 30s buffer and
+  `fps=0.0` — on the HW AVC decoder AND after the FFmpeg-video rebuild — ending in the honest "video format
+  not supported" dialog (~26s). Same report: live AVC with **AC3 6ch→FFmpeg audio** played, AAC played.
+  **Diagnosis (correlation, NOT device-verified — no mt8695 on the test network):** the v3.7.3
+  `MTK_MULTICHANNEL_FFMPEG_REBUILD` gate required `channelCount >= 6`, so 2ch EAC3 stayed on the mt8695
+  hardware decoder — the oldest documented false-claim failure on this chip (v2.3.5/v3.3.3). A silently
+  stalled hardware audio decoder freezes the playback clock → video renders one frame and waits forever →
+  the VIDEO watchdog misdiagnoses it and burns both video decoders. **Fix:** on known-bad MTK
+  (mt8695/mt8167) the gate now fires for AC3/EAC3/DTS at ANY channel count (`isKnownBadMtkAudio ||
+  ch >= 6`); mt8696 keeps >=6 (its hardware EAC3 works — device-verified via Black and Blue). Failure mode
+  if the diagnosis is wrong = exactly v4.2.5's behavior (no worse); cost if hardware 2ch was fine = one
+  rebuild inside the initial buffer window (v3.7.3 pattern, invisible). **Also:** removed the v3.7.12
+  "720p cap retry" watchdog rung — unreachable (the FFmpeg rebuild restarts the watchdog, so the
+  post-rebuild counter hits the give-up at reset=1 before `== 2` can match; kiarawil's log confirms
+  `resets=1`) and a no-op lever anyway (`setMaxVideoSize` is a preference; can't deselect a single-bitrate
+  track). Zero behavior change, code now matches reality. **Report also validated v4.2.4/5 in prod:**
+  `WATCH_HISTORY_PRUNED type=vod removed=1 / type=series episodes=4` (pruner working),
+  `VIDEO_TRACK_SUPPORT` diagnostic present, `isTV=true` correct on AFTSS. Files:
+  `player/OoustreamPlaybackFragment.kt` (gate + dead rung).
 
 - **v4.2.5** — 4K playback fix part 2: over-declared HEVC levels + rebuild-path format fixes (versionCode
   93). Fast-follow to v4.2.4 (which was emailed to 348 customers the same day but did NOT contain this fix).

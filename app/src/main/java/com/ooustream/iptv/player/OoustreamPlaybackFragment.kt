@@ -1524,10 +1524,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 // FFmpeg handles decode + downmix in one pass and keeps up. Catch it on
                 // first onTracksChanged so the rebuild happens inside the initial buffer
                 // window instead of after users have seen the stall pattern.
+                //
+                // v4.2.6: on the KNOWN-BAD MTK chipsets (mt8695/mt8167) the gate fires at ANY
+                // channel count, not just >=6. Customer kiarawil (AFTSS, mt8695, v4.2.5): series
+                // MKVs with EAC3 *2ch* on hardware froze after the first video frame with a full,
+                // byte-frozen 30s buffer — on BOTH the HW and FFmpeg video decoders — while every
+                // session with FFmpeg audio (AC3 6ch live) or AAC played fine. A silently-stalled
+                // hardware EAC3 decoder freezes the playback clock, so video renders one frame and
+                // waits forever; mt8695 falsely claiming AC3/EAC3 support is our oldest documented
+                // failure (v2.3.5, v3.3.3). mt8696 keeps the >=6 gate — its hardware EAC3 works.
                 if (!mtkMultichannelFfmpegApplied && AudioLogger.isFfmpegAvailable) {
                     val hw = android.os.Build.HARDWARE.lowercase()
                     val isMtk = hw.startsWith("mt8")
                     if (isMtk) {
+                        val isKnownBadMtkAudio = hw.contains("mt8695") || hw.contains("mt8167")
                         val selectedAudioFormat = tracks.groups
                             .filter { it.type == C.TRACK_TYPE_AUDIO }
                             .flatMap { group ->
@@ -1538,10 +1548,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             .firstOrNull()
                         val needsFfmpeg = selectedAudioFormat?.let { fmt ->
                             val mime = fmt.sampleMimeType
-                            (mime == androidx.media3.common.MimeTypes.AUDIO_E_AC3 ||
-                                mime == androidx.media3.common.MimeTypes.AUDIO_AC3 ||
-                                mime == androidx.media3.common.MimeTypes.AUDIO_DTS) &&
-                                fmt.channelCount >= 6
+                            val isDolbyClass =
+                                mime == androidx.media3.common.MimeTypes.AUDIO_E_AC3 ||
+                                    mime == androidx.media3.common.MimeTypes.AUDIO_AC3 ||
+                                    mime == androidx.media3.common.MimeTypes.AUDIO_DTS
+                            isDolbyClass && (isKnownBadMtkAudio || fmt.channelCount >= 6)
                         } ?: false
                         if (needsFfmpeg) {
                             mtkMultichannelFfmpegApplied = true
@@ -2196,20 +2207,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         // unblock libavcodec on 4× A53). If that also stalls, give up
                         // cleanly with the friendly error — no more decoder swaps to try.
                         if (isKnownBadMtk && usingFfmpegVideoDecoder) {
-                            if (watchdogResetCount == 2) {
-                                AudioLogger.log("Frame watchdog: FFmpeg stalled on $mtkHardware — 720p cap retry")
-                                streamDiagnosticLogger.logAppEvent("WATCHDOG_FFMPEG_720P_CAP",
-                                    "reset=2, hw=$mtkHardware, channel=$channelName")
-                                withContext(Dispatchers.Main) {
-                                    trackSelector?.setParameters(
-                                        trackSelector!!.buildUponParameters().setMaxVideoSize(1280, 720)
-                                    )
-                                    player?.stop()
-                                    player?.prepare()
-                                    player?.play()
-                                }
-                                continue
-                            }
+                            // v4.2.6: the v3.7.12 "720p cap retry" rung was removed. It was
+                            // unreachable — the FFmpeg rebuild restarts the watchdog, so the
+                            // post-rebuild counter reaches the give-up below at reset=1 before
+                            // `== 2` could ever match (kiarawil report confirms resets=1) — and
+                            // it was a no-op lever anyway: setMaxVideoSize is a PREFERENCE
+                            // (exceedVideoConstraintsIfNecessary defaults true), so it cannot
+                            // deselect a single-bitrate 1080p track or reduce decode work.
                             val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
                             val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",

@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.5",
-  "version_code": 93,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.5/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.5 — 4K playback fix, part 2\n\n• Fixes more 4K movies that played audio over a black screen and then showed \"won't play smoothly on your current connection\" — even on 4K devices with a fast connection. Many 4K files over-declare their video level; the app now checks what your hardware can actually decode instead of trusting the file's claim.\n• 4K fixes now stick through the player's internal audio-decoder switch (5.1 audio titles were losing the video fix mid-start).\n• Includes everything from v4.2.4: 4K Dolby Vision hardware decode, crash fix, smoother 4K buffering, Continue Watching repair.\n\nAs before: 4K titles require a 4K-capable streaming device (Fire TV Stick 4K / 4K Max). Non-4K playback is unchanged.",
+  "version_name": "4.2.6",
+  "version_code": 94,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.6/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.6/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.6/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.6 — Series playback fix for Fire TV Stick Lite / older sticks\n\n• Fixes series episodes and movies freezing on the first frame (audio plays, picture stuck, then \"video format not supported\") on Fire TV Stick Lite and similar older devices. Dolby audio tracks now decode with the app's built-in decoder on these devices at every channel count — the hardware Dolby decoder on this chip silently stalls and was freezing the whole player.\n• Includes all v4.2.4/v4.2.5 fixes: 4K hardware playback, Dolby Vision support, crash fixes, Continue Watching repair.\n\nNon-Dolby and newer devices are unchanged.",
   "mandatory": false
 }
