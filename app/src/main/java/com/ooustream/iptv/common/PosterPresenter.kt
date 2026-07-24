@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewStub
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -92,34 +93,43 @@ open class PosterPresenter : Presenter() {
         metaView.visibility = View.GONE
         ctaView.visibility = View.GONE
 
-        // Watch status indicators
+        // Watch status indicators. The progress bar lives behind a ViewStub and is
+        // only inflated for cards that are actually partially watched — most cards
+        // never pay the cost of the themed ProgressBar (its style resolution was the
+        // main-thread stall point in the v4.2.6 ANR traces).
         val watchedBadge = root.findViewById<ImageView>(R.id.poster_watched_badge)
-        val progressBar = root.findViewById<ProgressBar>(R.id.poster_progress_bar)
+        val existingProgress = root.findViewById<ProgressBar>(R.id.poster_progress_bar)
         if (poster.watchCompleted) {
             watchedBadge.visibility = View.VISIBLE
-            progressBar.visibility = View.GONE
+            existingProgress?.visibility = View.GONE
             image.alpha = 0.7f
         } else if (poster.watchProgress > 0.05f) {
             watchedBadge.visibility = View.GONE
-            progressBar.visibility = View.VISIBLE
-            progressBar.progress = (poster.watchProgress * 1000).toInt()
+            val progressBar = existingProgress
+                ?: (root.findViewById<ViewStub>(R.id.poster_progress_stub)?.inflate() as? ProgressBar)
+            progressBar?.visibility = View.VISIBLE
+            progressBar?.progress = (poster.watchProgress * 1000).toInt()
             image.alpha = 1f
         } else {
             watchedBadge.visibility = View.GONE
-            progressBar.visibility = View.GONE
+            existingProgress?.visibility = View.GONE
             image.alpha = 1f
         }
 
-        // Shimmer — start shimmer while image loads
+        // Shimmer — show the static placeholder immediately, but DON'T start the
+        // infinite shimmer animator yet. A cached poster is decoded within a frame
+        // and never needs it; only start animating if the image is genuinely still
+        // loading after a short delay. Avoids spinning up dozens of ValueAnimators
+        // during a fast D-pad scroll (the app was pegging CPU at 138-169% at ANR time).
         shimmer.alpha = 1f
         shimmer.visibility = View.VISIBLE
-        shimmer.startShimmer()
 
         val imageUrl = poster.imageUrl
         val cacheKey = "poster_${poster.id}"
         ProgressiveImageLoader.loadThumbnail(image, imageUrl, cacheKey)
 
-        // Primary check: dismiss shimmer after 300ms if image has loaded (handles cached images)
+        // If the image loaded (cache hit) dismiss the placeholder with no animator;
+        // otherwise start the shimmer animation for the genuine loading case.
         image.postDelayed({
             if (image.drawable != null) {
                 shimmer.stopShimmer()
@@ -128,8 +138,10 @@ open class PosterPresenter : Presenter() {
                     .setDuration(150)
                     .withEndAction { shimmer.visibility = View.GONE }
                     .start()
+            } else {
+                shimmer.startShimmer()
             }
-        }, 300)
+        }, 140)
 
         // Safety fallback: always dismiss shimmer after 1500ms regardless
         image.postDelayed({

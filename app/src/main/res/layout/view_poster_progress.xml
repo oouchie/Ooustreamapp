@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Watch progress bar for poster cards. Kept in a separate layout and inflated
+     lazily via a ViewStub in item_poster_card.xml — most cards have no watch
+     progress, so the themed ProgressBar (whose style resolution showed up as the
+     main-thread stall point in the v4.2.6 ANR traces) is never inflated for them. -->
+<ProgressBar xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/poster_progress_bar"
+    style="@android:style/Widget.ProgressBar.Horizontal"
+    android:layout_width="match_parent"
+    android:layout_height="4dp"
+    android:layout_gravity="bottom"
+    android:max="1000"
+    android:progress="0"
+    android:progressTint="#FFC107"
+    android:progressBackgroundTint="#33FFFFFF" />

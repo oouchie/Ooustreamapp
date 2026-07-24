@@ -157,16 +157,15 @@
 
     </LinearLayout>
 
-    <!-- Watch progress bar (bottom edge) -->
-    <ProgressBar
-        android:id="@+id/poster_progress_bar"
-        style="@android:style/Widget.ProgressBar.Horizontal"
+    <!-- Watch progress bar (bottom edge) — inflated lazily. Only cards that are
+         partially watched pay the cost of the themed ProgressBar; empty cards skip
+         it entirely (this style resolution was the main-thread stall in the v4.2.6
+         ANR traces). Inflated on demand by PosterPresenter.onBindViewHolder. -->
+    <ViewStub
+        android:id="@+id/poster_progress_stub"
         android:layout_width="match_parent"
         android:layout_height="4dp"
         android:layout_gravity="bottom"
-        android:max="1000"
-        android:progress="0"
-        android:progressTint="#FFC107"
-        android:progressBackgroundTint="#33FFFFFF"
-        android:visibility="gone" />
+        android:inflatedId="@+id/poster_progress_bar"
+        android:layout="@layout/view_poster_progress" />
 </FrameLayout>
