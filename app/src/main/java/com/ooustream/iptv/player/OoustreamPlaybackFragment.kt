@@ -1116,7 +1116,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             // pre-buffers over the remaining 15s. A blank episodeId can't be
                             // disambiguated in onMediaItemTransition (initial items have the
                             // default "" mediaId) — those stay on the legacy advance.
-                            if (preBufferEnabled && pendingNextEpisode == null &&
+                            // Don't pre-buffer a second concurrent decoder for QHD/4K content.
+                            // The gapless path keeps the current stream playing while it buffers
+                            // the next episode — for 4K HDR HEVC that means TWO ~190MB decoders +
+                            // two large buffers alive at once, which pushes a 1.5-2GB Fire Stick
+                            // past the kernel Low-Memory-Killer threshold (confirmed LMK foreground
+                            // kills at ~1.4GB on AFTKRT during 4K series binge). For big video we
+                            // fall through to the sequential advance (a brief load between episodes).
+                            val hiRes = isHighResVideo(p)
+                            if (preBufferEnabled && !hiRes && pendingNextEpisode == null &&
                                 !rebuildInProgress && p.mediaItemCount == 1 &&
                                 nextInfo.episodeId.isNotBlank()
                             ) {
@@ -1124,6 +1132,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 p.addMediaItem(buildNextMediaItem(nextInfo))
                                 streamDiagnosticLogger.logAppEvent("PREBUFFER_QUEUED",
                                     "next=${nextInfo.name}, s${nextInfo.season}e${nextInfo.episodeNum}")
+                            } else if (preBufferEnabled && hiRes) {
+                                streamDiagnosticLogger.logAppEvent("PREBUFFER_SKIPPED_HIRES",
+                                    "w=${p.videoFormat?.width}, h=${p.videoFormat?.height} — sequential advance to protect memory")
                             }
                             bingeOverlay?.show(nextInfo.name, 10)
                         } else {
@@ -1760,6 +1771,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 null
             }
         }
+
+    /**
+     * True when the currently-decoding video is QHD/4K (>= 2560 wide or >= 1440 tall).
+     * Used to suppress the gapless binge pre-buffer for large content: running a second
+     * concurrent decoder + buffer for a 4K HDR stream can push a 1.5-2GB Fire Stick past
+     * the Low-Memory-Killer threshold. Returns false when no video format is available yet
+     * (audio-only / not ready) so ordinary 1080p content keeps its gapless transition.
+     */
+    private fun isHighResVideo(p: ExoPlayer): Boolean {
+        val vf = p.videoFormat ?: return false
+        return vf.width >= 2560 || vf.height >= 1440
+    }
 
     private fun safeReleasePlayer(p: ExoPlayer) {
         try { p.stop() } catch (_: Exception) { }
