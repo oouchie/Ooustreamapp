@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.8",
-  "version_code": 96,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.8/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.8/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.8/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.8 — Fixes the app closing itself during 4K series binge-watching\n\n• Fixes the app suddenly closing or restarting while binge-watching a series in 4K — the app was loading the next episode in the background while the current one was still playing, which used too much memory on 4K and caused the device to shut it down. On 4K content it now loads the next episode the normal way (a brief moment between episodes) instead. HD and 1080p series still switch episodes seamlessly.\n\nIncludes all v4.2.7 (freeze/ANR) and v4.2.4-4.2.6 (4K, Dolby Vision, Dolby audio) fixes.",
+  "version_name": "4.2.9",
+  "version_code": 97,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.9 — Fixes repeated buffering on movies and series\n\n• Fixes movies and shows buffering over and over even on a fast connection. After the app switched audio or video decoders mid-title it was quietly cutting its own buffer in half, so it kept running dry. It now keeps the full buffer your device is capable of.\n\n• Fixes the app getting stuck on the loading spinner forever when a stream stops responding. It now notices within about 20 seconds, reconnects automatically, and only shows an error if reconnecting genuinely doesn't work.\n\n• The Stats screen now works during playback again — it was going blank after a decoder switch. It also shows your real measured network speed and a rebuffer counter, so buffering problems are much easier to pin down.\n\nIncludes all v4.2.7-4.2.8 (freeze/ANR, 4K binge) and v4.2.4-4.2.6 (4K, Dolby Vision, Dolby audio) fixes.",
   "mandatory": false
 }

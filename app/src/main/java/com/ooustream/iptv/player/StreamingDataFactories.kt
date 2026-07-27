@@ -76,6 +76,10 @@ object StreamingDataFactories {
             .build()
         return OkHttpDataSource.Factory(streamingClient)
             .setUserAgent(userAgent)
+            // Count arriving bytes for the stats overlay. DefaultBandwidthMeter can't do this job:
+            // it only recomputes in onTransferEnd, and a progressive VOD load holds ONE transfer
+            // open for the whole title, so its estimate never moves once playback starts.
+            .setTransferListener(StreamThroughputMeter)
     }
 
     /** True if the URL is an M2TS/BDAV container ExoPlayer can't demux without prefix-stripping. */

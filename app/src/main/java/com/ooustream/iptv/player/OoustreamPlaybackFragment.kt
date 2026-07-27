@@ -48,6 +48,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.leanback.LeanbackPlayerAdapter
@@ -291,32 +292,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // cache here made Home re-shimmer every return from playback. Let LRU do its job.
         // trimForPlayback() below applies tier-aware trimming only if needed.
 
-        val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         // AFTMM (mt8695, 1285MB RAM) has memoryClass ~160 but only 164-184MB actual heap.
         // 60s buffer at HIGH quality fills the heap and causes OOM in PlayerControlsBar.formatDuration().
-        // Threshold raised from 128 to 192 to match watchdog's low-memory classification.
-        //
-        // BUT a device can report memoryClass<=192 (heapgrowthlimit) yet have plenty of total RAM —
-        // the Fire TV Stick 4K Max (AFTKRT) is memoryClass 192 with 1.6GB RAM and largeHeap 384MB.
-        // Capping it to the low-memory 30s buffer starves high-bitrate 4K (esp. Dolby Vision remuxes
-        // now that the base layer decodes in hardware, off the Java heap): the buffer can't build a
-        // cushion, so it dips into brief re-buffers. Devices with >=1.4GB total get the normal
-        // tier buffer (45-60s) so they ride out throughput wobble; 1GB/1.28GB sticks (Ooustick,
-        // AFTMM) stay capped. Mirrors UserPlanManager.isDeviceCapable()'s 1.4GB gate.
-        val totalMemGb = run {
-            val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-            mi.totalMem / (1024f * 1024f * 1024f)
-        }
-        val loadControl = if (am.memoryClass <= 192 && totalMemGb < 1.4f) {
-            BufferConfigs.forLowMemory(viewModel.contentType)
-        } else {
-            BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
-        }
-        streamDiagnosticLogger.logAppEvent(
-            "BUFFER_CONFIG",
-            "memoryClass=${am.memoryClass}, totalMem=${"%.2f".format(totalMemGb)}GB, " +
-                "lowMem=${am.memoryClass <= 192 && totalMemGb < 1.4f}, type=${viewModel.contentType}"
-        )
+        // See buildLoadControl() — shared with all three rebuild paths so they can never drift again.
+        val loadControl = buildLoadControl()
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
         // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
@@ -1695,6 +1674,62 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     // --- Playback Hardening Helpers ---
 
+    /**
+     * Single source of truth for the ExoPlayer [DefaultLoadControl].
+     *
+     * EVERY path that builds a player must use this. v4.2.4 raised the buffer for devices with
+     * >=1.4GB total RAM, but only in the initial-build path — the three `rebuildPlayerWith*` paths
+     * kept the old `memoryClass <= 192` gate. On AFTKRT (memoryClass 192, 1.63GB) that meant any
+     * decoder rebuild silently dropped the buffer to the low-memory 10s/30s profile, measured
+     * on-device as a 12s->28s sawtooth on a ~13 Mbps title with 163 Mbps actually available.
+     * They also downgraded `forContentTypeAndQuality` to the tier-blind `forContentType`.
+     *
+     * This is the third time a rebuild clone drifted from the main path (cf. the v3.6.3 cue
+     * listener and the v4.2.5 DolbyVisionBaseLayer wrap). Keep the decision in ONE place.
+     */
+    private fun buildLoadControl(): DefaultLoadControl {
+        val am = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        // A device can report memoryClass<=192 (heapgrowthlimit) yet have plenty of total RAM —
+        // AFTKRT is memoryClass 192 with 1.6GB and largeHeap 384MB. Capping it to the low-memory
+        // 30s buffer starves high-bitrate 4K. Devices >=1.4GB get the normal tier buffer;
+        // 1GB/1.28GB sticks (Ooustick, AFTMM) stay capped. Mirrors UserPlanManager's 1.4GB gate.
+        val totalMemGb = run {
+            val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            mi.totalMem / (1024f * 1024f * 1024f)
+        }
+        val lowMem = am.memoryClass <= 192 && totalMemGb < 1.4f
+        streamDiagnosticLogger.logAppEvent(
+            "BUFFER_CONFIG",
+            "memoryClass=${am.memoryClass}, totalMem=${"%.2f".format(totalMemGb)}GB, " +
+                "lowMem=$lowMem, type=${viewModel.contentType}, tier=${qualityPolicy.tier.value}"
+        )
+        return if (lowMem) {
+            BufferConfigs.forLowMemory(viewModel.contentType)
+        } else {
+            BufferConfigs.forContentTypeAndQuality(viewModel.contentType, qualityPolicy.tier.value)
+        }
+    }
+
+    /**
+     * Re-bind every object that holds a reference to the live player.
+     *
+     * Call from EVERY path that swaps in a new ExoPlayer. Before v4.2.9 the stats overlay was
+     * attached exactly once, to the initial player, so after any decoder rebuild it polled a
+     * RELEASED player and rendered no buffer and no bitrate — hiding the very stall it exists to
+     * surface. That is how a customer-visible rebuffer went undiagnosable.
+     */
+    private fun rebindPlayerDependents() {
+        attachPlayerListener()
+        attachCueListener()
+        player?.let { p ->
+            statsOverlay?.attachPlayer(p)
+            // Same defect, second object: setPlayer() was also called only at initial creation, so
+            // a sleep timer armed around a decoder rebuild faded and paused a RELEASED player while
+            // the real one kept playing. Any future player-holder belongs in this function too.
+            sleepTimerManager?.setPlayer(p)
+        }
+    }
+
     /** Attach the core Player.Listener (error handling, track changes, state). Idempotent. */
     private fun attachPlayerListener() {
         val listener = corePlayerListener ?: return
@@ -1919,15 +1954,66 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         ContentType.VOD, ContentType.SERIES -> STALL_TIMEOUT_VOD_MS
     }
 
-    /** Watchdog: if player stays in STATE_BUFFERING longer than the timeout, force a retry. */
+    /**
+     * Watchdog: force a retry when the player sits in STATE_BUFFERING because the SOURCE has
+     * stopped delivering.
+     *
+     * v4.2.9 — this was a blind `delay(timeout)` that fired on time-in-BUFFERING alone, so a
+     * slow-but-genuinely-progressing refill got torn down and restarted from scratch. That is the
+     * same pathology the v4.2.4 frame-watchdog starvation guard was added to avoid, and on a thin
+     * connection it makes things strictly worse. It now POLLS and escalates only when
+     * `bufferedPosition` has not advanced AT ALL for the whole window: a live-but-thin connection
+     * keeps advancing it every poll and is left alone, while a genuinely dead source is caught.
+     *
+     * Measured on AFTKRT (mt8696) against a shipped 4.2.8: a stalled source held an ESTABLISHED
+     * socket with 1.2MB sitting unread in the kernel receive queue while `bufferedPosition` stayed
+     * frozen and the title never recovered.
+     *
+     * Recovery itself (stop -> backoff -> prepare -> play), the retryCount ladder and the
+     * exhaustion dialog are unchanged — this only gates WHEN they fire. Deliberately a single
+     * mechanism: the frame watchdog stays STATE_READY-only (decoder faults), this owns
+     * STATE_BUFFERING (supply faults), so nothing races to re-prepare the same player.
+     */
     private fun startStallDetector() {
         stallDetectorJob?.cancel()
         stallDetectorJob = viewLifecycleOwner.lifecycleScope.launch {
             val timeout = stallTimeoutForContent(viewModel.contentType)
-            delay(timeout)
-            // Still buffering after timeout — force recovery
+            var lastBufferedMs = -1L
+            var staticSinceMs = 0L
+            while (isActive) {
+                delay(STALL_POLL_INTERVAL_MS)
+                val poll = player ?: return@launch
+                if (poll.playbackState != Player.STATE_BUFFERING) {
+                    // Recovered on its own (STATE_READY also cancels this job outright).
+                    lastBufferedMs = -1L
+                    staticSinceMs = 0L
+                    continue
+                }
+                val bufferedNow = poll.bufferedPosition
+                val progressed = lastBufferedMs < 0L ||
+                    (bufferedNow - lastBufferedMs) > SOURCE_STALL_PROGRESS_EPSILON_MS
+                lastBufferedMs = bufferedNow
+                if (progressed) {
+                    staticSinceMs = 0L
+                    continue
+                }
+                if (staticSinceMs == 0L) {
+                    staticSinceMs = android.os.SystemClock.elapsedRealtime()
+                    continue
+                }
+                if (android.os.SystemClock.elapsedRealtime() - staticSinceMs < timeout) continue
+                break
+            }
+
+            // Source delivered nothing for the whole window — force recovery.
             val p = player ?: return@launch
             if (p.playbackState == Player.STATE_BUFFERING) {
+                streamDiagnosticLogger.logAppEvent(
+                    "SOURCE_STALL",
+                    "staticForMs=$timeout, retry=$retryCount, " +
+                        "buffered=${(p.bufferedPosition - p.currentPosition).coerceAtLeast(0L)}ms, " +
+                        "channel=${healthMonitor?.channelName ?: "unknown"}"
+                )
                 val maxRetries = maxRetriesForContent(viewModel.contentType)
                 if (retryCount < maxRetries) {
                     val delayMs = RETRY_DELAYS_MS.getOrElse(retryCount) { 15_000L }
@@ -2398,12 +2484,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
-        // Use low-memory buffers on constrained devices (SW decode needs all available RAM for frames)
-        val swLoadControl = run {
-            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
-            else BufferConfigs.forContentType(viewModel.contentType)
-        }
+        // Use low-memory buffers on constrained devices (SW decode needs all available RAM for frames).
+        // buildLoadControl() applies the same totalMem>=1.4GB gate as the initial build — decoded
+        // frames are held by the renderer, not the LoadControl, so the compressed-sample budget is
+        // governed by total RAM, which is exactly what that gate measures.
+        val swLoadControl = buildLoadControl()
 
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(softwareRenderersFactory)
@@ -2450,9 +2535,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .build()
 
         // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
-        attachPlayerListener()
-        // Re-attach subtitle cue listener so SubtitleView keeps receiving cues on the new player
-        attachCueListener()
+        // Re-attach core listener + subtitle cues + stats overlay to the NEW player (v4.2.9:
+        // the overlay used to be missed here, leaving it polling the released player).
+        rebindPlayerDependents()
 
         // Reconnect to Leanback via new adapter + glue
         val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
@@ -2548,11 +2633,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Same buffer policy as SW rebuild: low-memory devices need conservative buffers
         // so frame buffers (FFmpeg output is uncompressed YUV — a few MB per frame) and
         // the existing decoded queue don't push the heap past the GC threshold.
-        val ffmpegLoadControl = run {
-            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
-            else BufferConfigs.forContentType(viewModel.contentType)
-        }
+        val ffmpegLoadControl = buildLoadControl()
 
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(ffmpegVideoFactory)
@@ -2596,8 +2677,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setId("ooustream_playback_ffvideo_${System.nanoTime()}")
             .build()
 
-        attachPlayerListener()
-        attachCueListener()
+        rebindPlayerDependents()
 
         val newAdapter = LeanbackPlayerAdapter(requireContext(), player!!, 1000)
         glue = OoustreamPlaybackGlue(requireContext(), newAdapter).apply {
@@ -2652,11 +2732,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
-        val ffmpegLoadControl = run {
-            val am2 = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            if (am2.memoryClass <= 192) BufferConfigs.forLowMemory(viewModel.contentType)
-            else BufferConfigs.forContentType(viewModel.contentType)
-        }
+        val ffmpegLoadControl = buildLoadControl()
 
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(ffmpegRenderersFactory)
@@ -2698,9 +2774,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
 
         // Re-attach core player listener (onPlayerError, onTracksChanged, onPlaybackStateChanged)
-        attachPlayerListener()
-        // Re-attach subtitle cue listener so SubtitleView keeps receiving cues on the new player
-        attachCueListener()
+        // Re-attach core listener + subtitle cues + stats overlay to the NEW player (v4.2.9:
+        // the overlay used to be missed here, leaving it polling the released player).
+        rebindPlayerDependents()
 
         // New MediaSession
         mediaSession = MediaSession.Builder(requireContext(), player!!)
@@ -4371,6 +4447,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // isn't mistaken for a stall.
         private const val WATCHDOG_STARVATION_BUFFER_MS = 2_500L
         private const val MAX_WATCHDOG_RESETS = 4
+
+        // ── Source-stall gating (v4.2.9) ──────────────────────────────────────────────────────
+        // startStallDetector() escalates only when bufferedPosition is COMPLETELY static for the
+        // content's stall timeout — i.e. the source stopped delivering, not merely slowed. A
+        // thin-but-live stream keeps advancing bufferedPosition and is never torn down, which is
+        // what keeps this from re-creating the v4.2.4 reset loop on shallow-but-filling buffers.
+        private const val STALL_POLL_INTERVAL_MS = 2_000L
+        // bufferedPosition jitter tolerance — anything above this counts as real progress.
+        private const val SOURCE_STALL_PROGRESS_EPSILON_MS = 250L
         // 4K HEVC on a HW decoder that stalled: number of hard-reset recovery attempts (network-dip
         // recovery) before giving up honestly. We never swap 4K HEVC to a software decoder — no SW
         // decoder in this device class does realtime 4K HEVC, and the swap re-buffers from scratch.

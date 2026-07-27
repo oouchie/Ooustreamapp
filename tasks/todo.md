@@ -1,4 +1,85 @@
-# ACTIVE — 4K movies slideshow on Fire TV Stick 4K Max (mt8696)
+# ACTIVE — v4.2.9: buffer starvation after decoder rebuild (AFTKRT)
+
+**Reported 2026-07-26**, live-captured on AFTKRT (mt8696, 192.168.1.82) running shipped 4.2.8.
+User: "the movie I'm watching keeps buffering and I see no buffer or bitrate".
+
+**Measured on-device — network/CPU/memory all RULED OUT:**
+- Refill bursts hit **163 Mbps** (20,346 KB/s); ISP 330-370 Mbps; WiFi -47 dBm @ 1201 Mbps 5 GHz.
+- CPU 310%/400% idle. GC pauses 100-220 **us**. MemFree 52-70 MB and SwapFree **flat** across
+  every stall/recover transition (memory hypothesis explicitly refuted by measurement).
+- Buffer sawtooth refills at **~12s**, ceilings at **~28s** = the exact signature of
+  `BufferConfigs.forLowMemory(VOD)` (10s/30s). AFTKRT should be on 15s/45s (25s/60s at HIGH).
+- MediaSession id `ooustream_playback_ffmpeg_*` proves `rebuildPlayerWithFfmpegPreferred()` fired.
+- Hard freeze captured: socket ESTABLISHED to 74.119.149.88:80, `rx_queue` pegged at 1,232,736 B
+  byte-identical for 42 consecutive samples, buffer 0.13s, state=BUFFERING, **no recovery for 45s+**.
+
+**Root causes (all verified in source):**
+1. **Load-control drift.** `:310` (main) has the v4.2.4 gate `memoryClass <= 192 && totalMemGb < 1.4f`.
+   All three rebuild paths (`:2404`, `:2553`, `:2657`) still use `memoryClass <= 192` alone, so on
+   AFTKRT (memoryClass 192 / 1.63 GB) any decoder rebuild silently halves the buffer. Rebuilds also
+   downgrade `forContentTypeAndQuality(type, tier)` -> `forContentType(type)`.
+   Third occurrence of the rebuild-clone drift class (cf. v3.6.3 cueListener, v4.2.5 DV wrap).
+2. **Watchdog inert while buffering.** `:1994` early-`continue`s unless `STATE_READY` and resets its
+   own frozen timer — nothing watches a `STATE_BUFFERING` stall, so an empty buffer never recovers.
+3. **Stats overlay bound to a dead player.** `attachPlayer()` called once at `:652`; rebuilds
+   re-attach listener + cue listener but never the overlay.
+4. **Bitrate never displays.** `StreamStatsOverlay.kt:123` reads `videoFormat.bitrate`, which is
+   `Format.NO_VALUE` for progressive IPTV containers.
+
+**Plan**
+- [x] Confirm device/version, catch the freeze live
+- [x] Rule out ISP / WiFi / CPU / GC / memory by measurement
+- [x] Match on-device sawtooth to a specific BufferConfigs profile
+- [x] Verify all 4 defects in source
+- [ ] Fix 1: one `buildLoadControl()` used by all 4 player-build sites
+- [ ] Fix 2: `rebindPlayerDependents()` (listener + cue + stats overlay) at every rebuild
+- [ ] Fix 3: watchdog starvation recovery during STATE_BUFFERING. Recover ONLY when
+      `bufferedPosition` is **static** for the whole window — a thin-but-live stream still advances
+      it, so this cannot reintroduce the v4.2.4 hard-reset loop the starvation guard was added to stop
+- [ ] Fix 4: stats overlay shows measured throughput from the bandwidth meter + stall count
+- [ ] `assembleRelease` clean
+- [ ] Device-verify on AFTKRT: `BUFFER_CONFIG lowMem=false` after a rebuild, stats overlay live
+- [ ] 4.2.9 / versionCode 97, update.json, commit, push, gh release with BOTH APKs
+
+**Review — shipped as v4.2.9 (versionCode 97)**
+
+Implemented (all four), `assembleRelease` clean, installed on AFTKRT 192.168.1.82:
+1. `buildLoadControl()` — one source of truth, used by the initial build + all three rebuild paths.
+   Rebuilds now also get `forContentTypeAndQuality(type, tier)` instead of the tier-blind
+   `forContentType(type)`.
+2. `startStallDetector()` progress-gated. **The first draft of this was WRONG and got caught by the
+   adversarial verify pass**: I added a second starvation watchdog inside `startFrameWatchdog`, on the
+   belief that the existing detector recovered with a bare `prepare()`. It does not — it already calls
+   `p.stop()` first (confused with the `onPlayerError` retry path). That draft was discarded because it
+   duplicated an existing recovery and raced it. Shipped instead: the existing detector's real flaw —
+   a blind `delay(timeout)` that escalated on time-in-BUFFERING even while a refill was progressing —
+   is fixed by polling and firing only when `bufferedPosition` is completely static.
+3. `rebindPlayerDependents()` — listener + cues + stats overlay + sleep timer, at every rebuild.
+   (`SleepTimerManager` had the identical stale-player defect; found by the audit.)
+4. `StreamThroughputMeter` — a `TransferListener` counting real arriving bytes.
+   **`DefaultBandwidthMeter` was the wrong source** (audit finding): it only recomputes in
+   `onTransferEnd`, and progressive VOD holds one transfer open for the entire title, so its estimate
+   never moves once playback starts. The overlay now shows measured arrival rate + a rebuffer counter.
+
+**DEVICE-VERIFIED on AFTKRT (v4.2.9 installed):**
+- `ooustream_playback_ffmpeg_*` session ids in logcat → the FFmpeg rebuild DID fire this session.
+- Stats overlay AFTER that rebuild rendered live data: `Buffer: 20.3s`, `net 6.4 Mbps`,
+  `1080p (1920x1080)`, `avc1.64002A | ac3 5.1`. Pre-fix it would have shown a released player.
+- **20.3s is the proof for fix 1**: on the rebuilt player, pre-fix `forLowMemory(LIVE)` caps
+  maxBuffer at **8s**. Reaching 20.3s means the rebuild took the tier config, not the low-memory one.
+
+**NOT device-verified:** the progress-gated stall recovery (fix 2) — it fires only on a genuinely dead
+source, which can't be triggered on demand. Logic reviewed + compiles; treat any stall-recovery
+regression report against this version with that in mind.
+
+**Not done / deferred:** `TrackPickerOverlay.activePlayer` also goes stale across a rebuild (audit
+confirmed, but impact downgraded — all players share one `DefaultTrackSelector`, so selections still
+apply). Stale comment at the main media-source factory claiming rebuilds are left unwrapped by
+`DolbyVisionBaseLayer` — false since v4.2.5, worth correcting on the next pass.
+
+---
+
+# DONE (shipped v4.2.4/v4.2.5) — 4K movies slideshow on Fire TV Stick 4K Max (mt8696)
 
 **Reported 2026-07-19.** User's personal Fire TV Stick 4K Max plays 4K movies as a **slideshow**
 (few fps), audio may be fine. mt8696 is our known-good 4K HW decoder → slideshow = 4K decoding in

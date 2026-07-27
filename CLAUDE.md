@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.6 (versionCode 94)
+- **Current Version**: 4.2.9 (versionCode 97)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -491,6 +491,79 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.9** — Buffer starvation after decoder rebuild + stall recovery + live stats (versionCode 97).
+  Diagnosed by **live instrumentation of a running 4.2.8 session** on AFTKRT (mt8696, Fire TV Stick 4K
+  Max) while the user was mid-movie — not from a customer log export. User report: "keeps buffering and
+  I see no buffer or bitrate."
+  **What the measurements ruled OUT (all on-device, same session):** ISP 330-370 Mbps from a machine on
+  the same LAN; WiFi RSSI **-47 dBm @ 1201 Mbps** on 5 GHz; CPU **310% of 400% idle**; GC pauses
+  100-220 **microseconds**; `MemFree` 52-70 MB and `SwapFree` **flat across every stall and recovery
+  transition** (an early memory-pressure hypothesis was explicitly refuted by that flatness — worth
+  remembering, ZRAM at 91% used looks alarming and was a red herring). Refill bursts were measured at
+  **163 Mbps** (20,346 KB/s). The network was never the constraint.
+  **How the root cause was found:** sampling `/proc/net/tcp` + `/proc/net/dev` + `dumpsys media_session`
+  together, once per second. The stream socket (74.119.149.88:80) stayed ESTABLISHED with `rx_queue`
+  pegged at a byte-identical 1,232,736 for 42 consecutive samples while the buffer drained. The buffer
+  sawtooth refilled at **~12s** and ceilinged at **~28s** — the exact signature of
+  `BufferConfigs.forLowMemory(VOD)` = **10s/30s**. AFTKRT should be on 15s/45s. The MediaSession id
+  `ooustream_playback_ffmpeg_*` proved `rebuildPlayerWithFfmpegPreferred()` had fired.
+  **Root cause 1 — load-control drift across rebuild clones (the real bug).** v4.2.4 raised the buffer
+  for devices with >=1.4GB RAM (`memoryClass <= 192 && totalMemGb < 1.4f`) but only in the INITIAL build
+  path. All three `rebuildPlayerWith*` paths kept the old `memoryClass <= 192` gate alone, so on AFTKRT
+  (memoryClass 192, **1.63GB**) any decoder rebuild silently halved the buffer to the low-memory
+  profile, and also downgraded `forContentTypeAndQuality(type, tier)` to the tier-blind
+  `forContentType(type)`. **This is the THIRD time a rebuild clone drifted from the main path** (v3.6.3
+  cueListener, v4.2.5 DolbyVisionBaseLayer wrap). Fix: one `buildLoadControl()` used by all four sites.
+  **Root cause 2 — the STATE_BUFFERING watchdog fired on the wrong condition.** `startFrameWatchdog` is
+  STATE_READY-only by design (double-guarded: the `:1994` state gate AND the v4.2.4
+  `WATCHDOG_STARVATION_BUFFER_MS` check), so it is correctly silent on a supply fault — that belongs to
+  `startStallDetector()`. **An adversarial verification pass caught a wrong assumption mid-implementation
+  and it is worth recording: the stall detector DOES already call `p.stop()` before re-preparing** (it
+  was confused with the `onPlayerError` retry path, which really does bare `prepare()`+`play()`). So the
+  first draft — a second starvation watchdog inside the frame watchdog — was DISCARDED: it duplicated an
+  existing recovery and raced it to re-prepare the same player. The shipped fix instead corrects the real
+  flaw in the existing detector: it was a blind `delay(timeout)` that escalated on **time-in-BUFFERING
+  alone**, so a slow-but-genuinely-progressing refill got torn down and restarted from scratch — the same
+  pathology the v4.2.4 starvation guard exists to prevent, and strictly harmful on a thin connection. It
+  now POLLS every 2s and escalates only when `bufferedPosition` has been **completely static** for the
+  content's stall timeout (30s VOD/SERIES, 15s LIVE). A thin-but-live stream advances `bufferedPosition`
+  every poll and is never touched; a dead source is caught. Recovery, the `retryCount` ladder and the
+  exhaustion dialog are **unchanged** — only the trigger is gated. One mechanism per fault class: frame
+  watchdog owns STATE_READY (decoder), stall detector owns STATE_BUFFERING (supply). New event:
+  `SOURCE_STALL` (logs static duration, retry index, buffer depth, channel).
+  **Root cause 3 — the instrument was disconnected by the thing it should have measured.**
+  `stats.attachPlayer()` was called exactly once, on the initial player; the rebuild paths re-attached
+  the core listener and cue listener but never the stats overlay, so after any rebuild it polled a
+  **released** player → no buffer, no bitrate. Fix: `rebindPlayerDependents()` (listener + cues + stats)
+  at every rebuild site, plus a try/catch in the overlay so a released player can never kill the polling
+  coroutine.
+  **Root cause 4 — bitrate could never display anyway.** The overlay read `videoFormat.bitrate`, which is
+  `Format.NO_VALUE` for the progressive IPTV containers this app plays. It now shows **measured
+  throughput** from the player's `DefaultBandwidthMeter` (tracked in a new `currentBandwidthMeter` field,
+  re-pointed on every rebuild) alongside the declared rate when present, plus a **rebuffer counter** and
+  a `(buffering)` state marker; poll interval 2s→1s so the sawtooth is legible.
+  **Triage lesson worth keeping:** a constant `rx_queue` is ambiguous on its own (steady-state flow
+  produces it too) — it only proves the app stopped reading when paired with simultaneous ~0 throughput.
+  And coasting without reading *between* min and max buffer is normal `DefaultLoadControl` hysteresis,
+  NOT a bug; the bug was the runway being half its intended size and nothing recovering at zero.
+  **Files:** `player/OoustreamPlaybackFragment.kt` (buildLoadControl + rebindPlayerDependents +
+  source-stall watchdog + currentBandwidthMeter), `player/StreamStatsOverlay.kt`.
+  **Verification status:** see the release notes — build state and device-verification are recorded there
+  honestly rather than assumed.
+
+- **v4.2.8** — Fix 4K-series-binge LMK kill (concurrent pre-buffer decoder) (versionCode 96). The gapless
+  binge pre-buffer ran a SECOND concurrent decoder near the end of an episode; on QHD/4K that pushed the
+  process to ~1.4GB and the kernel low-memory killer foreground-killed the app, which users reported as
+  "crashing". Gated pre-buffer off for high-resolution video (`isHighResVideo`); HD/1080p series still
+  switch seamlessly. LMK dumps are not exceptions — read the RSS-vs-GpuMemory split.
+  (Entry backfilled from the commit + memory index; see `[[project_4k_binge_lmk]]`.)
+
+- **v4.2.7** — Fix Home/Movies/Series ANR (main-thread poster-card inflation) (versionCode 95). The
+  "app keeps crashing" reports were ANRs, not crashes: main-thread poster-card inflation under heap/GC
+  pressure (3813 views, free=0MB). Fix = ViewStub the ProgressBar + gate the shimmer animator. NOTE a
+  shared `RecycledViewPool` is UNSAFE in leanback (viewType is keyed by presenter index).
+  (Entry backfilled from the commit + memory index; see `[[project_anr_poster_inflate]]`.)
 
 - **v4.2.6** — mt8695/mt8167 Dolby-audio-at-any-channel-count → FFmpeg (versionCode 94). Triaged from
   customer kiarawil's `Repport.docx` (AFTSS Fire TV Stick Lite, mt8695, 900MB, v4.2.5): BMF series MKVs
