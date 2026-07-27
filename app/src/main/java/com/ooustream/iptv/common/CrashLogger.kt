@@ -37,8 +37,9 @@ object CrashLogger {
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         // Playback-init breadcrumb. A stack frame inside the ~1400-line
         // OoustreamPlaybackFragment.onViewCreated cannot be resolved to an expression from the
-        // obfuscated line alone (R8 merges its ~10 identical addView blocks), so record which
-        // section init had reached. `step=complete` means the fault was NOT in view init.
+        // obfuscated line alone — the v4.2.8 NPE decoded to a line that provably cannot throw — so
+        // record which section init had reached instead. `step=complete` means the fault was NOT in
+        // view init and the frame was misattributed.
         val breadcrumb = try {
             "Playback init: ${PlaybackInitTrace.snapshot()}\n"
         } catch (_: Throwable) {

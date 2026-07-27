@@ -7,18 +7,24 @@ import android.os.SystemClock
  *
  * WHY THIS EXISTS — customer `Nawfatla1` (AFTSS, mt8695, 900MB) reported five
  * `NullPointerException at OoustreamPlaybackFragment.onViewCreated` crashes spanning v4.2.3 through
- * v4.2.8. The obfuscated frame could not be resolved to a real expression even with an authentic
- * rebuilt R8 mapping: `onViewCreated` is ~1400 lines and contains ~10 BYTE-IDENTICAL
- * `(view as? ViewGroup)?.addView(x, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))` statements,
- * which R8 merges — so the decoded line pointed at a `LayoutParams` constructor that cannot throw.
- * We knew the method and could not narrow it further from the stack alone.
+ * v4.2.8. The obfuscated frame could not be resolved to a real expression even after rebuilding an
+ * authentic v4.2.8 R8 mapping from the shipped commit.
  *
- * Two effects, both deliberate:
- *  1. [step] records where init got to, and [CrashLogger] appends it to the saved crash entry — so
- *     the NEXT customer report names the failing section outright.
- *  2. Each call site passes a DISTINCT string constant, which makes those previously-identical
- *     `addView` blocks structurally different. R8 can no longer merge them, so line attribution in
- *     future stacks is accurate too. That is a fix for the diagnosis problem, not just a workaround.
+ * The decode was INTERNALLY INCONSISTENT, which is the whole problem: `obf 1699:1703` resolved to
+ * source line 600, i.e. `ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)` inside the SERIES-only
+ * binge-overlay `addView` — a statement with no null dereference in it. The stack's TOP frame is
+ * `onViewCreated` (no framework frame above it), so the throw came from our own bytecode, yet the
+ * attributed line cannot throw. Line attribution inside this ~1400-line method therefore cannot be
+ * trusted to name an expression, and guessing from it risks fixing the wrong thing.
+ *
+ * NOTE for future triage: an earlier version of this comment claimed R8 had merged the ~12
+ * byte-identical `addView(x, LayoutParams(...))` statements. That was WRONG — checked against both
+ * the v4.2.8 and current mappings, all 12 sites get their own distinct mapping entries. Do not
+ * repeat that explanation.
+ *
+ * So [step] records where init actually got to, and [CrashLogger] prepends it to the saved crash
+ * entry — the next customer report names the failing section outright instead of relying on a line
+ * number we already know we cannot resolve.
  *
  * Cost is one volatile reference store per step — no allocation, no I/O. Safe on ULTRA_LOW devices.
  * Deliberately NOT written to the diagnostic log per-step: ~30 file writes on every playback start

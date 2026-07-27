@@ -56,10 +56,18 @@ Long-standing across 4+ versions, still present in the current build. **v4.2.9 d
 obfuscated, not a source line. Decoded with an authentic v4.2.8 mapping (rebuilt from commit `5fe3a4f`
 in a throwaway worktree, since the shipped mapping.txt had been overwritten): `obf 1699:1703 → original
 line 600`, frame `onViewCreated`. **But line 600 is `ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)`
-inside the SERIES-only binge-overlay `addView`, which cannot throw NPE — and that exact
-`addView(x, LayoutParams(...))` pattern repeats ~10 times VERBATIM in this 1430-line function**, which
-is precisely the code R8 merges. So the attribution is blurred across those sites. We know the method,
-not the expression.
+inside the SERIES-only binge-overlay `addView` — a statement containing no null dereference.** The
+stack's TOP frame is `onViewCreated` with no framework frame above it, so the throw came from our own
+bytecode, yet the attributed line provably cannot throw. The decode is internally inconsistent, so it
+cannot be used to name an expression. We know the method, not the statement.
+
+> **CORRECTION (same session).** An earlier version of this note, and of the first breadcrumb commit,
+> blamed the ambiguity on R8 merging the ~12 byte-identical `addView(x, LayoutParams(...))` statements
+> in this method. **That was wrong and is now disproven**: the v4.2.8 mapping shows distinct entries
+> per site (`1692:1698→598`, `1699:1703→600`, `1704:1706→598`), and the post-breadcrumb release
+> mapping shows all 12 sites resolving to 12 distinct non-overlapping ranges. R8 was never merging
+> them, so the breadcrumb's value is the breadcrumb itself — NOT an anti-merge structural fix.
+> Why the decode still points at an unthrowable line remains unexplained; that is the open question.
 
 Ruled out by inspection: all 4 `R.id.binge_*` exist in `overlay_binge_countdown.xml` (no missing-view
 findViewById NPE); no `ViewStub`/`include`; `viewModel` is `by viewModels()` and

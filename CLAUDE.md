@@ -322,9 +322,12 @@ Conventions for interpreting the exported debug report so customer reports aren'
 - **`Playback init: step=… type=… elapsedMs=… runs=…`** (added v4.2.9+, appears as the first line of a
   `CRASH` entry) — breadcrumb from `PlaybackInitTrace` naming which section of the ~1400-line
   `OoustreamPlaybackFragment.onViewCreated` was executing. Read it BEFORE the stack trace: a raw
-  obfuscated line inside that method is **not resolvable**, because R8 merges its ~10 byte-identical
-  `addView(x, LayoutParams(...))` statements (this is exactly why the Nawfatla1 NPE could not be
-  pinned even with an authentic rebuilt mapping). **`step=complete` means the fault was NOT in view
+  obfuscated line inside that method has proven **not resolvable** — the Nawfatla1 NPE decoded (via an
+  authentic rebuilt v4.2.8 mapping) to `ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)`, a
+  statement containing no null dereference, while the stack's top frame was `onViewCreated` itself.
+  Attribution inside this method is unreliable; do not name an expression from it. (An earlier note
+  blamed R8 merging the ~12 identical `addView` statements — that was checked and is FALSE, all 12
+  get distinct mapping entries. Don't repeat it.) **`step=complete` means the fault was NOT in view
   init** and the frame was misattributed — look elsewhere. `runs=` >1 on a single session means
   onViewCreated re-entered (fragment recreated), which is itself a lead.
 - **A blind 30.0-second `BUFFERING → IDLE` cadence in a pre-v4.2.9 log is the app tearing itself
