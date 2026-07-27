@@ -35,7 +35,16 @@ object CrashLogger {
         throwable.printStackTrace(PrintWriter(sw))
         val trace = redactSensitiveData(sw.toString())
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        val entry = "═══ CRASH $timestamp ═══\n${trace}\n"
+        // Playback-init breadcrumb. A stack frame inside the ~1400-line
+        // OoustreamPlaybackFragment.onViewCreated cannot be resolved to an expression from the
+        // obfuscated line alone (R8 merges its ~10 identical addView blocks), so record which
+        // section init had reached. `step=complete` means the fault was NOT in view init.
+        val breadcrumb = try {
+            "Playback init: ${PlaybackInitTrace.snapshot()}\n"
+        } catch (_: Throwable) {
+            ""
+        }
+        val entry = "═══ CRASH $timestamp ═══\n$breadcrumb${trace}\n"
 
         val file = File(context.filesDir, CRASH_FILE)
         val existing = if (file.exists()) file.readText() else ""

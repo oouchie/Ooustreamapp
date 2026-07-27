@@ -319,6 +319,19 @@ Conventions for interpreting the exported debug report so customer reports aren'
 - **Buffering diagnosis — refill time is the signal, not the bandwidth estimate.** `BUFFER_COMPLETE took=Nms` is how long a `BUFFERING→READY` refill took. Consistent 13–15s refills while `event=BANDWIDTH estimate=` peaks at 9–11Mbps means the estimate is catching bursts but **sustained throughput is low/unstable** = customer-side network bottleneck, not a device/app defect. Confirm with: `fps=24` when buffer is full but `fps=1–2` only when buffer is near-empty (`dropped=0`) → decoder is fine, player is starved. IPTV VOD/series are single-bitrate (no ABR rung to drop to), so a shrinking pipe can only buffer→drain→rebuffer. `DEVICE_TIER ... goodMtk=true` (e.g. mt8696/AFTKA) rules out a hardware-capability cause.
 - **Repeated `AUDIO_UNDERRUN` / `AUDIO_DISABLED` / `AUDIO_SINK_ERROR` usually ride on top of starvation** — the audio fallback ladder reacting to data not arriving in time (plus occasional source-stream timestamp discontinuities). Fix throughput first before treating these as an audio bug.
 - **`EPG_EMPTY` spam for all live channels is cosmetic/data, not a crash** — either a server-side EPG gap for that account or a fetch issue; never the cause of a crash/buffering report.
+- **`Playback init: step=… type=… elapsedMs=… runs=…`** (added v4.2.9+, appears as the first line of a
+  `CRASH` entry) — breadcrumb from `PlaybackInitTrace` naming which section of the ~1400-line
+  `OoustreamPlaybackFragment.onViewCreated` was executing. Read it BEFORE the stack trace: a raw
+  obfuscated line inside that method is **not resolvable**, because R8 merges its ~10 byte-identical
+  `addView(x, LayoutParams(...))` statements (this is exactly why the Nawfatla1 NPE could not be
+  pinned even with an authentic rebuilt mapping). **`step=complete` means the fault was NOT in view
+  init** and the frame was misattributed — look elsewhere. `runs=` >1 on a single session means
+  onViewCreated re-entered (fragment recreated), which is itself a lead.
+- **A blind 30.0-second `BUFFERING → IDLE` cadence in a pre-v4.2.9 log is the app tearing itself
+  down, not the stream dying** — `STALL_TIMEOUT_VOD_MS`. Count the gaps: if they are all exactly
+  30.0s, that is `startStallDetector()` discarding partial buffering on a slow-but-working load.
+  Fixed in v4.2.9 (progress-gated). On v4.2.9+ the same symptom logs `SOURCE_STALL` instead, which
+  only fires when `bufferedPosition` is genuinely static.
 
 ### Hotfixes (v3.3.x)
 - **Software video decoder fallback** (v3.3.2) — Frame watchdog auto-switches to software AVC decoder (`c2.android.*`/`OMX.google.*`) when hardware decoder fails to render frames. `rebuildPlayerWithSoftwareDecoder()` preserves position, listeners, glue. `AudioPipelineFactory.createSoftwareVideoRenderersFactory()` uses custom `MediaCodecSelector` that filters to software-only for video, keeps all decoders for audio.

@@ -55,6 +55,7 @@ import androidx.media3.ui.leanback.LeanbackPlayerAdapter
 import androidx.media3.ui.SubtitleView
 import com.ooustream.iptv.BuildConfig
 import com.ooustream.iptv.R
+import com.ooustream.iptv.common.PlaybackInitTrace
 import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.DeviceTier
 import com.ooustream.iptv.common.DeviceTierDetector
@@ -269,6 +270,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        PlaybackInitTrace.begin(viewModel.contentType.name)
 
         // Kill Leanback green: set BG_NONE immediately
         backgroundType = BG_NONE
@@ -292,12 +294,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // cache here made Home re-shimmer every return from playback. Let LRU do its job.
         // trimForPlayback() below applies tier-aware trimming only if needed.
 
+        PlaybackInitTrace.step("load-control")
         // AFTMM (mt8695, 1285MB RAM) has memoryClass ~160 but only 164-184MB actual heap.
         // 60s buffer at HIGH quality fills the heap and causes OOM in PlayerControlsBar.formatDuration().
         // See buildLoadControl() — shared with all three rebuild paths so they can never drift again.
         val loadControl = buildLoadControl()
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
 
+        PlaybackInitTrace.step("ffmpeg-check")
         // Verify FFmpeg extension loaded (native .so files from Jellyfin AAR)
         val ffmpegAvailable = AudioLogger.isFfmpegAvailable
         AudioLogger.log("FFmpeg available: $ffmpegAvailable")
@@ -307,6 +311,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             AudioLogger.log("WARNING: FFmpeg not loaded — AC3/DTS will use hardware decoder only")
         }
 
+        PlaybackInitTrace.step("track-selector")
         // DefaultTrackSelector: AAC first (cheapest, hardware-decoded), FFmpeg handles surround fallback
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(
@@ -342,6 +347,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         streamDiagnosticLogger.logAppEvent("PREBUFFER_GATE",
             "enabled=$preBufferEnabled, tier=$deviceTier, maxConnections=$maxConnections")
 
+        PlaybackInitTrace.step("resolution-pref")
         // Apply the tier-appropriate video resolution PREFERENCE. ULTRA_LOW/LOW prefer 1080p.
         // This does NOT block 4K: exceedVideoConstraintsIfNecessary defaults to true, so a
         // single-track 2160p IPTV stream is still selected (see DeviceTierDetector.maxVideoSize).
@@ -371,6 +377,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             AudioLogger.log("$deviceTier tier: forceHighestSupportedBitrate=true")
         }
 
+        PlaybackInitTrace.step("renderers-factory")
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
         // MTK devices: deprioritize OMX.MTK video decoders + async mode (black screen bug)
         val renderersFactory = AudioPipelineFactory.createMtkAwareRenderersFactory(requireContext())
@@ -379,6 +386,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             streamDiagnosticLogger.logAppEvent("MTK_DEVICE", "hw=${android.os.Build.HARDWARE}")
         }
 
+        PlaybackInitTrace.step("bandwidth-meter")
         // Bandwidth meter — shared with health monitor for real network throughput
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
@@ -402,6 +410,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
+        PlaybackInitTrace.step("audio-attrs")
         // Audio focus: ExoPlayer handles pause/duck/resume automatically
         player!!.setAudioAttributes(
             AudioAttributes.Builder()
@@ -425,6 +434,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             }
         })
 
+        PlaybackInitTrace.step("diag-listener")
         // Stream diagnostic listener — logs all ExoPlayer events to rolling file
         // Resolve content name: live TV uses channel list, VOD/Series uses streamName
         val initialContentName = if (viewModel.contentType == ContentType.LIVE) {
@@ -447,6 +457,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         diagnosticListener!!.onVideoDecoder = { name -> activeVideoDecoderName = name }
         player!!.addListener(diagnosticListener!!)
         player!!.addAnalyticsListener(diagnosticListener!!)
+        PlaybackInitTrace.step("art-backdrop")
         // Initial play is a guaranteed black moment — show the title art immediately.
         showBufferingOverlay(true, immediate = true)
 
@@ -465,6 +476,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         streamDiagnosticLogger.logAppEvent("CONTENT_TYPE", "type=${viewModel.contentType.name}, id=${viewModel.streamId}")
 
+        PlaybackInitTrace.step("health-monitor")
         // Playback health monitor — periodic buffer/memory/black screen checks
         healthMonitor = PlaybackHealthMonitor(streamDiagnosticLogger, lifecycleScope).apply {
             channelName = initialContentName
@@ -474,6 +486,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
 
         // [Fix 2.1] MediaSession: tells system media is active (screensaver defense + Now Playing)
+        PlaybackInitTrace.step("media-session")
         // Release any lingering session from a previous fragment instance
         mediaSession?.release()
         mediaSession = null
@@ -481,6 +494,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setId("ooustream_playback_${System.nanoTime()}")
             .build()
 
+        PlaybackInitTrace.step("bandwidth-warn")
         // Warn on low bandwidth before VOD/Series playback
         if (qualityPolicy.shouldWarnBeforeVod && viewModel.contentType != ContentType.LIVE) {
             Toast.makeText(requireContext(), "Low bandwidth detected. Playback may buffer.", Toast.LENGTH_LONG).show()
@@ -495,9 +509,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         wireGlueCallbacks(glue!!)
 
+        PlaybackInitTrace.step("trim-cache")
         // Trim image cache to free memory for video playback
         adaptiveImageLoader.trimForPlayback()
 
+        PlaybackInitTrace.step("analytics")
         // Record play event for analytics
         viewModel.recordPlayStart()
 
@@ -535,6 +551,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             if (forceBeginningArg) viewModel.hasResumed = true
         }
 
+        PlaybackInitTrace.step("overlay-zap")
         // Add channel zap overlay to fragment view hierarchy
         val overlay = ChannelZapOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -549,6 +566,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         zapOverlay = overlay
 
+        PlaybackInitTrace.step("overlay-banner")
         // Channel banner overlay for live TV (shows on channel switch)
         if (viewModel.contentType == ContentType.LIVE) {
             val banner = ChannelBannerOverlay(requireContext())
@@ -571,6 +589,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Kill green again after all overlays are added to the view hierarchy
         view.post { killAllGreen() }
 
+        PlaybackInitTrace.step("overlay-binge")
         // Add binge countdown overlay for series content
         if (viewModel.contentType == ContentType.SERIES) {
             val binge = BingeCountdownOverlay(requireContext())
@@ -614,11 +633,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             seriesCompleteOverlay = complete
         }
 
+        PlaybackInitTrace.step("sleep-timer")
         // Initialize sleep timer
         sleepTimerManager = SleepTimerManager(requireActivity() as FragmentActivity).apply {
             setPlayer(player!!)
         }
 
+        PlaybackInitTrace.step("overlay-stats")
         // Stream stats overlay (toggled via MENU key)
         val stats = StreamStatsOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -631,6 +652,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         stats.attachPlayer(player!!)
         statsOverlay = stats
 
+        PlaybackInitTrace.step("overlay-audio-only")
         // Audio-only overlay
         val audioOverlay = AudioOnlyOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -642,6 +664,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         audioOnlyOverlay = audioOverlay
 
+        PlaybackInitTrace.step("overlay-seek")
         // Seek feedback overlay (+10s / -10s)
         val seekOv = SeekFeedbackOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -684,6 +707,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         speedBadge = spdBadge
 
+        PlaybackInitTrace.step("overlay-track-picker")
         // Track picker overlay (audio + subtitle switching)
         val trackPicker = TrackPickerOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -762,6 +786,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         }
         trackPickerOverlay = trackPicker
 
+        PlaybackInitTrace.step("overlay-audio-status")
         // Audio status indicator (no audio track, unsupported codec)
         val audioStatus = AudioStatusOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -773,6 +798,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         )
         audioStatusOverlay = audioStatus
 
+        PlaybackInitTrace.step("overlay-watch-next")
         // Watch Next overlay for VOD end-of-movie suggestions
         if (viewModel.contentType == ContentType.VOD) {
             val watchNext = WatchNextOverlay(requireContext())
@@ -808,6 +834,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             watchNextOverlay = watchNext
         }
 
+        PlaybackInitTrace.step("overlay-remote-hints")
         // Remote control hints overlay (auto-dismiss)
         val hints = RemoteHintOverlay(requireContext())
         (view as? ViewGroup)?.addView(
@@ -825,6 +852,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         hints.showHints(hintText, 5000)
         hintsOverlay = hints
 
+        PlaybackInitTrace.step("scrim")
         // Replace default flat scrim with cinematic gradient
         view.findViewById<View>(androidx.leanback.R.id.playback_fragment_background)
             ?.setBackgroundResource(R.drawable.bg_playback_scrim)
@@ -1670,6 +1698,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 }
             }
         }
+
+        // Synchronous view init finished. A later crash reporting this frame with
+        // step=complete means the fault was NOT here — the frame was misattributed.
+        PlaybackInitTrace.complete()
     }
 
     // --- Playback Hardening Helpers ---
