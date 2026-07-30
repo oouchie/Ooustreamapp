@@ -395,6 +395,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
+            .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap: routes DV Profile 7 to the hardware HEVC decoder (see the
             // class doc). Only the MAIN player path is wrapped — the watchdog-rebuild paths below
             // stay unwrapped so, if the HW decoder ever chokes on a specific P7 encode, escalation
@@ -2527,6 +2528,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(swLoadControl)
+            .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
             // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
             // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after
@@ -2672,6 +2674,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
+            .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
             // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
             // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after
@@ -2771,6 +2774,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(ffmpegLoadControl)
+            .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
             // (DV P7→hevc, over-declared level normalization), orthogonal to which renderer decodes.
             // Leaving rebuilds unwrapped caused a real bug: the MTK 5.1-audio rebuild fired 3ms after

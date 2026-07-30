@@ -1,5 +1,6 @@
 package com.ooustream.iptv.common
 
+import android.graphics.drawable.Drawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,10 +11,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.annotation.DrawableRes
+import androidx.core.content.res.ResourcesCompat
 import androidx.leanback.widget.Presenter
 import com.facebook.shimmer.ShimmerFrameLayout
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.DeviceUtils
+import java.util.concurrent.ConcurrentHashMap
 
 data class PosterItem(
     val id: Int,
@@ -219,43 +223,62 @@ open class PosterPresenter : Presenter() {
          * Every movie gets a badge — SD is the fallback.
          */
         fun bindQualityBadge(badge: TextView, title: String, extension: String? = null) {
-            val upper = title.uppercase()
-            when {
-                upper.contains("4K") || upper.contains("UHD") || upper.contains("2160") -> {
-                    badge.text = "4K"
-                    badge.setTextColor(0xFF10B981.toInt())
-                    badge.setBackgroundResource(R.drawable.bg_quality_badge_4k)
-                }
-                upper.contains("FHD") || upper.contains("1080") ||
-                upper.contains("BLURAY") || upper.contains("BLU-RAY") ||
-                upper.contains("BRRIP") || upper.contains("BDRIP") -> {
-                    badge.text = "FHD"
-                    badge.setTextColor(0xFFFFC107.toInt())
-                    badge.setBackgroundResource(R.drawable.bg_quality_badge_hd)
-                }
-                upper.contains(" HD") || upper.contains("[HD]") || upper.contains("720") ||
-                upper.contains("WEB-DL") || upper.contains("WEBDL") ||
-                upper.contains("WEBRIP") || upper.contains("WEB-RIP") ||
-                upper.contains("HDTV") || upper.contains("HDRIP") ||
-                extension?.uppercase() == "MKV" -> {
-                    badge.text = "HD"
-                    badge.setTextColor(0xFFFFC107.toInt())
-                    badge.setBackgroundResource(R.drawable.bg_quality_badge_hd)
-                }
-                upper.contains("CAM") || upper.contains("HDCAM") ||
-                upper.contains("TELESYNC") || upper.contains(" TS ") ||
-                upper.contains("TELECINE") -> {
-                    badge.text = "CAM"
-                    badge.setTextColor(0xFFEF4444.toInt())
-                    badge.setBackgroundResource(R.drawable.bg_quality_badge_cam)
-                }
-                else -> {
-                    badge.text = "SD"
-                    badge.setTextColor(0xFF6B7280.toInt())
-                    badge.setBackgroundResource(R.drawable.bg_quality_badge_sd)
-                }
-            }
+            val label = resolveQualityLabel(title, extension)
+            badge.text = label
+            badge.setTextColor(badgeTextColor(label))
+            applyBadgeBackground(badge, badgeBackgroundRes(label))
             badge.visibility = View.VISIBLE
+        }
+
+        private fun badgeTextColor(label: String): Int = when (label) {
+            "4K" -> 0xFF10B981.toInt()
+            "FHD", "HD" -> 0xFFFFC107.toInt()
+            "CAM" -> 0xFFEF4444.toInt()
+            else -> 0xFF6B7280.toInt()
+        }
+
+        @DrawableRes
+        private fun badgeBackgroundRes(label: String): Int = when (label) {
+            "4K" -> R.drawable.bg_quality_badge_4k
+            // FHD deliberately shares the gold HD pill (pre-existing behaviour).
+            "FHD", "HD" -> R.drawable.bg_quality_badge_hd
+            "CAM" -> R.drawable.bg_quality_badge_cam
+            else -> R.drawable.bg_quality_badge_sd
+        }
+
+        /**
+         * Cached [Drawable.ConstantState] per badge background, keyed by resource id.
+         *
+         * `setBackgroundResource()` re-resolves the drawable on every bind, and on a cold
+         * start that means parsing the shape XML out of the APK. The v4.2.9 Home ANR froze
+         * exactly there — `AssetManager.nativeOpenXmlAsset` **while holding the AssetManager
+         * lock**, mid leanback layout pass, with kswapd thrashing. Parse each badge once,
+         * then hand every view its own cheap Drawable built from the shared constant state.
+         *
+         * A single Drawable instance must NOT be shared across recycled views: bounds and
+         * the callback are per-instance, so siblings would fight over them. `newDrawable()`
+         * is the cheap part — it allocates a wrapper over already-parsed state.
+         *
+         * Safe without a theme because all four badges are plain <shape>s with literal
+         * colors (no `?attr/` references) — verified.
+         */
+        private val badgeBackgrounds = ConcurrentHashMap<Int, Drawable.ConstantState>()
+
+        private fun applyBadgeBackground(badge: TextView, @DrawableRes resId: Int) {
+            val resources = badge.resources
+            badgeBackgrounds[resId]?.let { cached ->
+                badge.background = cached.newDrawable(resources)
+                return
+            }
+            // First touch for this badge in the process: resolve once, then cache.
+            val drawable = ResourcesCompat.getDrawable(resources, resId, badge.context.theme)
+            if (drawable == null) {
+                // Fail open — never lose the badge over a caching optimisation.
+                badge.setBackgroundResource(resId)
+                return
+            }
+            drawable.constantState?.let { badgeBackgrounds[resId] = it }
+            badge.background = drawable
         }
 
         /**

@@ -288,8 +288,15 @@ class HomeViewModel @Inject constructor(
                     } catch (_: Exception) { }
                 }
 
-                // Genre Rows: top 4 categories by user watch affinity, 15 items each
-                launch {
+                // Genre Rows: top 4 categories by user watch affinity, 15 items each.
+                // Dispatchers.Default is load-bearing, not tidiness: this block filters the
+                // FULL vod list once per candidate category and sorts each result, and a bare
+                // launch{} here inherits viewModelScope = Dispatchers.Main. That put a
+                // TimSort over the catalog on the main thread and was the frozen frame in a
+                // Home ANR (`TimSort.mergeLo` → `Double.parseDouble`). Moving it off-main also
+                // stops `_genreRows.value = ...` from resuming HomeFragment's Main.immediate
+                // collector *inline*, so row construction gets its own frame.
+                launch(Dispatchers.Default) {
                     try {
                         val categories = contentRepository.getVodCategories()
                         val filteredCats = contentFilterManager.filterCategories("vod", categories)
@@ -309,9 +316,15 @@ class HomeViewModel @Inject constructor(
                         val genreRows = catsByAffinity.mapNotNull { cat ->
                             val catStreams = vodStreams.filter { it.categoryId == cat.categoryId }
                             if (catStreams.size < 5) return@mapNotNull null
+                            // Decorate-sort-undecorate: `sortedByDescending { ... }` evaluates
+                            // its selector INSIDE the comparator, so a String→Double parse there
+                            // costs O(n log n) parses instead of n. Same shape as the affinity
+                            // sort above.
                             val scored = catStreams
-                                .sortedByDescending { it.rating?.toDoubleOrNull() ?: (it.rating5based?.times(2.0) ?: 0.0) }
+                                .map { it to (it.rating?.toDoubleOrNull() ?: (it.rating5based?.times(2.0) ?: 0.0)) }
+                                .sortedByDescending { it.second }
                                 .take(15)
+                                .map { it.first }
                             GenreRow(cat.categoryName, cat.categoryId, scored)
                         }.take(4)
 

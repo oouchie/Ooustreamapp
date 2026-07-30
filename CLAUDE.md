@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.9 (versionCode 97)
+- **Current Version**: 4.2.10 (versionCode 98)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -313,6 +313,30 @@ These features were scoped but deferred for a future release:
 - **Settings: Send Debug Log** — New action in SettingsFragment with confirmation dialog, optional issue description input, opens email chooser with pre-filled report. (`settings/SettingsFragment.kt`)
 - **App startup logging** — StreamDiagnosticLogger wired into NetworkMonitor at app start, APP_START event logged with version. (`OoustreamApp.kt`)
 
+### Reading crashes/ANRs off a stick over adb (no customer export needed)
+- **`run-as` does NOT work.** The shipped build is not debuggable (`run-as: package not debuggable`)
+  and the manifest sets `android:allowBackup="false"`, so `filesDir` — `crash_log.txt` and
+  `diagnostics/*.log` — is **unreachable over adb**. Those are only readable through the app's own
+  Settings → Crash Logs / Send Debug Log UI. Don't plan a triage around `adb ... cat files/...`.
+- **The adb route is `adb shell "dumpsys dropbox --print"`.** Filter `data_app_anr` / `data_app_crash`
+  plus `Package: com.ooustream.iptv`, then pull the `"main" prio` thread — and scope the extraction to
+  the ooustream `Cmd line:` block, because an ANR entry contains a thread dump for EVERY process (a
+  naive grep for our frames picks up background threads and misattributes the stall).
+- **Dropbox survives reboots; logcat does not.** A stick that rebooted before you connected has empty
+  `-b crash` / `-b events` buffers but intact dropbox history. Check `/proc/uptime` first.
+- **But dropbox retention on these sticks is only ~1 hour.** It caps at 1000 entries, and
+  `com.amazon.device.services` floods it with `system_app_wtf` — measured **993 entries in ~48
+  minutes** on .84, which evicted every ooustream ANR recorded earlier the same day. So *capture
+  immediately*; "no ooustream entries" may just mean the window rolled past them, NOT that there were
+  no ANRs. Always print the oldest surviving timestamp before concluding anything from an empty result.
+- Unlike `crash_log.txt`, dropbox entries **are** version-stamped (`Package: com.ooustream.iptv v97
+  (4.2.9)`) — trust that field. Their headers also carry `AppLaunchType`, `TimeSinceAppLaunch`,
+  `TimeSinceReboot`, `/proc/pressure/memory` and a per-process CPU table, which is usually what
+  distinguishes "our bug" from "this box is thrashing".
+- **ANRs read as "crashes" to users.** Twice now (v4.2.7, v4.2.10) a "the app keeps crashing" report
+  turned out to be `Input dispatching timed out … Waited 5000ms for KeyEvent` with zero
+  `data_app_crash`. Check which one it is before hunting for an exception.
+
 ### Debug-Log Triage Reference (reading customer `Repport.docx` exports)
 Conventions for interpreting the exported debug report so customer reports aren't misdiagnosed:
 - **The `RECENT CRASH LOG` section is NOT version-stamped.** It's a rolling file (`CrashLogger`) that survives app updates. The report **header** (`App: 3.8.0`) shows only the version installed *at export time*, NOT the version each crash ran on. Always line each `CRASH <date>` up against the ship dates in "Version Release History" before blaming the current build. (Real case: a customer on 3.8.0 had 5 `vod_grid` "Invalid item position -1" crashes that were all actually on 3.7.12, every one before the v3.7.13 fix shipped.) Only the per-session `DIAGNOSTIC LOG` blocks (which print `App Version:` in their header) tell you what version a given session ran on.
@@ -507,6 +531,68 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.10** — Live-TV rebuffer loop (Media3 stuck-detector false positive) + 3 Home ANR fixes
+  (versionCode 98). Triaged by **live instrumentation of two AFTKRT sticks (.82 / .84) running 4.2.9**,
+  not from a customer export. Two separate user reports: "still buffering" and "still crashing a lot".
+  **(1) Live TV rebuffered every ~2 minutes, forever.** Media3 1.10.0's `StuckPlayerDetector`
+  ships a `StuckPlayingNotEndingDetector` that arms once `isPlaying && duration != C.TIME_UNSET &&
+  position >= duration` and throws after `DEFAULT_STUCK_PLAYING_NOT_ENDING_TIMEOUT_MS` (60_000):
+  `StuckPlayerException: Player stuck playing without ending for 60000 ms`. Our live channels are
+  served as **progressive** media, so the extractor derives a finite **bogus duration (~60-70s)**;
+  playback sails past it and 60s later the detector fires → `onPlayerError` → generic retry ladder →
+  `showBufferingOverlay(true)` → `delay(RETRY_DELAYS_MS[0]=1s)` → re-`prepare()`. `STATE_READY` resets
+  `retryCount`, which is *why it repeats forever* instead of surfacing as a hard failure. Measured on
+  BOTH sticks: a metronomic **131.8s** period (.82: 23:47:00.1 → 23:49:11.9 → 23:51:23.6), each event
+  tearing both codecs down with ~1.5s to first frame. **Network was ruled out on-device:** the stream
+  arrived as a regular ~4MB burst every 5s (~5.5Mbps, matching the decoder's own
+  `bitrateInKbps=4600-6300`) with zero gaps, and a VOD in the same session held a healthy **28→64s**
+  buffer refilling at ~60Mbps (i.e. v4.2.9's load-control fix is confirmed working — this was a
+  different bug wearing the same symptom). **Fix:** new `player/PlayerStuckDetection.kt` —
+  `ExoPlayer.Builder.withoutBogusLiveDurationStuckDetection()` = `setStuckPlayingNotEndingTimeoutMs(
+  Int.MAX_VALUE)` (the setter asserts `> 0`, so there is **no disable sentinel**; MAX_VALUE ms ≈ 24.8
+  days). Applied at **all 7 stream-playing builder sites** — the 4 in `OoustreamPlaybackFragment`
+  (initial + all three `rebuildPlayerWith*`), both in `MultiViewPlayerManager`, and
+  `LivePreviewManager`. ONE shared function on purpose: hand-copied rebuild clones drifting from the
+  initial path is now a 4-time repeat offender (v3.6.3 cues, v4.2.5 DV wrap, v4.2.9 load control +
+  stats). Deliberately NOT gated to `ContentType.LIVE`: a VOD whose container advertises a wrong short
+  duration falls into the identical loop, and a provider-supplied duration isn't trustworthy. Only this
+  one detector is disabled; stuck-buffering / stuck-playing-no-progress / stuck-suppressed keep their
+  defaults, and we already own better signals (frame watchdog for STATE_READY, `SOURCE_STALL` for
+  STATE_BUFFERING). **(2) "Crashes" were ANRs on the Home screen — v4.2.7's fix did NOT close the
+  class.** All four `data_app_anr` records on .84 were `Input dispatching timed out … Waited 5000ms for
+  KeyEvent`, zero `data_app_crash` for our package. Three on 4.2.6, **one on 4.2.9** (07-29 17:07:55,
+  26s into a COLD launch 1 min after a reboot, with `kswapd0` at 38% CPU, **4,841 major faults**, and
+  `/proc/pressure/memory some avg10=31.54 full avg10=6.18`). Three distinct main-thread offenders,
+  each verified against HEAD and each fixed: **(a)** `PosterPresenter.bindQualityBadge` called
+  `setBackgroundResource()` on EVERY bind from `onBindViewHolder` — the 4.2.9 ANR froze in
+  `AssetManager.nativeOpenXmlAsset` **holding the AssetManager lock** mid leanback layout. Now caches
+  each badge's `Drawable.ConstantState` once and hands every view its own `newDrawable()` (sharing one
+  Drawable instance across recycled views is unsafe — bounds/callback are per-instance; safe without a
+  theme because all four badges are plain `<shape>`s with literal colors). Also collapsed the duplicated
+  quality when-chain into the existing `resolveQualityLabel()`. **(b)** `HomeViewModel` genre-row block
+  ran in a bare `launch {}` ⇒ inherited `viewModelScope` = **Dispatchers.Main**, filtering the FULL vod
+  list per candidate category and sorting each — one ANR froze in `TimSort.mergeLo` →
+  `Double.parseDouble`. Now `launch(Dispatchers.Default)`, plus decorate-sort-undecorate (
+  `sortedByDescending { }` evaluates its selector INSIDE the comparator, so a String→Double parse there
+  costs O(n log n) parses, not n). Moving it off-main also stops `_genreRows.value=` from resuming
+  HomeFragment's `Main.immediate` collector **inline**, so row construction gets its own frame.
+  **(c)** `HomeFragment.renderGenreRows` built up to 4 `HorizontalGridView`s + adapters in one
+  main-thread frame (two ANRs froze in `HorizontalGridView.<init>` and `TextView.setTypeface`). Now
+  extracted to `addGenreRow()` driven **one row per frame** via `awaitFrame()` from a cancellable
+  `genreRowsBuildJob` (cancelled on a newer emission so pending continuations can't append into a
+  just-cleared container). **ON-DEVICE VERIFIED on .84** (installed over the release build with
+  `install -r`, same keystore, user data preserved): 6m40s of continuous live TV → **zero**
+  `StuckPlayerException` (vs 3 expected in that window), zero codec teardowns, 76 unbroken 5s decoder
+  heartbeats, pid stable; Home genre rows ("2025 Movies", "4K Movies") render with content; all three
+  badge variants paint correctly (green 4K, gold HD, grey SD); no ANR or fatal in the session.
+  **Known-unfixed (pre-existing, out of scope):** the app measures ~330MB RSS during playback and
+  ~420MB after a full Home exercise, vs the CLAUDE.md budget of browsing <150MB / playback <200MB —
+  Home is still one `NestedScrollView` holding ~15 `HorizontalGridView`s, which is the structural
+  driver behind the memory pressure that triggers these ANRs. **Files:** new
+  `player/PlayerStuckDetection.kt`; modified `common/PosterPresenter.kt`, `home/HomeViewModel.kt`,
+  `home/HomeFragment.kt`, `player/OoustreamPlaybackFragment.kt`, `player/LivePreviewManager.kt`,
+  `multiview/MultiViewPlayerManager.kt`, `app/build.gradle.kts`, `update.json`.
 
 - **v4.2.9** — Buffer starvation after decoder rebuild + stall recovery + live stats (versionCode 97).
   Diagnosed by **live instrumentation of a running 4.2.8 session** on AFTKRT (mt8696, Fire TV Stick 4K

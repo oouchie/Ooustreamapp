@@ -70,6 +70,7 @@ import com.ooustream.iptv.settings.SettingsFragment
 import com.ooustream.iptv.vod.VodFragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.android.awaitFrame
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -117,6 +118,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
     private var heroGenreChip: TextView? = null
     private var heroContainer: View? = null
     private var kenBurnsJob: Job? = null
+    /** Per-frame genre-row builder; cancelled when a newer row set arrives. */
+    private var genreRowsBuildJob: Job? = null
 
     // Views
     private lateinit var heroBackdrop: ImageView
@@ -923,6 +926,10 @@ class HomeFragment : Fragment(), KeyEventHandler {
     }
 
     private fun renderGenreRows(rows: List<HomeViewModel.GenreRow>) {
+        // A newer emission supersedes any half-finished build — otherwise the pending
+        // per-frame continuations would keep appending rows into a container we just cleared.
+        genreRowsBuildJob?.cancel()
+
         // Prevent IllegalArgumentException in ViewRootImpl.performFocusNavigation —
         // if any child of this container currently has focus, removing it mid-navigation
         // crashes the focus system. Clear focus first.
@@ -940,78 +947,96 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val overscanMargin = resources.getDimensionPixelSize(R.dimen.overscan_margin)
         val rowHeight = resources.getDimensionPixelSize(R.dimen.row_trending_height)
 
-        for (row in rows) {
-            val label = TextView(requireContext()).apply {
-                text = row.genreName
-                setTextColor(resources.getColor(R.color.text_primary, null))
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setPadding(overscanMargin, 0, overscanMargin, 0)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = 24.dp }
+        // Build ONE row per frame. Each row constructs a HorizontalGridView (a RecyclerView
+        // plus a leanback GridLayoutManager) and its adapter; doing all four back-to-back is a
+        // single main-thread frame long enough to blow the 5s input-dispatch deadline under
+        // memory pressure — two Home ANRs froze inside this loop (`HorizontalGridView.<init>`
+        // and `TextView.setTypeface`). Yielding between rows keeps each frame short so key
+        // events still get delivered while the rows fill in.
+        genreRowsBuildJob = viewLifecycleOwner.lifecycleScope.launch {
+            rows.forEachIndexed { index, row ->
+                if (index > 0) awaitFrame()
+                addGenreRow(row, spacingMd, overscanMargin, rowHeight)
             }
-
-            val gridView = androidx.leanback.widget.HorizontalGridView(requireContext()).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    rowHeight
-                ).apply { topMargin = 12.dp }
-                setPadding(overscanMargin, 0, 0, 0)
-                clipToPadding = false
-                clipChildren = false
-                isFocusable = true
-                // Always false: with descendantFocusability=afterDescendants the row is a D-pad
-                // focus host on TV (isFocusable=true) and a transparent passthrough on touch
-                // (matches the static rows + the VOD/Series idiom). It must NOT be a touch-mode
-                // focus contender on either platform.
-                isFocusableInTouchMode = false
-                descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-                setItemSpacing(spacingMd)
-            }
-
-            val objectAdapter = ArrayObjectAdapter(PosterPresenter())
-            val posterItems = row.items.map { vod ->
-                com.ooustream.iptv.common.PosterItem(
-                    id = vod.streamId,
-                    title = vod.name,
-                    imageUrl = vod.streamIcon,
-                    rating = vod.rating,
-                    extension = vod.containerExtension,
-                    type = "vod",
-                    tmdbId = vod.tmdbId
-                )
-            }
-            objectAdapter.addAll(0, posterItems)
-
-            val bridge = ItemBridgeAdapter(objectAdapter)
-            bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
-                override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
-                com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
-                    val position = viewHolder.bindingAdapterPosition
-                    viewHolder.itemView.setOnClickListener {
-                        val item = objectAdapter.get(position) as? com.ooustream.iptv.common.PosterItem ?: return@setOnClickListener
-                        val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
-                            vodId = item.id,
-                            vodName = item.title,
-                            coverUrl = item.imageUrl,
-                            containerExtension = item.extension
-                        )
-                        requireActivity().supportFragmentManager.beginTransaction()
-                            .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
-                            .replace(R.id.main_container, fragment)
-                            .addToBackStack(null)
-                            .commit()
-                    }
-                    attachRowDimming(gridView, label, viewHolder, position)
-                }
-            })
-            gridView.adapter = bridge
-
-            genreRowsContainer.addView(label)
-            genreRowsContainer.addView(gridView)
         }
+    }
+
+    private fun addGenreRow(
+        row: HomeViewModel.GenreRow,
+        spacingMd: Int,
+        overscanMargin: Int,
+        rowHeight: Int
+    ) {
+        val label = TextView(requireContext()).apply {
+            text = row.genreName
+            setTextColor(resources.getColor(R.color.text_primary, null))
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(overscanMargin, 0, overscanMargin, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 24.dp }
+        }
+
+        val gridView = androidx.leanback.widget.HorizontalGridView(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                rowHeight
+            ).apply { topMargin = 12.dp }
+            setPadding(overscanMargin, 0, 0, 0)
+            clipToPadding = false
+            clipChildren = false
+            isFocusable = true
+            // Always false: with descendantFocusability=afterDescendants the row is a D-pad
+            // focus host on TV (isFocusable=true) and a transparent passthrough on touch
+            // (matches the static rows + the VOD/Series idiom). It must NOT be a touch-mode
+            // focus contender on either platform.
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            setItemSpacing(spacingMd)
+        }
+
+        val objectAdapter = ArrayObjectAdapter(PosterPresenter())
+        val posterItems = row.items.map { vod ->
+            com.ooustream.iptv.common.PosterItem(
+                id = vod.streamId,
+                title = vod.name,
+                imageUrl = vod.streamIcon,
+                rating = vod.rating,
+                extension = vod.containerExtension,
+                type = "vod",
+                tmdbId = vod.tmdbId
+            )
+        }
+        objectAdapter.addAll(0, posterItems)
+
+        val bridge = ItemBridgeAdapter(objectAdapter)
+        bridge.setAdapterListener(object : ItemBridgeAdapter.AdapterListener() {
+            override fun onBind(viewHolder: ItemBridgeAdapter.ViewHolder) {
+            com.ooustream.iptv.common.TouchGridSetup.stripItemFocusForTouch(viewHolder.itemView)
+                val position = viewHolder.bindingAdapterPosition
+                viewHolder.itemView.setOnClickListener {
+                    val item = objectAdapter.get(position) as? com.ooustream.iptv.common.PosterItem ?: return@setOnClickListener
+                    val fragment = com.ooustream.iptv.vod.VodDetailFragment.newInstance(
+                        vodId = item.id,
+                        vodName = item.title,
+                        coverUrl = item.imageUrl,
+                        containerExtension = item.extension
+                    )
+                    requireActivity().supportFragmentManager.beginTransaction()
+                        .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.FORWARD) }
+                        .replace(R.id.main_container, fragment)
+                        .addToBackStack(null)
+                        .commit()
+                }
+                attachRowDimming(gridView, label, viewHolder, position)
+            }
+        })
+        gridView.adapter = bridge
+
+        genreRowsContainer.addView(label)
+        genreRowsContainer.addView(gridView)
     }
 
     // ── Continue Watching Row ────────────────────────────────────────────

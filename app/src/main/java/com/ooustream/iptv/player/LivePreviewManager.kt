@@ -53,6 +53,7 @@ class LivePreviewManager(private val context: Context, private val okHttpClient:
             .setLoadControl(BufferConfigs.forContentType(ContentType.LIVE))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setTrackSelector(trackSelector!!)
+            .withoutBogusLiveDurationStuckDetection()
 
         player = builder.build().apply {
             // Muted browse preview: never take audio focus (don't duck/interrupt anything),

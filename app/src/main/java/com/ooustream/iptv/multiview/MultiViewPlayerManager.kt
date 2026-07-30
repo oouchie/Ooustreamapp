@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.AudioPipelineFactory
+import com.ooustream.iptv.player.withoutBogusLiveDurationStuckDetection
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
@@ -116,6 +117,7 @@ class MultiViewPlayerManager(
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
+            .withoutBogusLiveDurationStuckDetection()
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setPlaybackLooper(thread.looper)
             // Keep CPU+WiFi awake while live slots buffer (radio power-save mid-stall otherwise)
@@ -455,6 +457,7 @@ class MultiViewPlayerManager(
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
+            .withoutBogusLiveDurationStuckDetection()
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setPlaybackLooper(thread.looper)
             // Keep CPU+WiFi awake while live slots buffer (radio power-save mid-stall otherwise)

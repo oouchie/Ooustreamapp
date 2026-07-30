@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.9",
-  "version_code": 97,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.9/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.9 — Fixes repeated buffering on movies and series\n\n• Fixes movies and shows buffering over and over even on a fast connection. After the app switched audio or video decoders mid-title it was quietly cutting its own buffer in half, so it kept running dry. It now keeps the full buffer your device is capable of.\n\n• Fixes the app getting stuck on the loading spinner forever when a stream stops responding. It now notices within about 20 seconds, reconnects automatically, and only shows an error if reconnecting genuinely doesn't work.\n\n• The Stats screen now works during playback again — it was going blank after a decoder switch. It also shows your real measured network speed and a rebuffer counter, so buffering problems are much easier to pin down.\n\nIncludes all v4.2.7-4.2.8 (freeze/ANR, 4K binge) and v4.2.4-4.2.6 (4K, Dolby Vision, Dolby audio) fixes.",
+  "version_name": "4.2.10",
+  "version_code": 98,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.10/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.10/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.10/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.10 — Fixes live TV rebuffering every 2 minutes + Home screen freezes\n\n• Fixes live channels freezing for a second or two every couple of minutes, over and over, even on a fast connection. The app was mistakenly deciding a live channel had 'ended' and restarting it on a timer — roughly every 2 minutes, all night. Live TV now runs straight through. This also applies to MultiView and the channel preview.\n\n• Fixes the app freezing on the Home screen, usually right after opening it, where it stops responding to the remote and Fire TV offers to close it. Three separate pieces of Home screen work were running on the wrong thread and blocking the remote: the genre row sorting, building the genre rows themselves, and the quality badge on every poster card. All three are fixed.\n\nIncludes all v4.2.9 (buffering, stall recovery, stats) and v4.2.4-4.2.8 (4K, Dolby Vision, Dolby audio, freeze/ANR, 4K binge) fixes.",
   "mandatory": false
 }
