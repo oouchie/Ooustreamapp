@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.10 (versionCode 98)
+- **Current Version**: 4.2.11 (versionCode 99)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -420,7 +420,7 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
 | `auth/` | 2 | AuthViewModel, LoginFragment |
 | `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
-| `common/` | 39 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper, PhoneGuidedStepFragment, DeviceUtils, PhoneToolbarHelper, PhoneFeedback, ResumePlaybackHelper |
+| `common/` | 40 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, SessionIntegrityTracker, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper, PhoneGuidedStepFragment, DeviceUtils, PhoneToolbarHelper, PhoneFeedback, ResumePlaybackHelper |
 | `data/local/dao/` | 14 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao, BlockedCategoryDao, VodCastDao |
 | `data/local/entity/` | 16 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity, BlockedCategoryEntity, VodCastEntity |
 | `data/local/` | 1 | OoustreamDatabase (Room v10) |
@@ -531,6 +531,51 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.11** — Process-death visibility: crashes we could never see are now recorded (versionCode
+  99). **The problem:** `CrashLogger` hooks only `Thread.setDefaultUncaughtExceptionHandler`, so it
+  records an uncaught JVM `Throwable` and nothing else. The three things that actually end this
+  app's processes in the field are all invisible to it — **ANR** (no Throwable exists), **native
+  SIGSEGV** (dies inside FFmpeg/MediaCodec with no Java frame), and the **low-memory killer**
+  (SIGKILL, uncatchable). Firebase Crashlytics was wired up but had the same holes:
+  `firebase-crashlytics-ndk` was never a dependency. Net effect: a customer debug export could say
+  "no crashes" while the customer watched the app vanish repeatedly — which is exactly what
+  happened with kennywal (no crash section at all) and oneal738 (two entries, both ~5 months stale,
+  while he was reporting crashes that day). **Proof it was real:** the moment the new code ran on
+  .82 it recovered that stick's own hidden history — `PROCESS_EXIT reason=ANR, 2026-07-30 08:07:29,
+  pss=384MB`; `reason=LOW_MEMORY, 2026-08-06 11:02:06, pss=386MB`; `reason=LOW_MEMORY, 2026-08-06
+  12:33:23, pss=473MB`. **Two low-memory kills in one day on a 1.63GB AFTKRT**, none of which had
+  ever appeared in any report. That corroborates the known Home footprint problem (~420MB RSS after
+  a Home exercise; one `NestedScrollView` holding ~15 `HorizontalGridView`s) and is the mechanism
+  behind the recurring "app keeps crashing" tickets. **Fix — new `common/SessionIntegrityTracker.kt`**
+  (installed from `OoustreamApp.onCreate`), deliberately TWO mechanisms because they cover different
+  fleets: **(1) a liveness marker that works on EVERY API level** — a SharedPreferences flag set at
+  process start and cleared only in `onActivityDestroyed` when `isFinishing` (via `commit()`, not
+  `apply()`: a lost write here manufactures a phantom crash). Still set at the next launch ⇒
+  `UNCLEAN_SHUTDOWN` with last screen, foreground flag, session duration, version and free RAM.
+  **This is the one that covers the actual problem fleet — AFTSS and AFTDCT31 are API 28.**
+  **(2) `ApplicationExitInfo` on API 30+** — the system's authoritative reason plus the ANR thread
+  dump, deduped by timestamp so old exits aren't re-logged every launch. Foreground state is tracked
+  separately on purpose: Android evicting a *backgrounded* process is normal reclaim, logged quietly
+  as `BACKGROUND_EVICTION`; only a death while on screen is `UNCLEAN_SHUTDOWN`. Screen name comes
+  from ONE `registerActivityLifecycleCallbacks` + `registerFragmentLifecycleCallbacks(cb, true)`
+  inside the tracker — no per-fragment edits anywhere. **Also fixed in `CrashLogger`:** every entry
+  now carries `— vNAME (CODE)` (the file is rolling and survives app updates, so entries had no
+  version while the report header showed only what was installed at export time — that
+  misattribution burned two triages in one day); the split/join bug that ate the header off the
+  FIRST entry (`joinToString(DELIM)` used it as a *separator*; now `joinToString("") { DELIM + it }`,
+  which also retroactively repairs old files — verified: the previously headerless
+  `2026-07-21 09:57:31` entry came back with its `═══ CRASH ` prefix); and the write is now
+  temp-file + rename so a death mid-write can't truncate the one artifact we need. **Added
+  `firebase-crashlytics-ndk`** for native SIGSEGV capture (+1.20MB arm64 / +0.67MB armeabi).
+  **ON-DEVICE VERIFIED on .82** (AFTKRT, API 30, debug build via `run-as`): `am crash` →
+  `UNCLEAN_SHUTDOWN screen=HomeFragment, foreground=true, sessionLasted=50s, version=4.2.10 (98),
+  freeRam=535MB` + `PROCESS_EXIT reason=CRASH_JAVA`, dedup confirmed on the second launch, no
+  leftover `.tmp`. Gotchas found: `write()` in `StreamDiagnosticLogger` is **already**
+  `@Synchronized` (adding another fails with "This annotation is not repeatable"); `adb shell kill
+  -9 <pid>` is **not permitted** for another app's uid — use `am crash <pkg>` or `am force-stop`.
+  **Files:** new `common/SessionIntegrityTracker.kt`; modified `common/CrashLogger.kt`,
+  `OoustreamApp.kt`, `gradle/libs.versions.toml`, `app/build.gradle.kts`, `update.json`.
 
 - **v4.2.10** — Live-TV rebuffer loop (Media3 stuck-detector false positive) + 3 Home ANR fixes
   (versionCode 98). Triaged by **live instrumentation of two AFTKRT sticks (.82 / .84) running 4.2.9**,

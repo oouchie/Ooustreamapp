@@ -107,6 +107,10 @@ work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics-ktx" }
+# Native (SIGSEGV) crash capture. The Java SDK alone cannot see a crash inside the FFmpeg or
+# MediaCodec native layer — the process dies with no Java frame on the stack (v4.2.4 shipped a
+# fix for exactly one such crash, found only by reading a tombstone over adb).
+firebase-crashlytics-ndk = { group = "com.google.firebase", name = "firebase-crashlytics-ndk" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics-ktx" }
 firebase-storage = { group = "com.google.firebase", name = "firebase-storage-ktx" }
 

@@ -18,8 +18,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 98
-        versionName = "4.2.10"
+        versionCode = 99
+        versionName = "4.2.11"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -169,6 +169,7 @@ dependencies {
     // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.crashlytics.ndk)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.storage)
 

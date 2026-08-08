@@ -19,6 +19,7 @@ import com.ooustream.iptv.common.DpadSoundManager
 import com.ooustream.iptv.common.NetworkMonitor
 import com.ooustream.iptv.common.ProgressiveImageLoader
 import com.ooustream.iptv.common.QualityPolicy
+import com.ooustream.iptv.common.SessionIntegrityTracker
 import com.ooustream.iptv.common.StreamDiagnosticLogger
 import com.ooustream.iptv.recommendation.NewEpisodeSyncWorker
 import com.ooustream.iptv.recommendation.ScoreRefreshWorker
@@ -61,6 +62,11 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
         // focus and strands the user (Ooustick/Allwinner, v4.2.0-v4.2.3). Log the raw signals so a
         // debug-log export identifies a misclassified device immediately, without a live adb session.
         streamDiagnosticLogger.logAppEvent("DEVICE_CLASS", DeviceUtils.describe(this))
+        // CrashLogger only ever sees uncaught JVM exceptions. ANRs, native crashes and
+        // low-memory kills — the three things that actually end this app's processes in the
+        // field — leave it no trace at all, so a debug export can read "no crashes" while the
+        // customer watches the app vanish. This records why the PREVIOUS process died.
+        SessionIntegrityTracker.install(this, streamDiagnosticLogger)
 
         scheduleScoreRefresh()
         scheduleNewEpisodeSync()
