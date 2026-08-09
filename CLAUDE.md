@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.11 (versionCode 99)
+- **Current Version**: 4.2.12 (versionCode 100)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -531,6 +531,34 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.12** — Clean series/movie display titles (versionCode 100). From a user photo (IMG_9314):
+  player title read "The Closer (2005) - The Closer (2005) - S01E03 - The Big Picture - The Closer
+  (2005) - S01E02 - About Face". Two stacked defects in the binge path: (1)
+  `PlayerViewModel.buildNextResult` built `"$seriesName - $epTitle"` with no dedupe, but provider
+  episode titles already embed "Series (Year) - SxxEyy - Title"; (2) its series-name fallback was
+  `info.info?.name ?: streamName` — the CURRENT full display title — so titles compounded across
+  every episode advance AND were persisted into `watch_progress`, which Continue Watching re-served
+  forever. **Fix:** new shared `common/MediaTitleFormatter.kt` — `episodeTitle()` renders
+  "The Closer – About Face" (strips series-name occurrences, SxxEyy tokens since the "S1 E2" badge
+  already shows them, and the trailing catalog year from the series segment; falls back "Episode N");
+  `cleanDisplayTitle()` is the display-time retro-cleaner (exact-duplicate segment dedupe; for
+  series also SxxEyy strip + first+last-segment collapse for legacy compounded strings — the
+  current episode's title is always the final appended piece). Deliberately conservative: only
+  exact case-insensitive matches are ever removed, so "Mission: Impossible - Dead Reckoning" keeps
+  both halves. Used at BOTH build sites (`SeriesDetailFragment.playEpisode` — replaced its ad-hoc
+  prefix strip — and `buildNextResult`) and at display time (playback-fragment entry sanitizes
+  `streamName` for VOD/SERIES so legacy stored garbage displays clean and SELF-HEALS in the DB on
+  the next progress save; `ContinueWatchingPresenter` + `WatchItAgainPresenter` clean at bind).
+  A real `seriesName` now flows through `newInstance` (new optional arg, default "") into a new
+  `PlayerViewModel.seriesName` field; the fallback chain is API name → seriesName → first segment
+  of streamName — never the full streamName again. Verification: formatter logic unit-verified on
+  the JVM (9 cases incl. the exact screenshot string → "The Closer – About Face"); compileDebugKotlin
+  + assembleRelease clean. NOT device-verified at release time (display-only change). **Files:** new
+  `common/MediaTitleFormatter.kt`; modified `player/PlayerViewModel.kt`,
+  `player/OoustreamPlaybackFragment.kt`, `series/SeriesDetailFragment.kt`,
+  `home/ContinueWatchingPresenter.kt`, `home/WatchItAgainPresenter.kt`, `app/build.gradle.kts`,
+  `update.json`.
 
 - **v4.2.11** — Process-death visibility: crashes we could never see are now recorded (versionCode
   99). **The problem:** `CrashLogger` hooks only `Thread.setDefaultUncaughtExceptionHandler`, so it
