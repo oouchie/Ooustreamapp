@@ -41,6 +41,10 @@ class PlayerViewModel @Inject constructor(
     var seriesId: Int = 0
     var seasonNum: Int = 0
     var episodeNum: Int = 0
+    // Bare series name ("The Closer (2005)") for building next-episode display titles. streamName
+    // is the full display title and must NEVER be used as a series-name source — that's what used
+    // to compound titles across binge advances.
+    var seriesName: String = ""
 
     // Session cache of get_series_info so binge boundaries don't re-hit the network. Without this a
     // transient network blip made resolveNextEpisode() throw → null → a false "No more episodes" /
@@ -300,7 +304,7 @@ class PlayerViewModel @Inject constructor(
             // Try next episode in same season
             if (currentIdx + 1 < currentEpisodes.size) {
                 val next = currentEpisodes[currentIdx + 1]
-                return buildNextResult(next, info.info?.name ?: streamName)
+                return buildNextResult(next, resolvedSeriesName(info.info?.name))
             }
 
             // Try first episode of next season
@@ -309,7 +313,7 @@ class PlayerViewModel @Inject constructor(
                 val nextSeasonKey = sortedSeasons[currentSeasonIdx + 1]
                 val nextEpisodes = episodesMap[nextSeasonKey]
                 if (!nextEpisodes.isNullOrEmpty()) {
-                    return buildNextResult(nextEpisodes.first(), info.info?.name ?: streamName)
+                    return buildNextResult(nextEpisodes.first(), resolvedSeriesName(info.info?.name))
                 }
             }
 
@@ -319,12 +323,19 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Series name for display titles: API name → seriesName arg → first segment of streamName.
+     *  Never the full streamName — that compounds display titles across binge advances. */
+    private fun resolvedSeriesName(apiName: String?): String =
+        apiName?.takeIf { it.isNotBlank() }
+            ?: seriesName.ifBlank { streamName.substringBefore(" - ").substringBefore(" – ") }
+
     private fun buildNextResult(episode: com.ooustream.iptv.data.model.Episode, seriesName: String): NextEpisodeResult {
         val ext = episode.containerExtension ?: "mp4"
         val id = episode.id?.toIntOrNull() ?: 0
         val url = contentRepository.buildSeriesStreamUrl(id, ext)
-        val epTitle = episode.title ?: "E${episode.episodeNum}"
-        val name = "$seriesName - $epTitle"
+        val name = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
+            seriesName, episode.title, episode.episodeNum
+        )
         return NextEpisodeResult(
             url = url,
             episodeId = episode.id ?: "",

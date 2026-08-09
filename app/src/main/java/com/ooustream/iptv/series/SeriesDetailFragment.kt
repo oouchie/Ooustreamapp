@@ -311,14 +311,9 @@ class SeriesDetailFragment : Fragment() {
         val iconUrl = episode.info?.movieImage
             ?: viewModel.seriesInfo.value?.info?.cover ?: ""
         val episodeId = episode.id ?: ""
-        val epName = run {
-            val epTitle = episode.title ?: "E${episode.episodeNum}"
-            if (epTitle.startsWith(seriesName, ignoreCase = true)) {
-                epTitle.removePrefix(seriesName).trimStart(' ', '-', '–', '—').ifBlank { epTitle }
-            } else {
-                "$seriesName - $epTitle"
-            }
-        }
+        val epName = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
+            seriesName, episode.title, episode.episodeNum
+        )
         val progress = viewModel.episodeWatchProgress.value[episodeId]
         com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
             context = requireContext(),
@@ -333,7 +328,8 @@ class SeriesDetailFragment : Fragment() {
                 seriesId = seriesId,
                 seasonNum = episode.season ?: 0,
                 episodeNum = episode.episodeNum,
-                forceStartFromBeginning = forceBeginning
+                forceStartFromBeginning = forceBeginning,
+                seriesName = seriesName
             )
             requireActivity().supportFragmentManager.beginTransaction().apply {
                 FragmentTransitions.apply(this, TransitionDirection.PLAYER)

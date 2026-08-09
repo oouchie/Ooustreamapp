@@ -44,7 +44,9 @@ class WatchItAgainPresenter : Presenter() {
         val checkmark = root.findViewById<TextView>(R.id.wa_checkmark)
         val title = root.findViewById<TextView>(R.id.wa_title)
 
-        title.text = progress.name
+        title.text = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
+            progress.name, isSeries = progress.type == "series"
+        )
 
         // Checkmark badge is always visible (row only shows completed content)
         checkmark.visibility = View.VISIBLE

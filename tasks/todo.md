@@ -1,3 +1,42 @@
+# ACTIVE — Series/Movie title UI-UX cleanup (2026-08-08, from IMG_9314.JPG)
+
+Player title showed "The Closer (2005) - The Closer (2005) - S01E03 - The Big Picture - The Closer (2005) - S01E02 - About Face".
+
+Root causes:
+- `PlayerViewModel.buildNextResult` builds `"$seriesName - $epTitle"` with no dedupe — provider episode
+  titles already embed "Series (Year) - SxxEyy - Title", so every binge/next-episode advance stacks the
+  series name again.
+- Fallback `info.info?.name ?: streamName` uses the CURRENT full display title as the series name →
+  titles compound across episode transitions AND get persisted into `watch_progress` (Continue Watching
+  re-serves the garbage forever).
+- Season/episode badges are already rendered separately everywhere (controls bar "S1 E2", CW cards
+  "S1 E2 · Resume") so the title text never needs embedded SxxEyy tokens.
+
+## Plan
+- [x] New `common/MediaTitleFormatter.kt` — shared formatter:
+  - `episodeTitle(seriesName, rawEpisodeTitle, episodeNum)` → "Series – Episode Name" (strips series
+    name occurrences, SxxEyy tokens, trailing (year) on the series segment; falls back "Episode N")
+  - `cleanDisplayTitle(raw, isSeries)` → retro display cleanup for legacy stored names (segment dedupe,
+    SxxEyy strip for series, first+last heuristic for compounded legacy strings)
+- [x] `PlayerViewModel`: add `seriesName` field; `buildNextResult` uses formatter; fallback chain never
+  touches full `streamName` (uses `seriesName`, else first segment of streamName)
+- [x] `OoustreamPlaybackFragment.newInstance`: add `seriesName` arg; onCreate sanitizes incoming
+  streamName for VOD/SERIES (fixes legacy stored names at display time)
+- [x] `SeriesDetailFragment.playEpisode`: replace ad-hoc dedupe with formatter, pass seriesName
+- [x] `ContinueWatchingPresenter` + `WatchItAgainPresenter`: clean stored names at bind time
+- [x] Compile check (`:app:compileDebugKotlin`) — clean
+
+## Review (2026-08-08)
+- Formatter logic unit-verified via standalone JVM test (9 cases): the exact screenshot string
+  collapses to "The Closer – About Face"; legit hyphenated movie titles are untouched
+  ("Mission: Impossible – Dead Reckoning Part One" keeps both segments); duplicate-segment junk
+  deduped; missing episode titles fall back to "Episode N".
+- New saves write CLEAN names into watch_progress; legacy compounded rows are cleaned at display
+  time (player entry + CW/Watch-It-Again cards) and self-heal in the DB on the next progress save.
+- NOT device-verified on a stick yet.
+
+---
+
 # ACTIVE — v4.2.9: buffer starvation after decoder rebuild (AFTKRT)
 
 **Reported 2026-07-26**, live-captured on AFTKRT (mt8696, 192.168.1.82) running shipped 4.2.8.

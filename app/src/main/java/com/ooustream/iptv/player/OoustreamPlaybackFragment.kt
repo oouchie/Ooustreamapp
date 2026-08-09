@@ -4517,7 +4517,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             seriesId: Int = 0,
             seasonNum: Int = 0,
             episodeNum: Int = 0,
-            forceStartFromBeginning: Boolean = false
+            forceStartFromBeginning: Boolean = false,
+            seriesName: String = ""
         ): OoustreamPlaybackFragment {
             return OoustreamPlaybackFragment().apply {
                 arguments = Bundle().apply {
@@ -4526,6 +4527,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     putString("stream_id", streamId)
                     putString("stream_name", streamName)
                     putString("stream_icon", streamIcon)
+                    putString("series_name", seriesName)
                     putInt("series_id", seriesId)
                     putInt("season_num", seasonNum)
                     putInt("episode_num", episodeNum)
@@ -4543,9 +4545,18 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             viewModel.streamId = it.getString("stream_id", "")
             viewModel.streamName = it.getString("stream_name", "")
             viewModel.streamIcon = it.getString("stream_icon", "")
+            viewModel.seriesName = it.getString("series_name", "")
             viewModel.seriesId = it.getInt("series_id", 0)
             viewModel.seasonNum = it.getInt("season_num", 0)
             viewModel.episodeNum = it.getInt("episode_num", 0)
+        }
+        // Legacy watch_progress rows carry compounded titles ("Series - Series - S01E03 - ..."):
+        // sanitize at entry so the player displays a clean name AND the next progress save
+        // self-heals the stored row. LIVE channel names pass through untouched.
+        if (viewModel.contentType != ContentType.LIVE) {
+            viewModel.streamName = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
+                viewModel.streamName, isSeries = viewModel.contentType == ContentType.SERIES
+            )
         }
         // Consume channel list for live TV zapping
         if (viewModel.contentType == ContentType.LIVE) {

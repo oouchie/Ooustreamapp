@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.11",
-  "version_code": 99,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.11/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.11/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.11/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.11 — The app now records why it closed, so problems get fixed faster\n\n• When the app closes by itself, it now records the reason. Until now it could only record one narrow type of crash, so a debug log often came back empty even when the app really had been closing repeatedly — which made those problems very hard to track down. It now also captures freezes, closures caused by the device running out of memory, and video decoder crashes.\n\n• Crash records now include which app version they happened on. Older records didn't, so a problem that was already fixed months ago could look like it was still happening today.\n\n• If support asks you to send a debug log, it will now contain far more of what's actually needed.\n\nThere are no changes to playback or the interface in this update. All v4.2.4-v4.2.10 fixes (live TV rebuffering, Home screen freezes, 4K and Dolby playback, buffering) are included.",
+  "version_name": "4.2.12",
+  "version_code": 100,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.12 — Clean titles for series and movies\n\n• Series episodes now show a clean title like \"The Closer – About Face\" instead of a long repeated string like \"The Closer (2005) - The Closer (2005) - S01E03 - ...\". The season and episode number still appear in their own badge.\n\n• When episodes advance automatically (binge watching), the next episode's title no longer stacks the series name on top of the previous title. This bug also saved the messy names into your Continue Watching row — those now display clean and fix themselves as you watch.\n\n• Movie titles with duplicated words from the provider are also cleaned up.\n\nAll v4.2.4-v4.2.11 fixes (live TV rebuffering, Home screen freezes, 4K and Dolby playback, buffering, crash reporting) are included.",
   "mandatory": false
 }
