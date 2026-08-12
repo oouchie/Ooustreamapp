@@ -34,7 +34,17 @@ object AudioPipelineFactory {
      * media3's DefaultAudioSink.Builder.build() can access Build.SOC_MODEL (API 31+)
      * which throws NoSuchFieldError on API < 31 when R8 strips the API level guard.
      * Falls back to deprecated constructor which avoids the SOC_MODEL check.
+     *
+     * PCM-ONLY SINK — Dolby passthrough deliberately disabled. The no-context Builder()
+     * pins AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES (PCM only, no EDID probe), so
+     * supportsFormat(eac3/ac3/dts) == false and the renderer always decodes to PCM →
+     * ChannelMixingAudioProcessor downmix applies. With Builder(context), the sink reads
+     * the HDMI sink's EDID: a Dolby-advertising TV/soundbar flips EAC3/AC3 to compressed
+     * HDMI passthrough, whose AudioTrack can stall after a seek and freeze the playback
+     * clock (The Closer stall, proven on-device 2026-08-08). A null context only costs
+     * API-34 virtual-device routing — irrelevant on TV sticks.
      */
+    @Suppress("DEPRECATION")
     private fun buildAudioSinkSafely(
         context: Context,
         downmixer: ChannelMixingAudioProcessor,
@@ -42,7 +52,7 @@ object AudioPipelineFactory {
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink {
         return try {
-            DefaultAudioSink.Builder(context)
+            DefaultAudioSink.Builder()
                 .setEnableFloatOutput(enableFloatOutput)
                 .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain(downmixer))
@@ -53,7 +63,7 @@ object AudioPipelineFactory {
             // Retry without custom audio processor chain (may bypass the SOC_MODEL path).
             AudioLogger.log("DefaultAudioSink.Builder.build() failed: ${e.javaClass.simpleName}, using fallback without downmixer")
             try {
-                DefaultAudioSink.Builder(context)
+                DefaultAudioSink.Builder()
                     .setEnableFloatOutput(enableFloatOutput)
                     .build()
             } catch (e2: Throwable) {

@@ -334,7 +334,7 @@ class PlayerViewModel @Inject constructor(
         val id = episode.id?.toIntOrNull() ?: 0
         val url = contentRepository.buildSeriesStreamUrl(id, ext)
         val name = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
-            seriesName, episode.title, episode.episodeNum
+            seriesName, episode.title, episode.episodeNum, seasonNum = episode.season ?: 0
         )
         return NextEpisodeResult(
             url = url,

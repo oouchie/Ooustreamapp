@@ -1626,9 +1626,13 @@ class HomeFragment : Fragment(), KeyEventHandler {
         val dataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
-        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-            setEnableDecoderFallback(true)
-        }
+        // Shared audio pipeline, not a bare DefaultRenderersFactory: the trailer plays audible
+        // Dolby (these 4K titles carry EAC3 5.1) and a context-built AudioSink reads the HDMI
+        // EDID and bitstreams it as passthrough — the same path that freezes playback after a
+        // seek (v4.2.13). It also made merely browsing Home flip the TV/soundbar into Dolby.
+        // The shared factory decodes to PCM and downmixes to stereo.
+        val renderersFactory = com.ooustream.iptv.common.AudioPipelineFactory
+            .createRenderersFactory(context)
         val player = ExoPlayer.Builder(context)
             .setRenderersFactory(renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)

@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.12",
-  "version_code": 100,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.12/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.12 — Clean titles for series and movies\n\n• Series episodes now show a clean title like \"The Closer – About Face\" instead of a long repeated string like \"The Closer (2005) - The Closer (2005) - S01E03 - ...\". The season and episode number still appear in their own badge.\n\n• When episodes advance automatically (binge watching), the next episode's title no longer stacks the series name on top of the previous title. This bug also saved the messy names into your Continue Watching row — those now display clean and fix themselves as you watch.\n\n• Movie titles with duplicated words from the provider are also cleaned up.\n\nAll v4.2.4-v4.2.11 fixes (live TV rebuffering, Home screen freezes, 4K and Dolby playback, buffering, crash reporting) are included.",
+  "version_name": "4.2.13",
+  "version_code": 101,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.13 — Shows that froze mid-episode now keep playing\n\n• Fixed the freeze where a show would stop with the picture stuck but no error — most often after resuming, and most often on Dolby shows. The app now decodes Dolby audio itself instead of passing it straight to your TV or soundbar, which is what was locking up. This also clears up the misleading \"video format not supported\" message that appeared afterward.\n\n• Season and episode numbers now appear in the title on every screen — \"The Closer – S1 E3 – The Big Picture\" — including the player, Continue Watching, and Watch It Again.\n\n• New Ooustream logo across the app, matching our website.\n\nNote for surround-sound setups: audio is now sent as high-quality stereo rather than Dolby bitstream to your receiver. Tell us if you'd like a setting to choose.",
   "mandatory": false
 }

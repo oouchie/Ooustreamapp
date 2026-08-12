@@ -39,7 +39,25 @@ soundbar). This RETROACTIVELY EXPLAINS v4.2.6/v3.7.3/v3.3.3: the "hardware audio
 mt8695 was very likely passthrough stalling — the FFmpeg-preferred rebuild "fixed" it because
 FfmpegAudioRenderer outputs PCM, which cannot take the passthrough path.
 
-## Fix direction (NOT yet implemented)
+## Fix status (2026-08-11): IMPLEMENTED, awaiting device verification
+`AudioPipelineFactory.buildAudioSinkSafely` now uses the no-context `DefaultAudioSink.Builder()`
+(both main + fallback paths). Verified against the local Media3 1.10.0 clone: with a Context the
+Builder IGNORES setAudioCapabilities (`AudioTrackAudioOutputProvider.Builder(context)` probes EDID
+dynamically); with null context capabilities pin to `DEFAULT_AUDIO_CAPABILITIES` = PCM-only, no
+capabilities receiver, `supportsFormat(eac3/ac3/dts)==false` → decode → downmix → PCM out. Null
+context only costs API-34 virtual-device routing (irrelevant on TV). One shared function → all 7
+player build sites covered. compileDebugKotlin + assembleDebug clean.
+**Recurrence evidence:** report `2026-08-10_19-26-Oouchie-DL-23049E80.txt` (AFTKRT 3a6fa453c50e472e,
+4.2.12 — a DIFFERENT stick from the 08-08 report device, both distinct from .82/.84): (1) 16:33
+"Show Yourself" AUDIO_STALL silent=15s on eac3 2ch mid-episode, recovered ~30s via stall ladder +
+hard reset; (2) 19:24 "Flashpoint" resume@7:42 → frozen clock after seek → watchdog burned HW→SW→
+FFmpeg decoders → SLIDESHOW_GIVE_UP → false "video format not supported" dialog. Same signature.
+**Verification pending:** stick with Dolby-advertising HDMI sink. On 2026-08-11 21:30 EDT: .82 was
+mid-viewing (hands off), .84 powered off, .214 off-network. Verify = play/resume-seek an EAC3 title;
+expect logcat `AudioALSAStreamManager audio_output` format pcm (not eac3), position advances past
+every seek.
+
+## Fix direction (original, NOT yet implemented as of 08-08)
 Force decode-to-PCM in `AudioPipelineFactory` (DefaultAudioSink built with PCM-only audio
 capabilities so `supportsFormat(eac3/ac3/dts)==false` → renderer decodes via FFmpeg/MediaCodec →
 existing downmix chain applies). Consistent with the app's stereo-downmix design. Tradeoff: AVR/

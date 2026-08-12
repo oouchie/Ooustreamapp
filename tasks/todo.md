@@ -431,3 +431,43 @@ Measured before fix: focus parked on `top10_row` with 0 focusable descendants; 5
       and `layout-television/fragment_{vod,series,live_tv}.xml` (currently plain `RecyclerView`
       instead of Leanback `VerticalGridView` → focus-driven EPG loading + preview-on-dwell never fire).
 - [ ] Consider a unit test on `DeviceUtils.computeIsTv` signal fusion (no test infra in repo today).
+
+## Session 2026-08-11 — EAC3 passthrough fix + inline S/E titles (pre-release v4.2.13 work)
+
+Triggered by report `2026-08-10_19-26-Oouchie-DL-23049E80.txt.pdf` ("closer keeps stopping") +
+user request "series must show season and episode number on all displays".
+
+- [x] Triage report: EAC3 passthrough stall recurred TWICE on a third AFTKRT (3a6fa453c50e472e,
+      4.2.12) — 16:33 mid-episode 15s AUDIO_STALL (eac3 2ch); 19:24 resume-seek frozen clock →
+      watchdog burned decoders → FALSE "video format not supported" dialog.
+- [x] Implement PCM-only audio sink: `AudioPipelineFactory.buildAudioSinkSafely` → no-context
+      `DefaultAudioSink.Builder()` (Media3 1.10 verified: context Builder IGNORES
+      setAudioCapabilities; null context pins DEFAULT_AUDIO_CAPABILITIES = PCM-only). One shared
+      function covers all player build sites. Tradeoff accepted: AVR users get stereo PCM, no
+      bitstream Dolby (Settings toggle deferred).
+- [x] Inline S/E in every series title: `MediaTitleFormatter.episodeTitle` + `cleanDisplayTitle`
+      now render "The Closer – S1 E3 – About Face"; caller S/E wins > raw token w/ season >
+      partial caller. 5 call sites updated (SeriesDetailFragment, PlayerViewModel,
+      ContinueWatching/WatchItAgain presenters, playback-fragment entry sanitizer).
+- [x] JVM-verified formatter: 13/13 cases (incl. legacy compound collapse, idempotency,
+      v4.2.12-era stored strings + caller S/E, VOD untouched).
+- [x] compileDebugKotlin + assembleDebug clean.
+- [x] DEVICE-VERIFIED on .82 (AFTKRT, Dolby-advertising sink), RELEASE/R8 build: every AudioTrack is
+      `format: 2` (PCM 16-bit) 2ch — previously `format: 6` (E_AC3) + `audio_output: hdmi, eac3, 6ch`.
+      3 seek bursts each advanced the clock at speed=1.0; zero AUDIO_STALL / WATCHDOG / crash.
+- [x] FOUND DURING VERIFICATION: a 2nd passthrough source the sink fix did NOT cover —
+      `HomeFragment.startHeroPreview` built a bare DefaultRenderersFactory, and the 4K hero titles
+      carry EAC3 5.1, so idling on Home bitstreamed Dolby. Now uses the shared factory. Splash
+      (`IntroSplashFragment`) audited + left alone: res/raw/intro.mp4 is AAC 2ch (ffprobe).
+- [x] Device-walked the new titles + logo: CW cards show "Power – S1 E4 – …", "The Closer – S1 E8 –
+      …", "Snowfall – S6 E8 – …"; header + center logos render the new lockup correctly.
+- [x] Released v4.2.13 (vc101).
+
+### Follow-ups from this session (NOT done)
+- [ ] Optional Settings toggle "Dolby passthrough: Off (default) / Auto" for AVR/soundbar owners who
+      want bitstream Dolby back. Only if someone asks — correctness beat format here.
+- [ ] Consider making the brand lockup a real view (mark ImageView + TextViews) instead of a raster,
+      matching the portal's live-text rationale (sharp at any DPR, can never ship a typo). Would
+      replace the 11 `android:src="@drawable/logo_full"` slots with an `<include>`.
+- [ ] The other two sticks were unreachable this session (.84 powered off, .214 off-network) — the
+      EAC3 fix is verified on ONE device/sink combination only.

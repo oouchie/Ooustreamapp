@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.12 (versionCode 100)
+- **Current Version**: 4.2.13 (versionCode 101)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -531,6 +531,58 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.13** — ROOT-CAUSE FIX: EAC3 HDMI passthrough freeze + inline S/E titles + new brand lockup
+  (versionCode 101). **ON-DEVICE VERIFIED on .82** (AFTKRT mt8696, HDMI sink that advertises Dolby),
+  release/R8 build. **(1) The freeze.** Customer report `2026-08-10_19-26-Oouchie-DL-23049E80.txt`
+  (a THIRD AFTKRT, `3a6fa453c50e472e`, on 4.2.12) showed the 2026-08-08 passthrough stall twice in
+  one day: 16:33 "The Closer — Show Yourself" `AUDIO_STALL silent=15001ms mime=audio/eac3 ch=2`
+  mid-episode (recovered ~30s via the ladder + hard reset), and 19:24 "Flashpoint" resumed at 7:42 →
+  frozen clock right after the resume-seek → the VIDEO watchdog burned HW → SW → FFmpeg
+  (`WATCHDOG_MTK_SW_FALLBACK`, `MediaCodecVideoRenderer error` ×3) → `WATCHDOG_SLIDESHOW_GIVE_UP` →
+  a FALSE "video format not supported" dialog. **Video was never the fault** — see
+  `[[project_eac3_passthrough_stall]]`. **Fix:** `AudioPipelineFactory.buildAudioSinkSafely` now
+  builds the sink with the **no-context** `DefaultAudioSink.Builder()`. Verified against the local
+  Media3 1.10.0 clone: `Builder(context)` **ignores** `setAudioCapabilities` (it hands
+  `AudioTrackAudioOutputProvider` the context so it probes the HDMI EDID live, and installs a
+  capabilities receiver); the no-arg builder pins `DEFAULT_AUDIO_CAPABILITIES`, whose only profile is
+  `AudioProfile(C.ENCODING_PCM_16BIT, …)` — so `supportsFormat(eac3/ac3/dts)` is false, the renderer
+  must decode, and the existing ChannelMixing downmix applies. Null context costs only API-34
+  virtual-device routing (irrelevant on a stick). One shared function ⇒ all four factory variants and
+  every rebuild path ([[project_rebuild_clone_drift]]). **(1b) The Home hero trailer was a second,
+  unguarded passthrough source** — found only because the release build still logged
+  `audio_output: hdmi, format: eac3, channels: 6` after the sink fix: `HomeFragment.startHeroPreview`
+  built a **bare** `DefaultRenderersFactory`, and the 4K hero titles carry EAC3 5.1, so merely
+  sitting on Home bitstreamed Dolby to the TV. Now uses the shared factory. (`IntroSplashFragment`
+  audited and deliberately left alone — `res/raw/intro.mp4` is AAC 2ch, ffprobe-confirmed.)
+  **Verification:** every `AudioTrack` is now `format: 2` (PCM 16-bit) 2ch — trailer AND main player,
+  on the same 6ch-EAC3 title that produced `format: 6` before; three seek bursts each advanced the
+  clock with `speed=1.0`; zero `AUDIO_STALL` / `WATCHDOG` / crash. **Tradeoff (deliberate):** AVR and
+  soundbar users get stereo PCM instead of bitstream Dolby. A "Dolby passthrough: Off / Auto" setting
+  is the follow-up if anyone asks; correctness over format first. **(2) Season/episode inline on
+  every display.** v4.2.12 stripped `SxxEyy` on the assumption a badge showed it — but only Continue
+  Watching has that badge; the player title and Watch It Again have none. `MediaTitleFormatter` now
+  RENDERS the token as its own segment ("The Closer – S1 E3 – The Big Picture"). Precedence, in
+  order: caller season+episode → a token parsed from the raw string (it carries a real season) →
+  partial caller info. `episodeTitle()` and `cleanDisplayTitle()` both take `seasonNum`/`episodeNum`;
+  all 5 call sites pass them (`SeriesDetailFragment.playEpisode`, `PlayerViewModel.buildNextResult`,
+  the playback-fragment entry sanitizer, ContinueWatching + WatchItAgain presenters). Idempotent, so
+  re-cleaning a clean title is a no-op and legacy compounded strings still collapse. JVM-verified
+  13/13 (incl. the screenshot string, VOD untouched, "Mission: Impossible" keeping both halves).
+  **(3) New brand lockup on every screen.** The app was shipping the legacy raster logo, which
+  carries the misspelled tagline "**Seamiess** Streaming Technology" — the exact typo the portal's
+  `BrandLockup.tsx` was built to escape. Regenerated `logo_full.png` to match that lockup (TV mark on
+  a cyan-ringed tile + "OOUStream" with OOU in the `#00d4ff`→`#7c3aed` gradient + "IPTV · LIVE TV",
+  **no tagline**), rendered from the portal's own `logo-mark.png` and its real Space Grotesk 700 /
+  JetBrains Mono 600 webfonts. One drawable feeds all 11 screens. `app_banner`/`tv_banner`
+  regenerated too (they carried the same typo onto the Fire TV home row). **Also fixed:** the 7
+  `header_center_logo` slots used `android:scaleType="center"`, which draws at native pixel size —
+  with a correctly-sized asset that overflowed the header badly on device; changed to `fitCenter`
+  (the right behavior for a logo, and the old logo only "worked" because ~64% of its canvas was
+  transparent padding). **Files:** `common/AudioPipelineFactory.kt`, `common/MediaTitleFormatter.kt`,
+  `home/HomeFragment.kt`, `home/ContinueWatchingPresenter.kt`, `home/WatchItAgainPresenter.kt`,
+  `player/PlayerViewModel.kt`, `player/OoustreamPlaybackFragment.kt`, `series/SeriesDetailFragment.kt`,
+  7 layout XMLs, 3 drawables, `app/build.gradle.kts`, `update.json`.
 
 - **v4.2.12** — Clean series/movie display titles (versionCode 100). From a user photo (IMG_9314):
   player title read "The Closer (2005) - The Closer (2005) - S01E03 - The Big Picture - The Closer

@@ -4555,7 +4555,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // self-heals the stored row. LIVE channel names pass through untouched.
         if (viewModel.contentType != ContentType.LIVE) {
             viewModel.streamName = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
-                viewModel.streamName, isSeries = viewModel.contentType == ContentType.SERIES
+                viewModel.streamName, isSeries = viewModel.contentType == ContentType.SERIES,
+                seasonNum = viewModel.seasonNum, episodeNum = viewModel.episodeNum
             )
         }
         // Consume channel list for live TV zapping

@@ -312,7 +312,7 @@ class SeriesDetailFragment : Fragment() {
             ?: viewModel.seriesInfo.value?.info?.cover ?: ""
         val episodeId = episode.id ?: ""
         val epName = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
-            seriesName, episode.title, episode.episodeNum
+            seriesName, episode.title, episode.episodeNum, seasonNum = episode.season ?: 0
         )
         val progress = viewModel.episodeWatchProgress.value[episodeId]
         com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(

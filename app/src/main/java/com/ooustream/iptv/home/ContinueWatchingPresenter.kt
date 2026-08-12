@@ -39,7 +39,8 @@ class ContinueWatchingPresenter : Presenter() {
         val timeLeft = root.findViewById<TextView>(R.id.cw_time_left)
 
         title.text = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
-            progress.name, isSeries = progress.type == "series"
+            progress.name, isSeries = progress.type == "series",
+            seasonNum = progress.seasonNum ?: 0, episodeNum = progress.episodeNum ?: 0
         )
 
         // Series subtitle: "S1 E2 · Up Next" or "S1 E2 · Resume"
