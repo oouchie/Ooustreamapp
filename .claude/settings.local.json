@@ -399,7 +399,31 @@
       "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'am force-stop com.ooustream.iptv')",
       "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'input keyevent 20; sleep 1; input keyevent 23')",
       "Bash(ffprobe -v error -select_streams a -show_entries stream=codec_name,channels -of csv=p=0 app/src/main/res/raw/intro.*)",
-      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'dumpsys package com.ooustream.iptv | grep versionName | head -1; dumpsys activity activities | grep mResumedActivity | head -1')"
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'dumpsys package com.ooustream.iptv | grep versionName | head -1; dumpsys activity activities | grep mResumedActivity | head -1')",
+      "Bash(pdftotext -layout /Users/oouchiebates/Downloads/2026-08-11_19-41-oneal738-DL-7DBA8754.txt.pdf /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/oneal738.txt)",
+      "Bash(sort -t= -k2 -n)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'run-as com.ooustream.iptv cat files/crash_log.txt')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'am crash com.ooustream.iptv')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'am start -a android.intent.action.VIEW -d '\\\\''ooustream://live/51725'\\\\'' com.ooustream.iptv'2)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'input keyevent 19')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell screencap -p /sdcard/z1.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 pull /sdcard/z1.png /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/zap1.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'run-as com.ooustream.iptv sh -c '\\\\''ls -t files/diagnostics/ | head -2'\\\\''')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'run-as com.ooustream.iptv sh -c '\\\\''cat files/diagnostics/$\\(ls -t files/diagnostics/ | head -1\\)'\\\\''')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'input keyevent 19; input keyevent 19; input keyevent 19; input keyevent 19; input keyevent 19')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'input keyevent 4')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'dumpsys activity activities | grep mResumedActivity | head -1')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell screencap -p /sdcard/lt.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 pull /sdcard/lt.png /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/livetv.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'input keyevent 21')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell screencap -p /sdcard/sb.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 pull /sdcard/sb.png /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/sidebar.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'am start -a android.intent.action.VIEW -d '\\\\''ooustream://live/51725'\\\\'' com.ooustream.iptv')",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell screencap -p /sdcard/a.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 pull /sdcard/a.png /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/before.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell screencap -p /sdcard/b.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 pull /sdcard/b.png /private/tmp/claude-501/-Users-oouchiebates-1865-Free-Money-Projects-Ooustreamapp/1952f3ad-e1bc-4679-a3f6-8315917f6511/scratchpad/after.png)",
+      "Bash(/Users/oouchiebates/Library/Android/sdk/platform-tools/adb -s 192.168.1.82:5555 shell 'pidof com.ooustream.iptv; dumpsys activity activities | grep mResumedActivity | head -1')"
     ]
   }
 }

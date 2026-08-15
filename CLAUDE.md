@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.13 (versionCode 101)
+- **Current Version**: 4.2.14 (versionCode 102)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -531,6 +531,40 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.14** — Death records survive to the export: mirror ANR/native/LMK into the crash log
+  (versionCode 102). **Device-verified on .82.** **The problem:** two "the app keeps crashing"
+  reports on 2026-08-13 — td2733 (mt8696, v4.2.13) and gamalieland (AFTKA, v4.2.12), **both API 28**
+  — came back with NO death record for that week, while both still carried a **February** stack
+  trace from `crash_log.txt`. That asymmetry is the whole bug. `SessionIntegrityTracker` (v4.2.11)
+  wrote `UNCLEAN_SHUTDOWN` / `PROCESS_EXIT` **only** to `StreamDiagnosticLogger`, which rotates —
+  and the record is emitted at the start of the session **after** the death, so a customer whose
+  app vanished, reopened it and kept watching had already rotated the evidence away before
+  exporting. `crash_log.txt` is rolling but NOT time-based and survives app updates, which is
+  exactly why six-month-old traces outlive this week's kills. **Fix:** new
+  `CrashLogger.recordEvent(context, label, details)` writes a non-exception entry through the same
+  append path (temp-file + rename, DELIM re-prefixing). The delimiter stays literally
+  `"═══ CRASH "` so older files still split correctly; the kind is appended to the header instead
+  (`═══ CRASH <ts> — v4.2.14 (102) — UNCLEAN_SHUTDOWN ═══`). `appendEntry` is now `@Synchronized`
+  — the uncaught handler and the session-integrity worker are different threads doing
+  read-modify-write on one file. `MAX_CRASHES` 5 → **12** so a run of low-memory kills cannot evict
+  every real stack trace. **Deliberately filtered** to actual defects: `UNCLEAN_SHUTDOWN`, plus
+  exits with reason ANR / CRASH_NATIVE / LOW_MEMORY / EXCESSIVE_RESOURCES / SIGNALED /
+  INIT_FAILURE. `CRASH_JAVA` is **excluded** (the uncaught handler already wrote it *with* a stack
+  trace — duplicating would evict a real trace from the capped file); reboots and backgrounded
+  evictions stay diagnostic-only since both are normal and would bury the genuine entries; the ANR
+  thread dump stays in the diagnostic log, only the one-line record has to survive.
+  **ON-DEVICE VERIFIED on .82** (AFTKRT, debug build via `run-as`): `am crash` → untagged entry
+  with stack trace at 20:38:25 → relaunch appended `— UNCLEAN_SHUTDOWN screen=OoustreamPlaybackFragment,
+  foreground=true, sessionLasted=41265s, version=4.2.13 (101), freeRam=577MB` at 20:38:31; **zero**
+  `PROCESS_EXIT` lines reached `crash_log.txt` (CRASH_JAVA and USER_REQUESTED both correctly
+  excluded) while all three remained in the diagnostic log; July and August entries survived the
+  write, confirming the raised cap. **Also learned this session (not a code change):**
+  `StreamDiagnosticLogger.rotateIfNeeded` compares `now - file.lastModified()`, and every write
+  refreshes `lastModified` — so an actively-used log **never** ages out (gamalieland's single file
+  spans 10.7 hours) while an idle app spawns near-empty stubs. Real behaviour is "one file per
+  usage burst", NOT the documented 30-min/90-min window. **Files:** `common/CrashLogger.kt`,
+  `common/SessionIntegrityTracker.kt`, `app/build.gradle.kts`, `update.json`.
 
 - **v4.2.13** — ROOT-CAUSE FIX: EAC3 HDMI passthrough freeze + inline S/E titles + new brand lockup
   (versionCode 101). **ON-DEVICE VERIFIED on .82** (AFTKRT mt8696, HDMI sink that advertises Dolby),

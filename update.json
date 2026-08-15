@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.13",
-  "version_code": 101,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.13/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.13 — Shows that froze mid-episode now keep playing\n\n• Fixed the freeze where a show would stop with the picture stuck but no error — most often after resuming, and most often on Dolby shows. The app now decodes Dolby audio itself instead of passing it straight to your TV or soundbar, which is what was locking up. This also clears up the misleading \"video format not supported\" message that appeared afterward.\n\n• Season and episode numbers now appear in the title on every screen — \"The Closer – S1 E3 – The Big Picture\" — including the player, Continue Watching, and Watch It Again.\n\n• New Ooustream logo across the app, matching our website.\n\nNote for surround-sound setups: audio is now sent as high-quality stereo rather than Dolby bitstream to your receiver. Tell us if you'd like a setting to choose.",
+  "version_name": "4.2.14",
+  "version_code": 102,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.14 — \"Send Debug Log\" now tells us why the app closed\n\n• If the app ever closes on its own, it now records the reason — which screen you were on, how long the app had been open, and how much memory was free — and keeps that record until you send it to us.\n\n• Before this, that information was stored in a file that got overwritten as you kept watching, so reports from people whose app was closing often arrived with nothing in them. If the app has been shutting down on you, please send a debug log from Settings and we'll finally be able to see the cause.\n\n• No change to playback or picture quality.\n\nIncludes everything from v4.2.13: the fix for shows freezing mid-episode on Dolby titles, season and episode numbers on every screen, and the new logo.",
   "mandatory": false
 }

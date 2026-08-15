@@ -471,3 +471,52 @@ user request "series must show season and episode number on all displays".
       replace the 11 `android:src="@drawable/logo_full"` slots with an `<include>`.
 - [ ] The other two sticks were unreachable this session (.84 powered off, .214 off-network) — the
       EAC3 fix is verified on ONE device/sink combination only.
+
+## Session 2026-08-14 — Four customer reports + crash-log persistence (v4.2.14)
+
+### Report triage (all four read)
+- **oneal738** (AFTDCT31 m7632, tier=LOW, v4.2.12) — "buffering". Playing ONLY "4K:" catalog
+  titles: 3840x2160, 18/20 tracks Dolby Vision `dvhe.08.06`, DTS-HD 6ch decoded in SOFTWARE by
+  FFmpeg. 52 rebuffers, refills 8–28s. Bandwidth peaked **97Mbps** and healthy stretches held a
+  25s buffer at 24fps — so not a thin pipe. Hard failures were 5× `ECONNREFUSED` to the provider
+  CDN (74.119.149.61:80). **App-side gap:** `RESOLUTION_CAP maxRes=1920x1080` was logged and then
+  2160p played anyway — the known `setMaxVideoSize`-is-only-a-preference limitation
+  ([[project_maxvideosize_doesnt_block_4k]]). `VideoDecoderCapability` won't refuse because the
+  device CAN decode it. Gap = "can decode but shouldn't" on a 1080p-class stick. Advise customer
+  to avoid the 4K rows.
+- **stefanig** (mt8695, 900MB, ULTRA_LOW, v4.2.13) — genuine starvation: 4 `SOURCE_STALL`,
+  refills to 30s, bandwidth ceiling ~11.8Mbps. Customer-side network. Also confirms the v4.2.13
+  title format working in the field ("Theoretical Herpes – S1 E4 – Literal Dragons").
+- **td2733** (mt8696, v4.2.13) + **gamalieland** (AFTKA, v4.2.12) — both "crashing", both API 28,
+  and **neither export contained a crash** → drove the fix below.
+
+### Done
+- [x] Root-caused the empty crash reports: `SessionIntegrityTracker` wrote death records only to
+      the rotating diagnostic log, and emits them at the start of the session AFTER the death.
+- [x] `CrashLogger.recordEvent()` + mirroring, `@Synchronized` append, MAX_CRASHES 5→12,
+      filtered to real defects (CRASH_JAVA excluded — already has a stack trace).
+- [x] Device-verified on .82 via `run-as` (am crash → trace entry, relaunch → UNCLEAN_SHUTDOWN
+      with screen/foreground/duration/version/freeRam; zero PROCESS_EXIT leakage).
+- [x] Released v4.2.14 (vc102).
+
+### Investigated, NOT reproduced
+- [ ] User report: "channel scrolling — the channel number changes but the picture doesn't"
+      (fullscreen CH+/CH−). **Could not reproduce on AFTKRT/4.2.13**: single zap tuned + rendered
+      in ~800ms, and a before/after screenshot diff measured mean pixel delta 100.9 (whole frame
+      changed). `buildLiveUrl(channel)` correctly uses `channel.streamId`; `channelSwitchJob` is
+      only cancelled by re-arm and onDestroyView. **Leading explanation: the deliberate 300ms
+      debounce in `debouncedTune`** — the number/overlay update per keypress but the tune only
+      commits 300ms after the LAST press, so while scrolling the picture intentionally stays put.
+      Keep the debounce (it exists so scrolling past N channels doesn't open N streams — the
+      v4.2.1 551 connection-limit fix), but: **`onZapConfirm` currently only dismisses the overlay
+      — pressing OK should commit the pending tune immediately.** Awaiting the user's device +
+      version and whether the picture catches up after they stop pressing.
+
+### Follow-ups (carried forward)
+- [ ] 4K on non-4K devices: consider gating the "4K:" catalog by device tier / display, since the
+      resolution cap provably does not hold.
+- [ ] `StreamDiagnosticLogger.rotateIfNeeded` uses `lastModified`, which every write refreshes —
+      an active log never ages out (10.7h single file observed) and an idle app makes stub files.
+      Behaviour does not match the documented 30-min/90-min window; decide intended semantics.
+- [ ] Still outstanding from v4.2.13: optional "Dolby passthrough: Off/Auto" setting; brand
+      lockup as a live-text view; EAC3 fix verified on only one device/sink.
