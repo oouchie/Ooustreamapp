@@ -73,6 +73,17 @@ object SessionIntegrityTracker {
     private const val EVENT_REBOOT = "SESSION_ENDED_BY_REBOOT"
     private const val EVENT_EXIT = "PROCESS_EXIT"
 
+    /**
+     * Exit reasons worth copying into the persistent crash log — the ones that mean something
+     * went wrong. The everyday reasons (USER_REQUESTED, USER_STOPPED, EXIT_SELF, OTHER,
+     * DEPENDENCY_DIED, and the routine reclaim ones) are left in the diagnostic log only, or
+     * they would evict the entries we actually came to read. CRASH_JAVA is absent on purpose:
+     * the uncaught handler already recorded it with a full stack trace.
+     */
+    private val PERSISTED_EXIT_REASONS = setOf(
+        "ANR", "CRASH_NATIVE", "LOW_MEMORY", "EXCESSIVE_RESOURCES", "SIGNALED", "INIT_FAILURE"
+    )
+
     /** Clocks drift a little across a boot; anything under this is the same boot. */
     private const val BOOT_EPOCH_TOLERANCE_MS = 10_000L
 
@@ -198,6 +209,14 @@ object SessionIntegrityTracker {
             else -> EVENT_BACKGROUND
         }
         logger.logAppEvent(event, details)
+        // Mirror the real deaths into the PERSISTENT crash log. logAppEvent alone was not enough:
+        // it writes to the rotating diagnostic log, and this record is emitted at the start of
+        // the session AFTER the death — so a customer who reopens the app and keeps watching
+        // rotates it away before exporting. Only EVENT_UNCLEAN qualifies; a reboot and a
+        // backgrounded eviction are both normal and would bury the genuine entries.
+        if (event == EVENT_UNCLEAN) {
+            CrashLogger.recordEvent(context, EVENT_UNCLEAN, details)
+        }
     }
 
     /**
@@ -223,13 +242,20 @@ object SessionIntegrityTracker {
             if (info.timestamp <= lastSeen) return@forEach
             if (info.timestamp > newest) newest = info.timestamp
 
-            logger.logAppEvent(
-                EVENT_EXIT,
-                "reason=${reasonName(info.reason)}, at=${stamp.format(Date(info.timestamp))}, " +
-                    "status=${info.status}, importance=${info.importance}, " +
-                    "pss=${info.pss / 1024}MB, rss=${info.rss / 1024}MB, " +
-                    "desc=${info.description ?: "-"}"
-            )
+            val reason = reasonName(info.reason)
+            val details = "reason=$reason, at=${stamp.format(Date(info.timestamp))}, " +
+                "status=${info.status}, importance=${info.importance}, " +
+                "pss=${info.pss / 1024}MB, rss=${info.rss / 1024}MB, " +
+                "desc=${info.description ?: "-"}"
+            logger.logAppEvent(EVENT_EXIT, details)
+            // Same rotation problem as above — mirror to the persistent crash log, but only the
+            // reasons that indicate a defect. CRASH_JAVA is deliberately excluded: the uncaught
+            // handler already wrote that entry, with a stack trace, and duplicating it would
+            // evict a real trace from the capped file. The ANR thread dump stays in the
+            // diagnostic log; this entry is the one-line record that has to survive.
+            if (reason in PERSISTED_EXIT_REASONS) {
+                CrashLogger.recordEvent(context, "PROCESS_EXIT", details)
+            }
             appendTraceIfPresent(info, logger)
         }
 

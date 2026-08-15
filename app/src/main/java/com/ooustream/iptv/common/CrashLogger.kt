@@ -13,11 +13,25 @@ import java.util.Locale
  * Catches uncaught exceptions and saves the stack trace to a file.
  * The default handler still runs so the app crashes normally.
  * Crash logs can be viewed from Settings > Crash Logs.
+ *
+ * Also the persistent home for [SessionIntegrityTracker]'s death records (see [recordEvent]).
+ * That mattered: those records used to be written ONLY to [StreamDiagnosticLogger], which is a
+ * rotating log, and they are emitted at the start of the session AFTER the death — so a customer
+ * whose app vanished, reopened it and kept watching had already rotated the evidence away by the
+ * time they exported. Two "it keeps crashing" reports on 2026-08-13 (td2733, gamalieland) came
+ * back with zero death records for that week while still carrying a February crash from this
+ * file, which is exactly the asymmetry: this file is rolling but NOT time-based, and survives app
+ * updates.
  */
 object CrashLogger {
 
     private const val CRASH_FILE = "crash_log.txt"
-    private const val MAX_CRASHES = 5
+
+    /**
+     * Raised from 5 when session-integrity records started sharing this file — a run of
+     * low-memory kills would otherwise evict every real stack trace before it was ever read.
+     */
+    private const val MAX_CRASHES = 12
 
     /**
      * Entry separator. Must be used both to split existing entries apart AND to re-prefix each
@@ -45,7 +59,6 @@ object CrashLogger {
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
         val trace = redactSensitiveData(sw.toString())
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         // Playback-init breadcrumb. A stack frame inside the ~1400-line
         // OoustreamPlaybackFragment.onViewCreated cannot be resolved to an expression from the
         // obfuscated line alone — the v4.2.8 NPE decoded to a line that provably cannot throw — so
@@ -56,12 +69,40 @@ object CrashLogger {
         } catch (_: Throwable) {
             ""
         }
+        appendEntry(context, tag = null, body = "$breadcrumb$trace")
+    }
+
+    /**
+     * Records a death that produced no `Throwable` — an ANR, a native crash, or a low-memory
+     * kill — into the same persistent file as real crashes, so it survives long enough to reach
+     * a customer's debug export. Called by [SessionIntegrityTracker]; keep the details to a
+     * single short line, stack traces and ANR thread dumps stay in the diagnostic log.
+     *
+     * Safe to call from any thread and must never throw: the caller is a diagnostics path
+     * running during cold start, and its failure must not be the reason the app dies.
+     */
+    fun recordEvent(context: Context, label: String, details: String) {
+        runCatching { appendEntry(context, tag = label, body = redactSensitiveData(details)) }
+    }
+
+    /**
+     * Read-modify-write of the shared file, so it is `@Synchronized`: the uncaught-exception
+     * handler and the session-integrity worker are different threads and can otherwise race,
+     * losing whichever entry wrote first.
+     */
+    @Synchronized
+    private fun appendEntry(context: Context, tag: String?, body: String) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         // Stamp the build into every entry. crash_log.txt is a rolling file that SURVIVES app
         // updates, so an entry carries no version unless we write one — and the report header
         // only shows what is installed at export time. That mismatch has twice sent triage
         // chasing a current build for a crash that actually ran months earlier on an old one.
         val build = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
-        val entry = "$DELIM$timestamp — v$build ═══\n$breadcrumb${trace}\n"
+        // The DELIM stays literally "═══ CRASH " for every entry so old files still split
+        // correctly; the kind is appended to the header instead. An entry with no tag is a real
+        // uncaught exception.
+        val kind = if (tag != null) " — $tag" else ""
+        val entry = "$DELIM$timestamp — v$build$kind ═══\n$body\n"
 
         val file = File(context.filesDir, CRASH_FILE)
         val existing = if (file.exists()) file.readText() else ""
