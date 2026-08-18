@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.14",
-  "version_code": 102,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.14/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.14 — \"Send Debug Log\" now tells us why the app closed\n\n• If the app ever closes on its own, it now records the reason — which screen you were on, how long the app had been open, and how much memory was free — and keeps that record until you send it to us.\n\n• Before this, that information was stored in a file that got overwritten as you kept watching, so reports from people whose app was closing often arrived with nothing in them. If the app has been shutting down on you, please send a debug log from Settings and we'll finally be able to see the cause.\n\n• No change to playback or picture quality.\n\nIncludes everything from v4.2.13: the fix for shows freezing mid-episode on Dolby titles, season and episode numbers on every screen, and the new logo.",
+  "version_name": "4.2.15",
+  "version_code": 103,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.15/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.15/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.15/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.15 — A clear answer when a title isn't available\n\n• Sometimes a show or season appears in the guide but your provider hasn't actually uploaded it yet. Until now that came up as a confusing \"Server returned error 400. Try again\" — so you'd keep retrying something that was never going to play.\n\n• Now the app tells you plainly: the title isn't available from your provider right now, try another one or let them know. No more guessing, and no more retrying a dead end.\n\n• We also tightened up how the app builds video links, so a bad or incomplete listing can't turn into a broken link behind the scenes.\n\n• No change to playback or picture quality.\n\nIncludes everything from v4.2.14 and v4.2.13: the closing-app reporting in Send Debug Log, the fix for shows freezing mid-episode on Dolby titles, season and episode numbers on every screen, and the new logo.",
   "mandatory": false
 }
