@@ -7,6 +7,7 @@ import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Episode
 import com.ooustream.iptv.data.model.Season
 import com.ooustream.iptv.data.model.SeriesInfo
+import com.ooustream.iptv.data.model.StreamUrlBuilder
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -120,10 +121,19 @@ class SeriesDetailViewModel @Inject constructor(
         _episodes.value = eps
     }
 
-    fun buildEpisodeUrl(episode: Episode): String {
-        val ext = episode.containerExtension ?: "mp4"
-        val id = episode.id?.toIntOrNull() ?: 0
-        return contentRepository.buildSeriesStreamUrl(id, ext)
+    /**
+     * Stream URL for an episode, or null when the provider's listing is unusable (missing or
+     * non-numeric id). Extension validation happens at the choke point in [StreamUrlBuilder].
+     *
+     * Returning null instead of the old `?: 0` fallback means a broken listing fails with an honest
+     * message rather than requesting stream `0` and surfacing the panel's reply as a server error.
+     */
+    fun buildEpisodeUrl(episode: Episode): String? {
+        val id = StreamUrlBuilder.episodeStreamId(episode.id) ?: run {
+            Log.w(TAG, "Unplayable episode listing: id=${episode.id} title=${episode.title}")
+            return null
+        }
+        return contentRepository.buildSeriesStreamUrl(id, StreamUrlBuilder.sanitizeExt(episode.containerExtension))
     }
 
     private suspend fun loadWatchProgress(seriesId: Int) {

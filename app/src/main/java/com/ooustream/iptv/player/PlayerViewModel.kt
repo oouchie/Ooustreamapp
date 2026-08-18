@@ -329,10 +329,19 @@ class PlayerViewModel @Inject constructor(
         apiName?.takeIf { it.isNotBlank() }
             ?: seriesName.ifBlank { streamName.substringBefore(" - ").substringBefore(" – ") }
 
-    private fun buildNextResult(episode: com.ooustream.iptv.data.model.Episode, seriesName: String): NextEpisodeResult {
-        val ext = episode.containerExtension ?: "mp4"
-        val id = episode.id?.toIntOrNull() ?: 0
-        val url = contentRepository.buildSeriesStreamUrl(id, ext)
+    /**
+     * Null when the next episode's listing carries no usable stream id — the caller treats that the
+     * same as "no more episodes", which is honest: a listing we cannot build a URL for is not
+     * playable. Previously this coerced a bad id to `0` and handed back a URL that was not only
+     * unplayable but got PERSISTED into `watch_progress.extra` by [insertUpNextRow], so one bad
+     * listing seeded a permanently broken Continue Watching row.
+     */
+    private fun buildNextResult(episode: com.ooustream.iptv.data.model.Episode, seriesName: String): NextEpisodeResult? {
+        val id = com.ooustream.iptv.data.model.StreamUrlBuilder.episodeStreamId(episode.id) ?: return null
+        val url = contentRepository.buildSeriesStreamUrl(
+            id,
+            com.ooustream.iptv.data.model.StreamUrlBuilder.sanitizeExt(episode.containerExtension)
+        )
         val name = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
             seriesName, episode.title, episode.episodeNum, seasonNum = episode.season ?: 0
         )

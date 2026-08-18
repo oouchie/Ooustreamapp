@@ -1298,8 +1298,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 else -> alternateContainerUrl(viewModel.streamUrl)
                             }
                             if (altUrl == null) {
-                                streamDiagnosticLogger.logAppEvent("UNPLAYABLE_SOURCE",
-                                    "extRetryTried=false, noAlt=true, channel=${healthMonitor?.channelName ?: "unknown"}")
+                                logFailFast(error, "extRetryTried=false, noAlt=true")
                                 showFriendlyError(failFastMessage)
                                 return@launch
                             }
@@ -1314,8 +1313,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         }
                         return
                     }
-                    streamDiagnosticLogger.logAppEvent("UNPLAYABLE_SOURCE",
-                        "extRetryTried=true, channel=${healthMonitor?.channelName ?: "unknown"}")
+                    logFailFast(error, "extRetryTried=true")
                     showFriendlyError(failFastMessage)
                     return
                 }
@@ -1905,19 +1903,49 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      * CAN be a wrong listed container extension, so these share the alternate-ext retry.
      */
     private fun isDeterministicHttpError(error: PlaybackException): Boolean {
+        val code = httpStatusOf(error) ?: return false
+        return (code in 400..499 && code != 408 && code != 429) || code == 551
+    }
+
+    /**
+     * HTTP status from an `InvalidResponseCodeException` anywhere in the cause chain, or null when
+     * the failure wasn't an HTTP response at all. Reflection avoids a hard dependency on the nested
+     * class shape, matching [causeChainMessage].
+     */
+    private fun httpStatusOf(error: Throwable): Int? {
         var cause: Throwable? = error.cause
         var depth = 0
         while (cause != null && depth < 6) {
             if (cause.javaClass.name == "androidx.media3.datasource.HttpDataSource\$InvalidResponseCodeException") {
-                val code = runCatching {
+                return runCatching {
                     cause!!.javaClass.getField("responseCode").getInt(cause)
-                }.getOrNull() ?: return false
-                return (code in 400..499 && code != 408 && code != 429) || code == 551
+                }.getOrNull()
             }
             cause = cause.cause
             depth++
         }
-        return false
+        return null
+    }
+
+    /**
+     * Records a fail-fast source failure under the event name that identifies its CAUSE.
+     *
+     * A 400 on a well-formed stream URL is the provider refusing to serve a listed title — the same
+     * defect as the HTTP-200-empty-`text/html` case that already logs `PROVIDER_DEAD_LISTING`, just
+     * a different signature (see [causeChainMessage]). Logging both under one event means a customer
+     * debug export identifies the provider as the cause immediately, instead of a bare
+     * `UNPLAYABLE_SOURCE` that costs a live triage session to interpret.
+     */
+    private fun logFailFast(error: PlaybackException, detail: String) {
+        val status = httpStatusOf(error)
+        val channel = healthMonitor?.channelName ?: "unknown"
+        if (status == 400) {
+            streamDiagnosticLogger.logAppEvent("PROVIDER_DEAD_LISTING",
+                "reason=http_400, $detail, channel=$channel")
+        } else {
+            streamDiagnosticLogger.logAppEvent("UNPLAYABLE_SOURCE",
+                "$detail, http=${status ?: "n/a"}, channel=$channel")
+        }
     }
 
     /** Swap a VOD/Series URL's container extension (mp4 ↔ mkv, avi → mkv). Null if no sensible swap. */
@@ -3091,6 +3119,16 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     cause!!.javaClass.getField("responseCode").getInt(cause)
                 }.getOrNull()
                 when (code) {
+                    // Xtream delivery nodes answer 400 for a title they are refusing to serve, even
+                    // when the request is perfectly well-formed. PROVEN on flarecoral 2026-08-17:
+                    // "Professor T (2021)" S5 (ids 2056173-2056178) returned `400 Bad Request` with
+                    // `Content-Type: video/x-matroska` and a zero-byte body from the CDN, while S1-S4
+                    // on the SAME account/credentials returned 206 with real Matroska. It is a
+                    // provider-side dead listing — a variant of the HTTP-200-empty-text/html case
+                    // already handled below — so it is permanent, and the old generic copy
+                    // ("Server returned error 400. Try again...") invited a retry that can never work.
+                    400 -> return "This title isn't available from your provider right now. " +
+                        "Try another title, or let your provider know."
                     401, 403 -> return "Access denied. Your subscription may not include this title — contact your provider."
                     404 -> return "This title isn't available on the server. Contact your provider."
                     408 -> return "Request timed out. Check your connection and try again."

@@ -8,7 +8,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.14 (versionCode 102)
+- **Current Version**: 4.2.15 (versionCode 103)
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -531,6 +531,54 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.15** — Honest message + correct attribution for a provider HTTP 400; URL validation moved
+  to the choke point (versionCode 103). **Device-verified on .82** (AFTKRT, release build).
+  **The trigger was NOT an app defect** — proven, not inferred. User reported a 400 playing
+  "Professor T (2021)". Direct probing of flarecoral with the real account showed the provider
+  **lists but does not serve Season 5**: all 6 episodes (ids 2056173-2056178) return
+  `400 Bad Request` + `Content-Type: video/x-matroska` + **zero bytes** from the delivery CDN
+  (`74.119.149.x`, reached via a 302 from the origin), while **S1-S4 (24 episodes) return 206**
+  with valid Matroska (`Content-Range: bytes 0-1/2735085614`, magic bytes `\x1aE`). Series
+  `last_modified` = 2026-08-13 → S5 was added 4 days earlier and had never been servable. Scope
+  checked: **0/10** of the most recently modified series have a dead newest episode, so this is
+  per-title, not a provider-wide ingest failure. See
+  `tasks/professor-t-400-triage-2026-08-17.md`. **This is a NEW SIGNATURE of the v4.2.2 "dead
+  listing" class** — that one was HTTP **200** + `text/html` + empty body; this is HTTP **400** +
+  `video/x-matroska` + empty body. The v4.2.2 `probeStreamContentType()` detector could never
+  catch it: it only runs under `isUnrecognizedContainerError` (a 200 with an unreadable body),
+  and a hard 400 throws `InvalidResponseCodeException` before any body parsing — and even if it
+  ran, it greps for `text/html`. **Fixes:** (1) **`StreamUrlBuilder` is now the validation choke
+  point** — `sanitizeExt()` (trim → strip leading dot → lowercase → accept only 2-5
+  alphanumerics, else `"mp4"`) is applied INSIDE `vod()` and `series()`, fixing all ~10 scattered
+  `containerExtension ?: "mp4"` sites at once instead of patching each; Kotlin's `?:` fires only
+  on **null**, so an empty string survived every one of them and built a path ending in a bare
+  `.`, which a panel answers with 400. The 2-5-alphanumeric rule is not invented — it is lifted
+  from the already-correct `HomeFragment.containerExtFrom`. `episodeStreamId()` returns null for
+  a non-numeric/≤0 id instead of coercing to `0`. (2) **`400 ->` branch in `causeChainMessage`**
+  reusing the proven dead-listing copy; the old generic "Server returned error 400. Try again"
+  invited a retry that can never succeed. (3) **Correct diagnostic attribution** — new
+  `logFailFast()` logs `PROVIDER_DEAD_LISTING reason=http_400` instead of a bare
+  `UNPLAYABLE_SOURCE`, so a customer export names the provider immediately; extracted
+  `httpStatusOf()` and refactored `isDeterministicHttpError()` onto it (three sites did the same
+  reflection walk). (4) **Clone drift closed** ([[project_rebuild_clone_drift]], 5th instance) —
+  `PlayerViewModel.buildNextResult` was a byte-for-byte copy of the `SeriesDetailViewModel` pair;
+  both now go through `StreamUrlBuilder`, and `buildNextResult` returns null for an unusable
+  listing (which `resolveNextEpisode` already treats as "no more episodes"). That also stops a
+  malformed URL being persisted into `watch_progress.extra` via `insertUpNextRow`
+  (`PlayerViewModel.kt:203`) — see [[project_frozen_stream_urls]]. **Note:**
+  `isDeterministicHttpError` **already** covered 400 (`code in 400..499 && != 408 && != 429`), so
+  the app was correctly failing fast — it was NOT burning the retry ladder; the two 400s in the
+  original log were the initial play plus a user-pressed **Retry**. **ON-DEVICE VERIFIED on .82:**
+  S5 → dialog reads "This title isn't available from your provider right now. Try another title,
+  or let your provider know." with correlated `Response code: 400`; S1 → `PlaybackState state=3`,
+  `HW.omx.video.avc Got First Frame Render`, `1920x1080`, `error=null`, zero errors in that
+  window — confirming `sanitizeExt` did not disturb working playback. Incidentally re-confirmed
+  the v4.2.13 passthrough fix still holds (`AUDIOINFO: format: 2 … channels: 2` = decoded PCM,
+  not bitstreamed). **Files:** `data/model/StreamUrlBuilder.kt`,
+  `player/OoustreamPlaybackFragment.kt`, `player/PlayerViewModel.kt`,
+  `series/SeriesDetailFragment.kt`, `series/SeriesDetailViewModel.kt`, `app/build.gradle.kts`,
+  `update.json`. **Action for the provider:** series_id 43675 Season 5 is listed but not served.
 
 - **v4.2.14** — Death records survive to the export: mirror ANR/native/LMK into the crash log
   (versionCode 102). **Device-verified on .82.** **The problem:** two "the app keeps crashing"

@@ -307,7 +307,17 @@ class SeriesDetailFragment : Fragment() {
     }
 
     private fun playEpisode(episode: Episode) {
-        val url = viewModel.buildEpisodeUrl(episode)
+        // Null means the provider's listing for this episode has no usable stream id. Say so here
+        // rather than launching the player at a bogus URL and letting the panel's reply masquerade
+        // as a playback failure.
+        val url = viewModel.buildEpisodeUrl(episode) ?: run {
+            Toast.makeText(
+                requireContext(),
+                "This episode isn't available from your provider.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
         val iconUrl = episode.info?.movieImage
             ?: viewModel.seriesInfo.value?.info?.cover ?: ""
         val episodeId = episode.id ?: ""
