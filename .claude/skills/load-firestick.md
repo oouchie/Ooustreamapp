@@ -1,0 +1,67 @@
+---
+name: load-firestick
+description: Load a Fire TV Stick (or Ooustick) with the Ooustream app and optionally IPTV Smarters over adb. Use when the user says "send the app to <ip>", "load the firestick at <ip>", "install on <ip>", or names a device by its last octet (e.g. "send it to 147" = 192.168.1.147). Handles adb auth, ABI matching, the IPTV Smarters Cloudflare-blocked download, and on-device version verification.
+---
+
+# Load Firestick
+
+Install the current Ooustream release build (and, if asked, IPTV Smarters) on a stick on the LAN, verified end to end. Proven flow from the 2026-08-20 load of 192.168.1.147 (AFTMA08C15).
+
+## Inputs
+- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.147` / `.154` / `.155` (AFTMA08C15), `.222` (Ooustick).
+- Whether they also want **IPTV Smarters** (the comparison player). Only install it if asked.
+
+## Steps
+
+### 1. Connect + authorize
+`adb` is NOT on PATH — always use `~/Library/Android/sdk/platform-tools/adb`.
+
+```bash
+ADB=~/Library/Android/sdk/platform-tools/adb
+$ADB connect <IP>:5555
+$ADB -s <IP>:5555 shell getprop ro.product.model
+$ADB -s <IP>:5555 shell getprop ro.product.cpu.abilist
+```
+
+If you get `device unauthorized`: an "Allow USB debugging?" dialog is on the TV screen. Tell the user to accept it (Always allow) and **stop the turn** — polling for ~a minute does not help; wait for them to confirm. If no dialog appears, have them toggle Settings → My Fire TV → Developer Options → ADB Debugging off/on, then reconnect.
+
+### 2. Pick the APK by ABI
+- `abilist` starts with `arm64-v8a` → `app-arm64-v8a-release.apk`
+- `abilist` is `armeabi-v7a,armeabi` (all AFTMA08C15 + AFTKRT sticks) → `app-armeabi-v7a-release.apk`
+
+### 3. Verify the local build BEFORE installing (No-Assume rule)
+```bash
+ls -la app/build/outputs/apk/release/
+grep -E '"versionCode"|"versionName"' app/build/outputs/apk/release/output-metadata.json
+```
+The versionName/versionCode must match the current version in CLAUDE.md. If APKs are missing or stale, build first: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleRelease`.
+
+### 4. Install Ooustream
+```bash
+$ADB -s <IP>:5555 install -r app/build/outputs/apk/release/app-<abi>-release.apk
+```
+`-r` preserves existing user data (favorites, watch progress). Expect `Success`.
+
+### 5. IPTV Smarters (only if requested)
+The official APK is `https://www.iptvsmarters.com/smarters.apk`, but **Cloudflare 403-blocks curl even with a browser User-Agent** — you get a ~5KB HTML challenge page instead of the APK. Do NOT waste retries on curl.
+
+Working path: check `~/Downloads/smarters.apk` first (may already exist from a prior load). If absent, download through the user's Chrome via claude-in-chrome: load the browser tools, `tabs_context_mcp{createIfEmpty:true}`, then `navigate` the tab to the APK URL — Chrome passes the challenge and drops the file in `~/Downloads` (~84MB; a few-KB file means it failed). Close the tab afterward.
+
+Verify before installing (never install an unverified download):
+```bash
+file ~/Downloads/smarters.apk                      # must be "Zip archive data", NOT "HTML document"
+AAPT=$(ls ~/Library/Android/sdk/build-tools/*/aapt | tail -1)
+$AAPT dump badging ~/Downloads/smarters.apk | grep -E "^package|native-code"
+```
+Expected: package `com.nst.iptvsmarterstvbox`, native-code includes `armeabi-v7a` (it's a universal APK — installs on any stick). Then `install -r` it.
+
+### 6. Verify on-device (never report success from the install output alone)
+```bash
+$ADB -s <IP>:5555 shell "dumpsys package com.ooustream.iptv | grep -m1 versionName; dumpsys package com.nst.iptvsmarterstvbox | grep -m1 versionName"
+```
+Ignore the trailing `Broken pipe` noise — the versionName lines are the answer. Report the exact versions confirmed on the device.
+
+## Notes
+- 64-bit sticks can install the 32-bit APK, but 32-bit sticks FAIL on arm64 with `INSTALL_FAILED_NO_MATCHING_ABIS (-113)` — when in doubt, armeabi-v7a is the safe choice.
+- This skill sideloads only; it does not touch `update.json` or the OTA/release flow (see CLAUDE.md "Release Process" for that).
+- Smarters needs the Xtream login entered on first launch — remind the user.
