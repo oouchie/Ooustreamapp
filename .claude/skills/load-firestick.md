@@ -43,17 +43,20 @@ $ADB -s <IP>:5555 install -r app/build/outputs/apk/release/app-<abi>-release.apk
 `-r` preserves existing user data (favorites, watch progress). Expect `Success`.
 
 ### 5. IPTV Smarters (only if requested)
-The official APK is `https://www.iptvsmarters.com/smarters.apk`, but **Cloudflare 403-blocks curl even with a browser User-Agent** — you get a ~5KB HTML challenge page instead of the APK. Do NOT waste retries on curl.
+**Use the copy already on this machine: `~/Downloads/smarters.apk`** — the official build, downloaded 2026-08-20 and installed successfully on .147. Expect ~84MB, package `com.nst.iptvsmarterstvbox`, versionName **3.1.5.1** (versionCode 112). It's a universal APK, so the same file installs on every stick regardless of ABI. Don't re-download it if it's there.
 
-Working path: check `~/Downloads/smarters.apk` first (may already exist from a prior load). If absent, download through the user's Chrome via claude-in-chrome: load the browser tools, `tabs_context_mcp{createIfEmpty:true}`, then `navigate` the tab to the APK URL — Chrome passes the challenge and drops the file in `~/Downloads` (~84MB; a few-KB file means it failed). Close the tab afterward.
+If it's been cleaned out of Downloads, re-fetch from `https://www.iptvsmarters.com/smarters.apk` — but **Cloudflare 403-blocks curl even with a browser User-Agent**, returning a ~5KB HTML challenge page instead of the APK. Do NOT waste retries on curl. Download through the user's Chrome via claude-in-chrome: load the browser tools, `tabs_context_mcp{createIfEmpty:true}`, then `navigate` the tab to the APK URL — Chrome passes the challenge and drops the file in `~/Downloads`. Close the tab afterward.
 
-Verify before installing (never install an unverified download):
+Verify before installing — required for a fresh download, and a cheap sanity check on the cached one:
 ```bash
 file ~/Downloads/smarters.apk                      # must be "Zip archive data", NOT "HTML document"
 AAPT=$(ls ~/Library/Android/sdk/build-tools/*/aapt | tail -1)
 $AAPT dump badging ~/Downloads/smarters.apk | grep -E "^package|native-code"
 ```
-Expected: package `com.nst.iptvsmarterstvbox`, native-code includes `armeabi-v7a` (it's a universal APK — installs on any stick). Then `install -r` it.
+Expected: package `com.nst.iptvsmarterstvbox`, native-code includes `armeabi-v7a`. An "HTML document" here means a Cloudflare challenge page got saved under the .apk name — delete it and use the Chrome path. Then:
+```bash
+$ADB -s <IP>:5555 install -r ~/Downloads/smarters.apk
+```
 
 ### 6. Verify on-device (never report success from the install output alone)
 ```bash
