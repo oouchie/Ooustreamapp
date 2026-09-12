@@ -532,6 +532,76 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 
 ## Version Release History
 
+- **v4.2.16** — LIVE supply-stall watchdog was never armed + track-selector reuse crash (versionCode
+  104). Triaged from customer coachcdjo's debug export (`2026-09-12_16-11-coachcdjo-DL-CD3FC3C6`,
+  AFTKM / mt8696 / 1.63GB / API 30, on 4.2.15). Report was "channels aren't playing". **Log shape:
+  12 live tunes, ZERO ever reached `state=READY`, ZERO `DECODER_INIT`, and — the decisive detail —
+  ZERO `SOURCE_STALL` / `WATCHDOG` / `RETRY` / `BUFFER_COMPLETE` events**, including across one
+  101-second unbroken `BUFFERING` stretch that ended only when the user backed out (surfacing as
+  `ExoTimeoutException: Detaching surface timed out`, i.e. a wedged playback thread). Exactly ONE
+  `event=BANDWIDTH` in ~25 minutes, so essentially no bytes were arriving. Link was gigabit WiFi;
+  `DEVICE_TIER tier=MID goodMtk=true`; `isTV=true`. Breakdown of the 12: **6** hung in BUFFERING
+  forever, **3** were refused with HTTP 407, **3** crashed.
+  **(1) ROOT CAUSE of "channels aren't playing" — `startStallDetector()` is edge-triggered and the
+  LIVE path misses the edge.** Its ONLY call site is inside
+  `corePlayerListener.onPlaybackStateChanged(STATE_BUFFERING)`. But `corePlayerListener` is created
+  ~600 lines and attached (`attachPlayerListener()`) ~1100 lines AFTER the LIVE branch's
+  synchronous `player?.prepare()` in the same `onViewCreated`. **Verified against the Media3 1.10.0
+  sources in `ffmpeg-build/media3-source`** (not inferred): `ExoPlayerImpl.prepare()` masks state to
+  `STATE_BUFFERING` and calls `updatePlaybackInfo` → `listeners.flushEvents()` **synchronously in
+  that same call**, and `ListenerSet.queueEvent` does
+  `CopyOnWriteArraySet listenerSnapshot = new CopyOnWriteArraySet<>(listeners)` — it **snapshots the
+  listener set at queue time**, so attaching later in the very same main-thread block still misses
+  the event. The initial BUFFERING edge therefore reaches only `diagnosticListener` (attached early,
+  which is why `state=BUFFERING` IS in the log). A live channel that then never delivers enough to
+  reach READY produces **no second state edge**, so the detector coroutine was never created at all
+  — no stall escalation, no retry, no error, just an endless spinner. **LIVE-ONLY by construction:**
+  VOD/SERIES take the `needsResume` branch whose `prepare()` sits inside a coroutine suspended on
+  `getResumePositionSync()` (a Room query), resuming *after* `onViewCreated` returns and therefore
+  after the listener is attached. This is why every prior stall-detector triage looked correct — it
+  was, on VOD. **Fix:** call `startStallDetector()` once directly after the prepare if/else in
+  `onViewCreated` (level-trigger, not edge-trigger). Safe unconditionally — the poll loop already
+  no-ops while `playbackState != STATE_BUFFERING`. Also made `startStallDetector()` **idempotent**
+  (`if (stallDetectorJob?.isActive == true) return`) instead of cancel-and-relaunch: the old form
+  reset `lastBufferedMs`/`staticSinceMs` on every call, so a stream flapping BUFFERING↔READY faster
+  than the ~20s arming window could never escalate — the same edge-retrigger starvation the frame
+  watchdog already guards with `if (frameWatchdogJob?.isActive != true)`. New `SOURCE_STALL_ARMED`
+  diagnostic event so a future export can distinguish "watchdog ran and stayed quiet" from "watchdog
+  was never armed" — that ambiguity is precisely what hid this bug.
+  **(2) Crash — a `TrackSelector` was handed to a second ExoPlayer while the first still owned it.**
+  All 3 `rebuildPlayerWith*` paths passed the shared `trackSelector` field to
+  `ExoPlayer.Builder.setTrackSelector()`. Media3 1.10.0 `TrackSelector.init()` opens with
+  `checkState(this.listener == null)` and **only `release()` clears that field**;
+  `ExoPlayerImplInternal.releaseInternal()` (which calls `trackSelector.release()`) runs on the
+  **playback thread**, and `ExoPlayerImplInternal.release()` blocks for just
+  `DEFAULT_RELEASE_TIMEOUT_MS = 500`ms waiting for it. `ExoPlayer.release()` does **not throw** when
+  it loses that race (it reports `ExoTimeoutException` via `onPlayerError`), so `safeReleasePlayer`'s
+  catch never fires and we proceed to build the next player → `IllegalStateException` out of
+  `TrackSelector.init` → process death. On this customer's device the playback thread was demonstrably
+  missing deadlines (6 × "Detaching surface timed out"), so it lost the race every time.
+  **Correlation is exact: 3 × `TRACKS_CHANGED audio=[*audio/ac3 en 6ch]` → 3 ×
+  `MTK_MULTICHANNEL_FFMPEG_REBUILD` → 3 × `PROCESS_EXIT reason=CRASH_JAVA`.** (mt8696 keeps the
+  `channelCount >= 6` gate, so AC3 5.1 live channels hit it; AAC 2ch channels did not crash.)
+  **Fix:** new `freshTrackSelector()` — builds a new `DefaultTrackSelector` and copies the outgoing
+  one's `parameters` (every runtime mutation we make — language prefs, MIME order, resolution caps,
+  per-track overrides, disabled track types — lives in `TrackSelectionParameters`, so state carries
+  forward). Used by all 3 rebuild paths; the initial build site is unchanged. One shared helper, per
+  [[project_rebuild_clone_drift]] — this is the **6th** instance of that family.
+  **NOT fixed, deliberately (provider/network side, no app change can make these play):** the HTTP
+  407 refusals arrive as OkHttp `ProtocolException("Received HTTP_PROXY_AUTH (407) code while not
+  using proxy")`, NOT as `InvalidResponseCodeException`, so `httpStatusOf()` returns null,
+  `isDeterministicHttpError()` is false, and the app burns the full retry ladder (measured: 5 retries
+  / ~25s per channel) before showing a generic message. Worth a follow-up: teach `httpStatusOf` this
+  OkHttp shape and add a 407 branch to `causeChainMessage`. Also note the account is
+  `maxConnections=1`, and each crash killed the process without closing its stream socket, so the
+  provider may have been holding a stale slot. **VERIFICATION STATUS — build-verified only
+  (`compileDebugKotlin` + `assembleRelease` clean); NOT device-verified at release time** (shipped at
+  the user's direction to get it to the reporting customer; the test sticks were not the fault path).
+  Treat any live-playback regression report against this version with that in mind — the behaviour
+  change is that a completely-static live buffer now triggers stop/retry after 15s (max 3 for LIVE)
+  instead of hanging forever; a slow-but-progressing stream is untouched (250ms epsilon, v4.2.9
+  design). **Files:** `player/OoustreamPlaybackFragment.kt`, `app/build.gradle.kts`, `update.json`.
+
 - **v4.2.15** — Honest message + correct attribution for a provider HTTP 400; URL validation moved
   to the choke point (versionCode 103). **Device-verified on .82** (AFTKRT, release build).
   **The trigger was NOT an app defect** — proven, not inferred. User reported a 400 playing

@@ -552,6 +552,27 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             if (forceBeginningArg) viewModel.hasResumed = true
         }
 
+        // Arm the supply-stall watchdog HERE, not only from the STATE_BUFFERING callback.
+        //
+        // startStallDetector()'s only other call site is corePlayerListener.onPlaybackStateChanged,
+        // and on the LIVE path that listener does not exist yet: it is created ~600 lines below and
+        // attached by attachPlayerListener() ~1100 lines below, whereas the `else` branch above
+        // calls prepare() synchronously, right here. ExoPlayerImpl.prepare() masks the state to
+        // STATE_BUFFERING and flushes EVENT_PLAYBACK_STATE_CHANGED inside that same call, and
+        // ListenerSet.queueEvent snapshots the listener set at queue time — so attaching later in
+        // this very method still misses the event. A live channel that then never delivers enough
+        // to reach READY produces no second state edge, so the detector was never created at all:
+        // no SOURCE_STALL, no retry, no error, just an endless spinner.
+        //
+        // Reported by coachcdjo (AFTKM/mt8696, 4.2.15): 12 live tunes, none ever reached READY,
+        // one sat buffering for 101 seconds with zero SOURCE_STALL/WATCHDOG/RETRY events logged.
+        // VOD/SERIES were never exposed because their prepare() sits behind a suspending resume-
+        // position lookup and therefore runs after the listener is attached.
+        //
+        // Safe to call unconditionally: the poll loop no-ops while the player isn't buffering, and
+        // startStallDetector() is idempotent, so the later STATE_BUFFERING call reuses this job.
+        startStallDetector()
+
         PlaybackInitTrace.step("overlay-zap")
         // Add channel zap overlay to fragment view hierarchy
         val overlay = ChannelZapOverlay(requireContext())
@@ -1850,6 +1871,41 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         return vf.width >= 2560 || vf.height >= 1440
     }
 
+    /**
+     * A NEW [DefaultTrackSelector] carrying the outgoing selector's parameters, and the new value
+     * of [trackSelector].
+     *
+     * A TrackSelector must never be handed to a second ExoPlayer while the first still owns it.
+     * Verified against the Media3 1.10.0 sources in `ffmpeg-build/media3-source`:
+     *
+     *   TrackSelector.init()           `checkState(this.listener == null)`  → IllegalStateException
+     *   TrackSelector.release()        the ONLY thing that clears that field
+     *   ExoPlayerImplInternal.release() posts MSG_RELEASE to the PLAYBACK thread, then blocks for
+     *                                  `releaseTimeoutMs` — default DEFAULT_RELEASE_TIMEOUT_MS = 500ms
+     *   ExoPlayerImplInternal.releaseInternal() calls `trackSelector.release()` — on that thread
+     *
+     * So `release()` clearing the selector is a 500ms race against the playback thread, and
+     * ExoPlayer.release() does NOT throw when it loses (it reports ExoTimeoutException through
+     * onPlayerError), so [safeReleasePlayer]'s catch never sees it and we march on to build the
+     * next player. Losing that race meant `ExoPlayer.Builder.build()` threw IllegalStateException
+     * out of TrackSelector.init and killed the process.
+     *
+     * Reported by coachcdjo (AFTKM/mt8696, 4.2.15): three tunes to an AC3 6ch live channel, three
+     * MTK_MULTICHANNEL_FFMPEG_REBUILDs, three CRASH_JAVA process deaths — and six
+     * "Detaching surface timed out" errors in the same session, i.e. a playback thread that was
+     * routinely missing its deadlines and therefore losing this race by default.
+     *
+     * Every runtime mutation we make (preferred languages, audio MIME order, resolution caps,
+     * per-track overrides, disabled track types) lives in TrackSelectionParameters, so copying
+     * `parameters` carries the full state forward. Building fresh removes the race entirely
+     * instead of narrowing it.
+     */
+    private fun freshTrackSelector(): DefaultTrackSelector =
+        DefaultTrackSelector(requireContext()).also { fresh ->
+            trackSelector?.let { fresh.setParameters(it.parameters) }
+            trackSelector = fresh
+        }
+
     private fun safeReleasePlayer(p: ExoPlayer) {
         try { p.stop() } catch (_: Exception) { }
         try { p.clearVideoSurface() } catch (_: Exception) { }
@@ -2036,7 +2092,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
      * STATE_BUFFERING (supply faults), so nothing races to re-prepare the same player.
      */
     private fun startStallDetector() {
-        stallDetectorJob?.cancel()
+        // Idempotent on purpose. This used to cancel + relaunch on every call, which reset
+        // `lastBufferedMs`/`staticSinceMs` and so restarted the 15s static window from zero.
+        // A stream that flaps BUFFERING→READY→BUFFERING faster than the window can therefore
+        // never escalate — the same edge-retrigger starvation the frame watchdog already
+        // guards against with `if (frameWatchdogJob?.isActive != true)`. The poll loop already
+        // resets its own window whenever the player isn't buffering (see below), so letting a
+        // live job keep running is strictly more correct than restarting it.
+        if (stallDetectorJob?.isActive == true) return
+        // One line per tune, so a debug export can tell "the watchdog ran and stayed quiet" apart
+        // from "the watchdog was never armed". The absence of SOURCE_STALL was ambiguous between
+        // those two for exactly as long as this bug existed, and that ambiguity is what hid it.
+        streamDiagnosticLogger.logAppEvent(
+            "SOURCE_STALL_ARMED",
+            "type=${viewModel.contentType}, timeoutMs=${stallTimeoutForContent(viewModel.contentType)}, " +
+                "channel=${healthMonitor?.channelName ?: "unknown"}"
+        )
         stallDetectorJob = viewLifecycleOwner.lifecycleScope.launch {
             val timeout = stallTimeoutForContent(viewModel.contentType)
             var lastBufferedMs = -1L
@@ -2554,7 +2625,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(softwareRenderersFactory)
             .setBandwidthMeter(bandwidthMeter)
-            .setTrackSelector(trackSelector!!)
+            .setTrackSelector(freshTrackSelector())
             .setLoadControl(swLoadControl)
             .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
@@ -2700,7 +2771,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(ffmpegVideoFactory)
             .setBandwidthMeter(bandwidthMeter)
-            .setTrackSelector(trackSelector!!)
+            .setTrackSelector(freshTrackSelector())
             .setLoadControl(ffmpegLoadControl)
             .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
@@ -2800,7 +2871,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         player = ExoPlayer.Builder(requireContext())
             .setRenderersFactory(ffmpegRenderersFactory)
             .setBandwidthMeter(bandwidthMeter)
-            .setTrackSelector(trackSelector!!)
+            .setTrackSelector(freshTrackSelector())
             .setLoadControl(ffmpegLoadControl)
             .withoutBogusLiveDurationStuckDetection()
             // DolbyVisionBaseLayer.wrap on REBUILD paths too — the rewrites are format-level
