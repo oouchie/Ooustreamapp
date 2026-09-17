@@ -29,7 +29,7 @@ All of this for $20/month. Try free for 24 hours.
 HEADLINE: Everything cable can't do
 DESCRIPTION: $20/mo — 24hr free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -60,7 +60,7 @@ PRIMARY TEXT:
 HEADLINE: Your questions. Honest answers.
 DESCRIPTION: $20/mo — try free 24hrs
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -89,7 +89,7 @@ $20/mo. 24-hour free trial.
 HEADLINE: Marcus saves $154/month
 DESCRIPTION: $20/mo vs $174/mo cable
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -121,7 +121,7 @@ The math is pretty simple.
 HEADLINE: Still thinking about it?
 DESCRIPTION: 24-hour free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -140,12 +140,12 @@ While you're deciding, here's what Ooustream users are saying:
 
 50,000+ happy cord cutters and counting.
 
-Try free for 24 hours → ooustick.com
+Try free for 24 hours → ooustream.com
 
 HEADLINE: Join 50,000+ cord cutters
 DESCRIPTION: Start your free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -157,7 +157,7 @@ AD: Consideration > Website Visitors > Still Here
 PRIMARY TEXT:
 Hey 👋
 
-You visited ooustick.com the other day.
+You visited ooustream.com the other day.
 
 Just so you know — your cable bill this month is probably 7x what Ooustream costs.
 
@@ -170,6 +170,6 @@ No pressure. But also... think about it 🤷
 HEADLINE: $20/mo vs your cable bill
 DESCRIPTION: Try free for 24 hours
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```

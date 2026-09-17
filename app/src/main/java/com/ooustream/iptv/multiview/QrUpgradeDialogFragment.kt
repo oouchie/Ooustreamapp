@@ -29,7 +29,7 @@ class QrUpgradeDialogFragment : DialogFragment() {
     private var countdownTimer: CountDownTimer? = null
 
     companion object {
-        private const val UPGRADE_URL = "https://ooustick.com/subscribe/pro"
+        private const val UPGRADE_URL = "https://ooustream.com/subscribe/pro"
         private const val COUNTDOWN_DURATION_MS = 5 * 60 * 1000L // 5 minutes
         private const val COUNTDOWN_INTERVAL_MS = 1000L // 1 second
     }

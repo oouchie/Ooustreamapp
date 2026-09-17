@@ -11,12 +11,12 @@
 
 - **Price**: Starting at $20/month
 - **Trial**: 24-hour free trial
-- **Sign Up**: ooustick.com
-- **Pro Upgrade**: ooustick.com/subscribe/pro
+- **Sign Up**: ooustream.com
+- **Pro Upgrade**: ooustream.com/subscribe/pro
 - **Logo**: TV icon with blue/cyan aurora waves + play button. Tagline: "Seamless Streaming Technology"
 
 ### Goals
-- **Primary**: Drive Ooustream signups via ooustick.com ($20/mo subscription)
+- **Primary**: Drive Ooustream signups via ooustream.com ($20/mo subscription)
 - **Secondary**: Convert existing Basic users to Pro plan (MultiView unlock)
 - **Tertiary**: Build brand awareness in the cord-cutting space
 
@@ -201,7 +201,7 @@ All creatives are in `creatives/` organized by funnel stage. Each concept has 5 
 
 ### Prerequisites
 - [ ] Meta Business Suite account set up
-- [ ] Facebook Pixel installed on ooustick.com
+- [ ] Facebook Pixel installed on ooustream.com
 - [ ] Custom conversions configured (Purchase, Add to Cart, Page View)
 - [ ] Facebook Page and Instagram Business account connected
 - [ ] Payment method added
@@ -222,7 +222,7 @@ All creatives are in `creatives/` organized by funnel stage. Each concept has 5 
    - Exclude: Custom Audience → Existing Customers
 
 6. **Create Ads** under this Ad Set:
-   - Ad 1: Upload `cable-killer-1x1.html` screenshot → Paste Primary Text from awareness-copies.md "Cable Killer Hook" → Headline → Description → CTA: Learn More → Link: https://ooustick.com
+   - Ad 1: Upload `cable-killer-1x1.html` screenshot → Paste Primary Text from awareness-copies.md "Cable Killer Hook" → Headline → Description → CTA: Learn More → Link: https://ooustream.com
    - Ad 2: Upload `device-showcase-1x1.html` screenshot → Paste "Transformation Story" copy
    - Ad 3: Upload `cable-killer-1x1.html` variant → Paste "Social Proof Stack" copy
 

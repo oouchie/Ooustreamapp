@@ -21,12 +21,12 @@ Ooustream is ready when you are.
 📺 Live TV + Movies + Series + MultiView
 ❌ No contracts. Cancel anytime.
 
-👉 ooustick.com
+👉 ooustream.com
 
 HEADLINE: Start your free trial
 DESCRIPTION: 24 hours free. $20/mo after.
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -54,7 +54,7 @@ Well, nobody's ever said that. But you literally risk nothing.
 HEADLINE: Try it free. Cancel cable.
 DESCRIPTION: 24 hours free — zero risk
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -89,7 +89,7 @@ Try FREE for 24 hours.
 HEADLINE: Everything. $20/month.
 DESCRIPTION: 24-hour free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -104,7 +104,7 @@ PRIMARY TEXT:
 HEADLINE: Try Ooustream free today
 DESCRIPTION: 24hrs free. $20/mo after.
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -132,12 +132,12 @@ Upgrade to Pro and unlock MultiView:
 Your app is already Pro-ready.
 Just unlock it.
 
-👉 ooustick.com/subscribe/pro
+👉 ooustream.com/subscribe/pro
 
 HEADLINE: Upgrade to Pro — 4 screens
 DESCRIPTION: MultiView unlocked
 CTA BUTTON: Get Offer
-LINK: https://ooustick.com/subscribe/pro
+LINK: https://ooustream.com/subscribe/pro
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -157,12 +157,12 @@ Ooustream Pro — MultiView mode.
 
 Upgrade now. Be ready for game day.
 
-👉 ooustick.com/subscribe/pro
+👉 ooustream.com/subscribe/pro
 
 HEADLINE: Game day needs MultiView
 DESCRIPTION: 4 streams. One screen.
 CTA BUTTON: Get Offer
-LINK: https://ooustick.com/subscribe/pro
+LINK: https://ooustream.com/subscribe/pro
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -180,11 +180,11 @@ MultiView is one upgrade away.
 
 Don't wait until halftime to realize you missed 3 other games. 😤
 
-👉 ooustick.com/subscribe/pro
+👉 ooustream.com/subscribe/pro
 
 HEADLINE: Upgrade before game day
 DESCRIPTION: Pro = 4 screens at once
 CTA BUTTON: Get Offer
-LINK: https://ooustick.com/subscribe/pro
+LINK: https://ooustream.com/subscribe/pro
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```

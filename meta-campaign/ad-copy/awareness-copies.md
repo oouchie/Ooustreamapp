@@ -18,12 +18,12 @@ Live TV. Movies. Series. Sports.
 No contracts. Cancel anytime.
 Try it FREE for 24 hours.
 
-👉 ooustick.com
+👉 ooustream.com
 
 HEADLINE: Cut the cord. Keep everything.
 DESCRIPTION: Try FREE for 24 hours
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -50,7 +50,7 @@ My only regret? Not switching sooner.
 HEADLINE: Why 50,000+ switched
 DESCRIPTION: $20/mo — 24hr free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -72,12 +72,12 @@ PRIMARY TEXT:
 
 Join the movement. Stream everything. Pay less.
 
-Try FREE for 24 hours → ooustick.com
+Try FREE for 24 hours → ooustream.com
 
 HEADLINE: 50,000+ cord cutters agree
 DESCRIPTION: Free 24-hour trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -92,7 +92,7 @@ Cable is $150/mo. Ooustream is $20/mo. Try free for 24 hours. 🧮
 HEADLINE: Stop overpaying for TV
 DESCRIPTION: 24-hour free trial
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -117,12 +117,12 @@ Pick which game gets the audio. Switch in a click.
 
 The future of watching sports is here. 🏈⚽🏀⚾
 
-Try free for 24 hours → ooustick.com
+Try free for 24 hours → ooustream.com
 
 HEADLINE: 4 games. One screen. Zero FOMO.
 DESCRIPTION: MultiView — try free 24hrs
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -149,7 +149,7 @@ This is not a drill. 🔥
 HEADLINE: Never miss a game again
 DESCRIPTION: 4 streams at once — $20/mo
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -175,7 +175,7 @@ Your game day just leveled up 📺🔥
 HEADLINE: Game day. Upgraded. 🏈
 DESCRIPTION: 4 screens. $20/mo.
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -190,7 +190,7 @@ PRIMARY TEXT:
 HEADLINE: MultiView by Ooustream Pro
 DESCRIPTION: Try free — 24 hours
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -216,12 +216,12 @@ Ooustream turns any Android TV or Fire Stick into a premium streaming hub.
 
 $20/mo. No contracts. 24-hour free trial.
 
-👉 ooustick.com
+👉 ooustream.com
 
 HEADLINE: Your TV just got an upgrade
 DESCRIPTION: Try free for 24 hours
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -248,7 +248,7 @@ $20/mo. Try free for 24 hours.
 HEADLINE: Not just another streaming app
 DESCRIPTION: Built different. Streams better.
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -272,6 +272,6 @@ Try it free for 24 hours. You'll cancel everything else.
 HEADLINE: Streaming should be simpler
 DESCRIPTION: One app. $20/mo. Try free.
 CTA BUTTON: Sign Up
-LINK: https://ooustick.com
+LINK: https://ooustream.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```

@@ -8,7 +8,19 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.15 (versionCode 103)
+- **Current Version**: 4.2.16 (versionCode 104)
+
+> ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
+> customer portal's AI support assistant fetches it live
+> (`ooustream-portal/src/lib/tv-release.ts` → `fetchTvRelease()`) to tell customers
+> the current version and what changed. Consequences when releasing:
+> - Keep `changelog` written **for customers**, not for engineers — it is quoted to
+>   them verbatim.
+> - Do not rename, move, or private the file/repo: the portal reads
+>   `raw.githubusercontent.com/oouchie/Ooustreamapp/main/update.json`. It fails open
+>   to a bundled snapshot, so a break is silent — the assistant just goes stale.
+> - Bumping `version_name`/`version_code` here is all that is needed; **no portal
+>   deploy** is required for the assistant to learn about a release.
 
 ## PERFORMANCE REQUIREMENTS
 
@@ -174,7 +186,7 @@ All UI fragments (Home, LiveTV, VOD, Series, Search, Favorites, Settings), prese
 - **Top bar** — Layout mode selector buttons (2x2, 1+3, Dual, Triple) with gold active state, stream count, clock. Scale+gold focus feedback on layout buttons. D-pad UP from grid reaches layout buttons; DOWN returns to slot 1. Visibility set synchronously in `showControls()` so focus system finds buttons on same frame. (`multiview/MultiViewTopBarController.kt`, `res/layout/view_multiview_top_bar.xml`)
 - **Bottom bar** — Audio slot selector buttons, scrolling EPG ticker with channel names and program titles. (`multiview/MultiViewBottomBarController.kt`, `res/layout/view_multiview_bottom_bar.xml`)
 - **Pro plan gating** — `UserPlanManager` checks `maxConnections >= 4` for Pro status, `totalMem >= 1.4GB` for device capability. Basic users see locked popup → QR upgrade dialog. Pro badge on Home hero card. Plan refreshed on login and auto-login. (`data/UserPlanManager.kt`)
-- **QR upgrade flow** — Full-screen dialog with QR code linking to `ooustick.com/subscribe/pro`, feature list, 5-minute countdown auto-dismiss. Uses ZXing for QR generation. (`multiview/QrUpgradeDialogFragment.kt`, `multiview/QrCodeGenerator.kt`, `res/layout/dialog_qr_upgrade.xml`)
+- **QR upgrade flow** — Full-screen dialog with QR code linking to `ooustream.com/subscribe/pro`, feature list, 5-minute countdown auto-dismiss. Uses ZXing for QR generation. (`multiview/QrUpgradeDialogFragment.kt`, `multiview/QrCodeGenerator.kt`, `res/layout/dialog_qr_upgrade.xml`)
 - **Home hero card** — MultiView promotional card on Home screen with pulsing live dot, gold glow + corner brackets on focus, 1.03x scale. Click navigates to MultiView. Only shown when device is capable (RAM >= 1.4GB). (`home/MultiViewHeroPresenter.kt`, `res/layout/item_hero_multiview_card.xml`)
 - **Live TV integration** — MultiView icon in Live TV header bar with focus animation (1.3x scale, gold border). Click seeds MultiView with current preview channel. (`livetv/LiveTvFragment.kt`)
 - **Focus architecture** — Focus lives on outer FrameLayouts (slot_1–slot_4 in XML), NOT inner MultiViewSlotView children. `FOCUS_BLOCK_DESCENDANTS` prevents PlayerView/SurfaceView from stealing focus. `isSlotFocused()` guard ensures OK/Enter only intercepted when a slot has focus (not layout buttons). (`multiview/MultiViewFragment.kt`)
