@@ -31,4 +31,8 @@ interface VodCastDao {
 
     @Query("SELECT COUNT(*) FROM vod_cast")
     suspend fun getCount(): Int
+
+    /** Cast is cached per provider stream id — drop it all when the provider changes. */
+    @Query("DELETE FROM vod_cast")
+    suspend fun clearAll()
 }

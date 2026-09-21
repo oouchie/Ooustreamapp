@@ -21,10 +21,14 @@ import com.ooustream.iptv.common.ProgressiveImageLoader
 import com.ooustream.iptv.common.QualityPolicy
 import com.ooustream.iptv.common.SessionIntegrityTracker
 import com.ooustream.iptv.common.StreamDiagnosticLogger
+import com.ooustream.iptv.data.repository.ProviderMigration
 import com.ooustream.iptv.recommendation.NewEpisodeSyncWorker
 import com.ooustream.iptv.recommendation.ScoreRefreshWorker
 import com.ooustream.iptv.recommendation.VodCastBackfillWorker
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -36,6 +40,7 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var streamDiagnosticLogger: StreamDiagnosticLogger
     @Inject lateinit var networkMonitor: NetworkMonitor
+    @Inject lateinit var providerMigration: ProviderMigration
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -67,6 +72,20 @@ class OoustreamApp : Application(), Configuration.Provider, ImageLoaderFactory {
         // field — leave it no trace at all, so a debug export can read "no crashes" while the
         // customer watches the app vanish. This records why the PREVIOUS process died.
         SessionIntegrityTracker.install(this, streamDiagnosticLogger)
+
+        // The panel host is a property of the build (R.string.default_server_url). If it moved
+        // since the last launch, every cache keyed by the old provider's ids is now suspect —
+        // drop them and re-match parental blocks by name before the user starts browsing.
+        // Off the main thread: it touches Room and, on a real migration, the network.
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                providerMigration.runIfNeeded()
+            } catch (e: Exception) {
+                streamDiagnosticLogger.logAppEvent(
+                    "PROVIDER_MIGRATION", "failed: ${e.javaClass.simpleName} ${e.message}"
+                )
+            }
+        }
 
         scheduleScoreRefresh()
         scheduleNewEpisodeSync()

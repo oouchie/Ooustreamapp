@@ -4,7 +4,12 @@
 Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 
 - **Package**: `com.ooustream.iptv`
-- **Server**: `https://flarecoral.com` (Xtream Codes API)
+- **Server**: `https://bp-v2.net` (Xtream Codes API) — **hardcoded** in
+  `res/values/strings.xml` → `default_server_url`, and hidden from the user (the login screen asks
+  only for username + password). `CredentialStore.load()` silently moves any saved login onto it,
+  so changing that one string migrates the whole installed base; `ProviderMigration` then drops
+  every cache keyed by the old provider's ids. (Was `https://flarecoral.com` until the 2026-09-21
+  cutover. The Flutter phone app made the same move on 2026-09-20.)
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
@@ -543,6 +548,61 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v4.2.17** — Provider cutover: flarecoral.com → bp-v2.net (versionCode 105). **BUILT AND
+  DEVICE-TESTED, NOT RELEASED** — held at the user's direction until the provider's 2026-09-21
+  cutover (see the verification note at the end of this entry, which is the important part).
+  **The trap this release exists to avoid:** the host literal lives in exactly ONE place
+  (`res/values/strings.xml` → `default_server_url`) and is read at exactly ONE call site
+  (`LoginFragment:70`, on the login button). Everything else — auto-login, account refresh, every
+  URL from `StreamUrlBuilder`, the speed test, the settings screen — reads the host **saved in
+  EncryptedSharedPreferences at login time**. So swapping the string alone would have fixed only
+  first-time logins and left the entire installed base hammering a retired host. **Fix (1):**
+  `CredentialStore.load()` now rewrites a stale host onto `canonicalServerUrl` and re-persists it.
+  `load()` is the single choke point all 8 consumers already go through, so one edit covers them
+  all and nobody re-logs-in. Mirrors what `ooustream-mobile` shipped the day before
+  (`lib/core/providers.dart:349`) — same shape on both clients, deliberately.
+  **Fix (2) — new `data/repository/ProviderMigration.kt`,** run once per process from
+  `OoustreamApp` on Dispatchers.IO, keyed on a `last_provider_host` marker. bp-v2.net is a
+  **different panel**, so the provider's numeric ids are not guaranteed to carry over, and a stale
+  row can resolve to *different* content rather than to nothing (the loud, easy failure). Drops
+  `cached_categories`, `cached_streams`, `epg_cache`, `epg_pattern_cache`, `search_index`,
+  `channel_scores`, `channel_watch_log`, `vod_cast` (new `VodCastDao.clearAll()`). Deliberately
+  NOT dropped: `favorites` / `watch_progress` / `series_tracking` (real user data —
+  `WatchHistoryPruner` already drops history rows absent from the live catalog, which beats a
+  blanket wipe) and `poster_cache` (keyed by TMDB id, which is provider-independent). The marker
+  is written LAST so a throw mid-way retries the whole cleanup next launch instead of leaving it
+  half-applied. A fresh install records the marker and skips the work entirely.
+  **Fix (3) — parental controls, the highest-severity consequence of an id-space change.** Blocks
+  are stored as `(section, categoryId)`; on a new panel those ids either match nothing (adult
+  categories silently reappear) or match a category the user never blocked. `BlockedCategoryEntity`
+  already carries `categoryName`, which IS stable across panels, so new `ParentalRemapState` arms
+  the three sections and `ContentFilterManager.remapBlockedCategories(section)` rebuilds the rows
+  by name. Two details that are load-bearing: it **fetches the category list itself** rather than
+  accepting the caller's (several callers pass filtered or favourites-only lists, and a partial
+  list looks exactly like "these categories no longer exist" → silent deletion of blocks); and an
+  **empty** catalogue is treated as a failed fetch, never as "block nothing". Until a section's
+  re-match lands, `filterCategories` falls back to matching blocks BY NAME and re-asserts
+  adult-by-name blocking for any section where the user had already blocked adult content — so
+  there is no unprotected window. On failure the section stays armed and every later browse
+  retries. Adult categories are re-blocked only where the user had blocked adult content before,
+  so no preference is invented. New diagnostic events: `PROVIDER_MIGRATION`, `PARENTAL_REMAP`.
+  **`update.json` `mandatory` set true** — note it is cosmetic (`UpdateFragment:131` only appends
+  " (Required)" to a label), but an un-updated install cannot reach the service at all.
+  **VERIFICATION — read this before trusting the release.** `assembleRelease` clean, both ABIs.
+  On AFTKRT (192.168.1.82) a real 4.2.16 install was upgraded in place: it came up **still signed
+  in** (no login prompt, greeting still "Oouchie247"), Home rendered, Continue Watching intact.
+  **The app is provably talking to the new host** — the two panels have distinct signatures
+  (`bp-v2.net/player_api.php` answers **401** to any request, `flarecoral.com` answers **404**),
+  and the app logged `OOUSTREAM_PLAN: refreshPlan result=false failure=HTTP 401`. **But that 401
+  also means the account was NOT yet accepted by bp-v2.net on 2026-09-20** — consistent with the
+  provider saying the new URL goes live "tomorrow". So the credential migration and the host swap
+  are verified; **playback against the new panel, and the parental re-match (which needs a real
+  catalogue), are NOT.** Re-verify both on .82 after the provider cuts over, before releasing.
+  **Files:** new `data/repository/ProviderMigration.kt`, `parental/ParentalRemapState.kt`;
+  modified `res/values/strings.xml`, `data/repository/CredentialStore.kt`,
+  `data/local/dao/VodCastDao.kt`, `parental/ContentFilterManager.kt`, `OoustreamApp.kt`,
+  `app/build.gradle.kts`, `update.json`. Plan + evidence: `tasks/provider-cutover-bp-v2.md`.
 
 - **v4.2.16** — LIVE supply-stall watchdog was never armed + track-selector reuse crash (versionCode
   104). Triaged from customer coachcdjo's debug export (`2026-09-12_16-11-coachcdjo-DL-CD3FC3C6`,
