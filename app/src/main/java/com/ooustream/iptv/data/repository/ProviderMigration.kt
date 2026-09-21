@@ -62,10 +62,14 @@ class ProviderMigration @Inject constructor(
         val lastSeen = prefs.getString(KEY_LAST_HOST, null)
         if (lastSeen == canonical) return
 
-        // A fresh install has nothing to migrate: no saved login, nothing cached. Record where we
-        // are and stop, so a first-time user never pays for a cleanup that has no subject.
+        // Two cases that look like a move but are not, and must NOT trigger a cleanup:
+        //  - a fresh install (no marker, no saved login) — nothing cached to invalidate;
+        //  - an install upgrading from a build predating the marker whose saved login is ALREADY
+        //    on the canonical host, i.e. the host never changed. Without this check every such
+        //    upgrade would needlessly drop its caches and re-arm the parental re-match.
+        // Record where we are and stop.
         val savedLogin = credentialStore.rawSavedServerUrl()
-        if (lastSeen == null && savedLogin == null) {
+        if (lastSeen == null && (savedLogin == null || savedLogin.trimEnd('/') == canonical)) {
             prefs.edit().putString(KEY_LAST_HOST, canonical).apply()
             return
         }

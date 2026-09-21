@@ -3,9 +3,11 @@
     <string name="app_name">Ooustream IPTV</string>
     <!-- The panel host. Single source of truth: the login screen never asks for it, and
          CredentialStore.load() silently moves any saved login onto this value, so changing
-         it here migrates the whole installed base. Was https://flarecoral.com until the
-         2026-09-21 provider cutover. -->
-    <string name="default_server_url">https://bp-v2.net</string>
+         this ONE line migrates the whole installed base (see ProviderMigration).
+         The move to https://bp-v2.net is staged and ready — flip this string, bump the
+         version and update update.json once the provider activates the new panel.
+         Held 2026-09-20: bp-v2.net answered {"user_info":{"auth":0}} for a live account. -->
+    <string name="default_server_url">https://flarecoral.com</string>
 
     <!-- Sections -->
     <string name="live_tv">Live TV</string>

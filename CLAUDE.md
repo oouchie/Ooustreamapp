@@ -4,12 +4,16 @@
 Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 
 - **Package**: `com.ooustream.iptv`
-- **Server**: `https://bp-v2.net` (Xtream Codes API) — **hardcoded** in
-  `res/values/strings.xml` → `default_server_url`, and hidden from the user (the login screen asks
-  only for username + password). `CredentialStore.load()` silently moves any saved login onto it,
-  so changing that one string migrates the whole installed base; `ProviderMigration` then drops
-  every cache keyed by the old provider's ids. (Was `https://flarecoral.com` until the 2026-09-21
-  cutover. The Flutter phone app made the same move on 2026-09-20.)
+- **Server**: `https://flarecoral.com` (Xtream Codes API) — **hardcoded** in
+  `res/values/strings.xml` → `default_server_url`, hidden from the user (the login screen asks
+  only for username + password). **The move to `https://bp-v2.net` is written and staged but NOT
+  active** — flip that one string, bump the version and update `update.json`. Everything needed
+  for the flip already ships in the tree: `CredentialStore.load()` silently moves any saved login
+  onto the canonical host (so one string migrates the whole installed base), and
+  `ProviderMigration` drops every cache keyed by the old provider's ids and re-matches parental
+  blocks by category name. Held 2026-09-20: bp-v2.net was up but answered
+  `{"user_info":{"auth":0}}` for a live account — the provider had not activated it yet. See
+  `tasks/provider-cutover-bp-v2.md`.
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
@@ -549,9 +553,11 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 
 ## Version Release History
 
-- **v4.2.17** — Provider cutover: flarecoral.com → bp-v2.net (versionCode 105). **BUILT AND
-  DEVICE-TESTED, NOT RELEASED** — held at the user's direction until the provider's 2026-09-21
-  cutover (see the verification note at the end of this entry, which is the important part).
+- **v4.2.17 (NOT RELEASED — PREPARED AND REVERTED IN THE TREE)** — Provider cutover:
+  flarecoral.com → bp-v2.net. The migration machinery below IS in the tree and shipping-ready;
+  only the host string, the version bump and `update.json` were rolled back on 2026-09-20 after
+  the new panel rejected a live account (it is not switched on yet). Re-applying is a three-line
+  change. Kept here because the *reasoning* is the expensive part, not the diff.
   **The trap this release exists to avoid:** the host literal lives in exactly ONE place
   (`res/values/strings.xml` → `default_server_url`) and is read at exactly ONE call site
   (`LoginFragment:70`, on the login button). Everything else — auto-login, account refresh, every

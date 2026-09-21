@@ -100,3 +100,45 @@ the switch. Then push and cut the GitHub release.
 **Note on .82's current state:** it is now running 4.2.17 pointed at a panel that doesn't accept
 the account yet, so it can't play anything until the provider cuts over. Home still renders from
 local data. Nothing was lost.
+
+
+## HELD AND REVERTED — 2026-09-20 evening
+
+**bp-v2.net is up but had NOT been activated for the account.** Probed directly: the panel answers
+`{"user_info":{"auth":0}}` (the standard Xtream "authentication failed" payload, delivered with
+HTTP **401** rather than 200) for a live account, and for no-credential and dummy-credential
+requests alike. A browser User-Agent makes no difference, so it is not a Cloudflare bot gate — the
+panel itself is rejecting the login. Username is unchanged (`Oouchie247`). Provider says Live TV
+comes up first, movies the following day.
+
+**What was rolled back in the tree** (three things only):
+- `strings.xml` `default_server_url` → back to `https://flarecoral.com`
+- `app/build.gradle.kts` → back to 4.2.16 / versionCode 104
+- `update.json` → restored from `c5dbab6` (the released 4.2.16 manifest)
+
+**What was deliberately KEPT** (shipping-ready, inert until the string flips): the
+`CredentialStore.load()` host rewrite, `ProviderMigration`, `ParentalRemapState`, the
+`ContentFilterManager` by-name re-match, and `VodCastDao.clearAll()`. With the canonical host
+equal to what installs already have, `ProviderMigration.runIfNeeded()` records its marker and
+does nothing.
+
+**Bug found and fixed while reverting:** `runIfNeeded()` treated *any* install with no marker as
+"the host moved", so an upgrade whose saved login was ALREADY on the canonical host would have
+pointlessly dropped its caches and re-armed the parental re-match. Now skipped unless the saved
+host actually differs.
+
+**Test sticks restored** to the released 4.2.16 (downloaded from the v4.2.16 GitHub release,
+`install -r -d`, user data kept):
+- **.84** — sitting on the sign-in screen, ready for a normal flarecoral login.
+- **.82** — still holds a saved login that the migration rewrote to bp-v2.net, and released
+  4.2.16 has no rewrite logic, so it cannot fix itself: needs **Settings → Logout → sign in**.
+
+## To re-apply tomorrow (three lines + the usual release steps)
+
+1. `strings.xml` → `https://bp-v2.net`
+2. `app/build.gradle.kts` → 4.2.17 / 105
+3. `update.json` → 4.2.17 / 105, v4.2.17 download URLs, the cutover changelog (recoverable from
+   commit `182be5f`), `mandatory: true`
+4. `assembleRelease`, verify on .82/.84 per step 7, then push + `gh release create v4.2.17`.
+
+Everything in commit `182be5f` other than those three files stays as-is.
