@@ -1,9 +1,9 @@
 {
-  "version_name": "4.2.16",
-  "version_code": 104,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.16/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.16/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.16/app-armeabi-v7a-release.apk",
-  "changelog": "v4.2.16 — Live channels no longer spin forever\n\n• If a live channel started loading but the stream never actually came through, the app used to sit on the spinner indefinitely — no reconnect, no message, nothing to do but back out and try again. That could go on for minutes.\n\n• The app now watches live channels from the moment you tune in. If a stream stops delivering, it reconnects on its own, and if it still can't get the channel it tells you instead of leaving you staring at a spinner.\n\n• Fixed a crash when tuning to a channel that carries Dolby 5.1 audio. The app would close itself while switching to the surround-sound decoder.\n\n• If channels still won't play after this update, the problem is on the delivery side rather than the app — send a debug log from Settings and we can see exactly what the server is doing.\n\nIncludes everything from v4.2.15 and earlier: clearer messages for titles your provider hasn't uploaded, the fix for shows freezing mid-episode on Dolby titles, season and episode numbers on every screen, and the new logo.",
-  "mandatory": false
+  "version_name": "4.2.17",
+  "version_code": 105,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.17/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.17/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v4.2.17/app-armeabi-v7a-release.apk",
+  "changelog": "v4.2.17 — Required update: the service moved to a new server\n\n• Please install this update. The service has moved to a new server, and older versions of the app still point at the old one. Once the old server is switched off, versions before 4.2.17 will stop loading channels entirely.\n\n• You do NOT need to sign in again. The app moves your existing login to the new server by itself the first time it opens after updating. Your username and password are unchanged.\n\n• Your favorites and Continue Watching are kept. Anything the new server no longer carries will simply drop off the list over time.\n\n• Recommendations rebuild themselves. Rows like \"For You\" start fresh and fill back in over the next few days of normal watching.\n\n• Parental controls carry over. Blocked categories are matched to the new server automatically, and adult categories stay blocked throughout the changeover.\n\n• First launch after updating may take a few extra seconds while channel and movie lists reload. That is a one-time cost.\n\nIncludes everything from v4.2.16 and earlier: live channels no longer spin forever when a stream stops delivering, the Dolby 5.1 tuning crash fix, clearer messages for titles your provider hasn't uploaded, and season and episode numbers on every screen.",
+  "mandatory": true
 }
