@@ -17,8 +17,13 @@ enum class PlaybackHealth {
  * Escalates from cheapest (soft) to most expensive (nuclear).
  */
 enum class RecoveryAction {
-    SOFT_RESET,       // seekToDefaultPosition() — decoder resync, ~100ms, invisible
-    HARD_RESET,       // stop → clearMediaItems → setMediaSource → prepare → play
+    // NO-OP for live progressive streams. A seek on an Xtream .ts is NOT a cheap decoder
+    // resync — it reconnects the stream and keeps the old timestamp baseline, which freezes
+    // the slot. This rung applies only to non-live media; live escalates straight to
+    // HARD_RESET. The old comment here ("~100ms, invisible") was the false premise that let
+    // the freeze survive three audits.
+    SOFT_RESET,
+    HARD_RESET,       // stop → clearMediaItems → setMediaItem → prepare → play (re-seeds extractor)
     NUCLEAR_RESET,    // release player + quit thread → rebuild from scratch
     MARK_SIGNAL_LOST  // all attempts exhausted — show signal lost overlay
 }

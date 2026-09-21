@@ -1,3 +1,213 @@
+# ACTIVE — MultiView (and single-player) live freeze: the keep-alive seek (2026-09-17)
+
+DIAGNOSED BY LIVE INSTRUMENTATION on .82 (AFTKRT / mt8696, debug 4.2.16) while the user was in
+MultiView. Symptom: individual tiles freeze ~5-6s, roughly once per minute per tile, often 2-3 at
+once. Self-inflicted.
+
+MECHANISM (every link verified against the local Media3 1.10.0 clone in ffmpeg-build/media3-source,
+not inferred):
+- MultiViewStallDetector.startKeepAlive fired `player.seekToDefaultPosition()` every 60s per slot.
+- An Xtream .ts body has no Content-Length and TsExtractor reports an unseekable map with unknown
+  duration, so ProgressiveMediaPeriod marks it live progressive. Its in-buffer seek branch is
+  EXCLUDED for that source type, and an unseekable map forces the position to 0 — so ANY seek
+  cancels the load and re-opens the HTTP request. There is no cheap seek on this source type.
+  (This is why the "seek forward inside the buffer" idea was rejected — it is unreachable.)
+- TsExtractor.seek then declines to reset its TimestampAdjuster (the reset test requires a
+  non-zero first-sample timestamp; TsExtractor is built with `new TimestampAdjuster(0)`), so the
+  re-opened stream keeps the timestamp baseline of the connection opened 60s earlier while the
+  renderer position resets to 0.
+- Result: every incoming frame is ~60s EARLY. VideoFrameReleaseControl holds anything more than
+  MAX_EARLY_US_THRESHOLD = 50_000us early, so it holds them all. Exactly one frame force-renders
+  (firstFrameState = NOT_RENDERED after the flush). Hence the fingerprint: renderedOutputBufferCount
+  static with drops/s=0 — frames HELD, not dropped.
+- Captured proof: `First PTS after Flush = 1000060094000` minus INITIAL_RENDERER_POSITION_OFFSET_US
+  (1_000_000_000_000) = 60.094s of skew.
+- HARD_RESET was the only rung that recovered, because setMediaItem+prepare rebuilds the extractor
+  and its TimestampAdjuster. And because it returns the slot to STATE_READY it RE-ARMED the 60s
+  keep-alive — hence the fixed cadence forever.
+
+TWO OF MY OWN EARLIER CLAIMS WERE WRONG — do not repeat them:
+1. "The tiles are 56-70s behind live." FALSE. `bufferedPosition` is the ABSOLUTE
+   largestQueuedTimestamp while currentPosition is re-based to 0 on reconnect, so their difference
+   compares two reference frames. 60,094 - 3,624 = 56,470 = the logged number exactly. It is
+   timestamp skew, not latency. The app cannot measure real live latency on this source type at all
+   (getCurrentLiveOffset() is TIME_UNSET).
+2. "Replace it with an in-buffer forward seek." IMPOSSIBLE — see above.
+Also: deleting setLiveConfiguration would NOT disarm the keep-alive. MediaItem.liveConfiguration is
+never null and liveness comes from the unknown-length body, so isCurrentMediaItemLive stays true.
+The LiveConfiguration (targetOffsetMs=3000, 0.97-1.03 speed window) is INERT anyway because
+ProgressiveMediaSource hardcodes isDynamic=false.
+
+## Plan
+- [x] `multiview/MultiViewStallDetector.kt` — DELETE the keep-alive (fn, call site, job field,
+      cancels, constant) with a comment saying why it must not come back.
+- [x] `multiview/MultiViewPlayerManager.kt` — softReset() is a logged NO-OP for live (it was rung 1
+      manufacturing the freeze); non-live keeps seekTo(currentPosition). Corrected the false
+      "seek to live edge, ~100ms, invisible" and "start 3s behind live edge" comments.
+- [x] `multiview/MultiViewStallDetector.kt` — audio-slot ladder skips SOFT_RESET for FROZEN and goes
+      straight to HARD_RESET (with soft inert + 30s cooldown it would sit frozen 60s otherwise).
+- [x] NEW `player/LiveResync.kt` — one shared `ExoPlayer.resyncProgressiveLive(item?)`
+      (stop/clearMediaItems/setMediaItem/prepare/play). Rebuilding the MediaItem is the ONLY thing
+      that re-seeds the extractor. Used by MultiView hardReset + all 3 single-player sites.
+- [x] `player/OoustreamPlaybackFragment.kt` — the SAME defect on the single-channel live path, 3
+      sites: LIVE_STREAM_ENDED auto-retry (~1408), network-return (~1714), onResume (~4112). At the
+      first two the trailing prepare() was DEAD CODE (prepare() no-ops unless STATE_IDLE and the
+      seek had already masked state to BUFFERING), so the destructive seek was the whole recovery.
+      onResume had no prepare() at all.
+- [x] `multiview/MultiViewStallDetector.kt` — buffer signal now rejects values > 20_000ms
+      (largest configured maxBufferMs is 10_000) and logs `MV_LIVE_POSITION_SPLIT` with RAW
+      pos/buffered instead. The inflated value silently scored a wedged slot as SMOOTH, which is
+      how this survived three audits.
+- [x] `multiview/PlaybackHealth.kt` — fixed the RecoveryAction.SOFT_RESET comment (the false
+      "~100ms, invisible" premise).
+- [x] `multiview/MultiViewFragment.kt` — recovery-mask safety timeouts held per slot and cancelled
+      by onFirstFrameAfterRecovery, so a stale timer can't un-mask a LATER recovery.
+- [x] `:app:compileDebugKotlin` clean, no new warnings from any touched file.
+- [ ] SOAK on .82 or .84 (AFTKRT), 4 live tiles, 10+ continuous minutes. Baseline is measured, so
+      this is unambiguous: `adb logcat -s OOUSTREAM_AUDIO` must show ZERO `keep-alive seek-to-live`,
+      ZERO `health SMOOTH -> FROZEN`, ZERO `HARD RESET`. Also `grep -E 'MediaCodecLogger.*(Flushing|
+      Possible seek found)'` should be quiet — a "Possible seek found" with cur PTS BELOW last PTS
+      means some seek path was missed.
+- [ ] Single-player LIVE walk (code-verified only, NOT measured): tune live, Home, wait 20s, return
+      — must resume in a couple of seconds with no frozen frame and no WATCHDOG_HARD_RESET. Repeat
+      with WiFi off/on mid-stream.
+- [ ] Ooustick pass (a Fire TV pass is not sign-off).
+
+## Open / deferred
+- UNEXPLAINED: slot 2 took keep-alive seeks at 17:51:09, 17:54:10 and 17:55:11 with NO freeze, while
+  slots 1/2/3 all froze on their own timers in the 4-slot session. Mechanism predicts it should
+  freeze. Best guess: that channel is HLS/.m3u8 rather than a raw .ts (for HLS the seek genuinely
+  resolves to the live edge), but the URL was NOT confirmed. Open.
+- DEFERRED, and now the most important remaining gap: nothing monitors a MultiView slot wedged in
+  STATE_BUFFERING. evaluateHealth returns early unless STATE_READY, the watchdog skips unless
+  STATE_READY, and the STATE_BUFFERING listener zeroes noNewFramesSinceMs. This is the MultiView
+  mirror of the v4.2.16 LIVE bug and wants the same treatment (poll bufferedPosition while
+  BUFFERING, escalate only when completely static, log MV_SOURCE_STALL_ARMED). Net-new live logic —
+  its own release, its own soak.
+- Latency: no automatic bound now that keep-alive is gone. Accepted deliberately — keep-alive never
+  bounded it. If it ever matters, measure externally first (same channel on a single player next to
+  a MultiView tile), then consider a manual "Re-sync" row on the slot popup wired to hardReset().
+- MultiView stays gated off on LOW/ULTRA_LOW tier. A MultiView pass here is NOT clearance to lift it.
+- A marginal provider will now show MORE hard resets, not fewer (soft rungs no longer absorb them).
+  Do not read that as a regression.
+
+
+---
+
+# ACTIVE — Live TV "Recently Watched" category (2026-09-17)
+
+Add a Recently Watched pseudo-category to the Live TV left rail, second under Favorites, so a
+user can jump straight back to channels they have been watching.
+
+Decisions taken (user, 2026-09-17):
+- Semantics = the existing 30s floor. The rail means "channels you watched for 30+ consecutive
+  seconds". The channel currently on screen appears once you back out of it. NOT adding a
+  start-of-tune tracker for v1. Lowering MIN_SESSION_SECONDS was refused outright:
+  ChannelRecommendationEngine scores frequency as sessionLogs.size, so it would inflate Home's
+  "For You - Live Now" - a cross-feature change, not a local one.
+- Label = "Recently Watched" (the app's existing string, used by MultiView's picker and
+  Favorites). Distinct from the "Recently Added" rows on Movies/Series, which mean new-to-the-
+  catalog, not new-to-you.
+- NOT the default landing category; Favorites stays the init default. Recent is opt-in.
+- Rendered unconditionally (even with an empty log), exactly like Favorites: savedCategoryPosition
+  is a raw adapter index, so a row that appears after the first watch would shift every index
+  below it on precisely this feature's happy path.
+
+NO DB MIGRATION. Verified: OoustreamDatabase is version = 12 and DatabaseModule ends with
+.fallbackToDestructiveMigration(). Adding a @Query to an existing DAO changes no schema and no
+identity hash. Bumping to 13 without a real 12->13 Migration would destructively wipe favorites,
+watch progress, series tracking and blocked categories on every existing install.
+
+## Plan
+- [x] `data/local/dao/ChannelWatchLogDao.kt` - add `RecentChannelRow` projection +
+      `observeRecentChannels(cutoff, limit): Flow`. ONE aggregate (SQLite bare-column rule gives
+      the MAX row's metadata), `MAX(timestamp)` not session-end, NO window function
+      (ROW_NUMBER needs SQLite 3.25+/~API 30; minSdk is 23 and the fleet has API 25/28 sticks).
+- [x] `parental/ContentFilterManager.kt` - expose `isFilteringActive` (shouldFilter() was private).
+- [x] NEW `data/repository/RecentChannelsRepository.kt` - the single source of recent channels.
+      30-day window, over-fetch 60 -> parental filter -> take(25). Fails CLOSED on a null
+      categoryId while filtering is active.
+- [x] `livetv/LiveTvViewModel.kt` - `RECENT_ID`, `emptyState` StateFlow, RECENT branch in
+      `selectCategory` collecting the Flow (not a one-shot), + fix the pre-existing raw-vs-filtered
+      `categories.firstOrNull()` fallback bug in loadCategories.
+- [x] `livetv/LiveTvFragment.kt` - virtualCats shape in updateCategoryList (+ reversed-containment
+      search guard), `lastRenderedCategoryId` guard on the reset-to-top branch, emptyState
+      collector that also clears the skeleton, Guide icon maps RECENT_ID -> null.
+- [x] `res/layout/fragment_live_tv.xml` + `res/layout-television/fragment_live_tv.xml` -
+      `channels_empty_text` TextView in channels_panel. BOTH files: Ooustick inflates layout/,
+      Fire TV inflates layout-television/.
+- [x] `settings/SettingsViewModel.kt` - Clear Watch History now also clears channel_watch_log +
+      channel_scores (it cleared neither; the omission becomes a privacy complaint the moment the
+      rail is on screen).
+- [x] `backup/BackupService.kt` - clearAllData() clears channel_watch_log too.
+- [x] `multiview/ChannelPickerDialogFragment.kt` - repoint loadRecentChannels() at the shared
+      repository (deletes a 90-day full-table read, kills the duplicate, inherits the parental
+      filter), and point its CATEGORY_* ids at the LiveTvViewModel constants.
+- [ ] Build: `:app:compileDebugKotlin` + `assembleDebug`. Confirm the generated
+      OoustreamDatabase_Impl still reads Delegate(12).
+- [ ] DEVICE WALK on an AFTKRT **and** an Ooustick (a Fire TV pass is not sign-off - v4.2.0
+      shipped Fire-TV-verified and bricked every Ooustick):
+      1. Empty Recent -> row present, message shown, NO permanent shimmer
+      2. Populated -> newest first, names/logos correct
+      3. Watch >30s -> Back -> present at row 0 with no manual refresh, and the gold cursor does
+         NOT jump to row 0 while scrolled down
+      4. Header search survives "rec" / "recent" / "watched"
+      5. Guide while Recent selected -> favourites/first-category guide, not a blank one
+      6. CH+/- zapping from a Recent channel walks the Recent list
+      7. Settings -> Clear Watch History -> Recent empties
+      8. Parental ON + blocked category -> a previously-watched channel from it does not appear
+      9. Label fits the rail (fall back to "Recent" if it clips)
+
+## Device findings (.82 AFTKRT, 2026-09-17, debug 4.2.16)
+VERIFIED on device:
+- Installed debug over release 4.2.15 with `install -r`; release signingConfig uses the DEBUG
+  keystore, so no uninstall and no data loss (favorites=18, channel_watch_log=234 rows survived).
+- `PRAGMA user_version` = 12 AFTER the install. No migration ran. Generated impl = Delegate(12).
+- The new GROUP BY query, run against the device's real 234-row table: 22 distinct channels in the
+  30-day window, correctly ordered newest-first with correct name/category/icon per channel.
+- Rail renders correctly: "Recently Watched" second under Favorites with the clock glyph, and the
+  label does NOT clip (several real categories DO clip at that width, e.g. "4K / UHD Channels ...").
+- Default selection is Favorites on a cold start AND on Home->LiveTV. Recent is opt-in as designed.
+
+NEW FINDINGS worth acting on:
+- The `emojiColors` accent map is COSMETICALLY INERT for color emoji. setTextColor has no effect on
+  a color-font glyph, so the light-blue 0xFF90CAF9 on the clock does nothing visible - and neither
+  does Favorites' red 0xFFEF4444 (the heart is red because the glyph is red). Differentiation comes
+  from the glyph alone. Not worth code, but do not believe the accent is doing anything.
+- Parental fail-closed cost, measured on real data: 7 of the 22 in-window channels have a NULL
+  categoryId (149 of 234 raw rows), so with parental controls ON the rail loses ~32% of its
+  entries. Cause: Home's "For You - Live Now" fabricates LiveStreams with categoryId = null and
+  WatchSessionLogger copies that in. Follow-up option: have the logger resolve a real categoryId at
+  session start, which fixes FUTURE rows only.
+
+UNVERIFIED (needs a human with a remote):
+- Populated rail rendering in a clean run; cursor-does-not-jump after watch->Back; search filter
+  survives typing; Guide while Recent selected; empty-state + no-shimmer (needs the fresh .235
+  stick, which has an empty log); Ooustick pass.
+- Testing note: driving this screen over `adb input keyevent` proved unreliable (an OK press landed
+  in fullscreen playback instead of the rail). Prefer a human walk, or uiautomator-verified focus
+  before each synthetic keypress. Also: the FIRST Back press in the player only dismisses controls,
+  so a session is not logged until the SECOND Back - do not read that as a logging bug.
+- Reading the DB over adb MUST copy ooustream_db-wal and -shm too; the main file alone gave stale
+  row counts and a misleading "newest row".
+
+## Known-unfixed, deliberately out of scope
+- Dead stream ids: Recent shows a channel the provider has since removed. Structurally immune to
+  the frozen-URL half of the problem (the table stores channelId, never a URL; the URL is rebuilt
+  from current credentials at click time) so only the dead-id half applies. Attach catalog
+  validation to the URL-upgrade ticket. Worth one curl against a known-dead live id first: a clean
+  404 fails fast with honest copy, a 200-with-no-body burns the full v4.2.16 stall ladder (~45s).
+- `FavoritesViewModel` applies no ContentFilterManager at all, and Home's "For You - Live Now" rail
+  is unfiltered. Both are real pre-existing parental holes in the same neighbourhood. Flagged, not
+  widened into this change.
+- The Favorites branch in LiveTvViewModel.selectCategory still applies no parental filter (the
+  else-branch does). Pre-existing; not silently changed here.
+- EPG guide has no Recent scope. Deliberate: EpgGridViewModel.loadChannels ends with an
+  unconditional favourites-first re-sort that would destroy recency ordering.
+
+
+---
+
 # ACTIVE — Series/Movie title UI-UX cleanup (2026-08-08, from IMG_9314.JPG)
 
 Player title showed "The Closer (2005) - The Closer (2005) - S01E03 - The Big Picture - The Closer (2005) - S01E02 - About Face".

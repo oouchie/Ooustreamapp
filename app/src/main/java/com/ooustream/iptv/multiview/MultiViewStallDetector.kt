@@ -17,10 +17,15 @@ import kotlinx.coroutines.launch
 /**
  * Per-slot chop detector, auto-recovery engine, and watchdog for MultiView.
  *
- * Detects playback degradation via 3 signals:
+ * Detects playback degradation from ACTUAL DAMAGE — two signals:
  *   1. Dropped frame rate (via AnalyticsListener.onDroppedVideoFrames)
  *   2. Rendered frame stall (via DecoderCounters.renderedOutputBufferCount)
- *   3. Buffer health (bufferedPosition - currentPosition)
+ *
+ * Buffer depth (bufferedPosition - currentPosition) is logged as a DIAGNOSTIC only and no
+ * longer escalates anything. It is not a reliable signal on a live progressive source: the two
+ * positions can sit in different reference frames (giving a nonsense inflated value), and the
+ * real depth is legitimately only a few hundred ms because the stream is consumed as it
+ * arrives. See the comment in evaluateHealth() for the measurements.
  *
  * Drives a 3-level recovery ladder:
  *   Soft reset → Hard reset → Nuclear reset → Signal lost
@@ -34,8 +39,6 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         // Detection thresholds — background (non-audio) slots
         private const val DROPS_PER_SEC_STUTTER = 15
         private const val DROPS_PER_SEC_CHOPPING = 25
-        private const val BUFFER_EMPTY_MS = 500L
-        private const val BUFFER_CRITICAL_MS = 1_000L
         // Non-audio slots on mt8696 with 4 simultaneous AVC decoders routinely stall for 1-2s
         // under GPU contention. Raising from 1s → 4s eliminates false-positive HARD_RESETs
         // that flashed the recovery fade mask over otherwise-healthy channel slots.
@@ -63,7 +66,11 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
 
         // Signal lost auto-retry
         private const val AUTO_RETRY_INTERVAL_MS = 30_000L
-        private const val KEEP_ALIVE_INTERVAL_MS = 60_000L
+
+        // Largest configured maxBufferMs across all slot profiles is 10_000, so anything
+        // beyond this is not a buffer depth at all — see the MV_LIVE_POSITION_SPLIT guard
+        // in evaluateHealth().
+        private const val MAX_PLAUSIBLE_BUFFER_MS = 20_000L
 
         // Stagger delay between multi-slot recoveries
         private const val MULTI_SLOT_STAGGER_MS = 500L
@@ -75,7 +82,6 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         var analyticsListener: AnalyticsListener? = null
         var playerListener: Player.Listener? = null
         var monitorJob: Job? = null
-        var keepAliveJob: Job? = null
         var autoRetryJob: Job? = null
 
         // Signal 1: Dropped frames
@@ -86,7 +92,7 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         var lastRenderedFrameCount: Int = -1
         var noNewFramesSinceMs: Long = 0L
 
-        // Signal 3: Buffer health (tracked in poll loop)
+        // Buffer depth is read in the poll loop for diagnostics only.
 
         // Recovery state
         var currentHealth: PlaybackHealth = PlaybackHealth.SMOOTH
@@ -173,8 +179,15 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
                             state.nuclearResetCount = 0
                             cancelAutoRetry(slotIndex)
                         }
-                        // Start keep-alive for live streams
-                        startKeepAlive(slotIndex, player)
+                        // NO keep-alive here. A periodic seekToDefaultPosition() on an Xtream
+                        // progressive .ts is not a jump to the live edge — Media3 excludes
+                        // unknown-length live progressive sources from its in-buffer seek path
+                        // and an unseekable stream forces the position to 0, so the seek
+                        // reconnects the stream while TsExtractor keeps the OLD timestamp
+                        // baseline. Every frame then looks ~60s early, the release control
+                        // holds all of them (its threshold is 50ms), and the slot freezes with
+                        // drops/s=0 until a hard reset rebuilds the media item. Measured on
+                        // AFTKRT 2026-09-17: one freeze per slot per minute, self-inflicted.
                     }
                     Player.STATE_BUFFERING -> {
                         // Don't count initial buffering as frozen
@@ -213,8 +226,6 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         val state = slotStates[slotIndex]
         state.monitorJob?.cancel()
         state.monitorJob = null
-        state.keepAliveJob?.cancel()
-        state.keepAliveJob = null
         state.autoRetryJob?.cancel()
         state.autoRetryJob = null
 
@@ -282,8 +293,22 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
             0L
         }
 
-        // Signal 3: Buffer health
+        // Signal 3: Buffer health.
+        // NOT always a buffer depth: for a live progressive source getBufferedPositionUs()
+        // returns the ABSOLUTE largestQueuedTimestamp while currentPosition is measured from a
+        // clock that gets re-based to 0 on every reconnect, so after a reconnect this
+        // subtraction compares two different reference frames and inflates wildly. Because the
+        // branches below only match small values, an inflated figure silently scored a wedged
+        // slot as SMOOTH — which is how the keep-alive freeze survived three audits. Treat an
+        // implausible value as "no buffer signal" and say so out loud.
         val bufferMs = player.bufferedPosition - player.currentPosition
+        val bufferSignalUsable = bufferMs <= MAX_PLAUSIBLE_BUFFER_MS
+        if (!bufferSignalUsable && state.currentHealth == PlaybackHealth.SMOOTH) {
+            AudioLogger.log(
+                "MV_LIVE_POSITION_SPLIT slot=$slotIndex posMs=${player.currentPosition} " +
+                    "bufferedMs=${player.bufferedPosition} (buffer signal ignored)"
+            )
+        }
 
         // Active (audio) slot: only detect true freezes — recovery is far more disruptive
         // than riding out stutters/chop. Background slots keep aggressive detection.
@@ -297,13 +322,25 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
                 else -> PlaybackHealth.SMOOTH
             }
         } else {
-            // Background slots: full 3-signal evaluation
+            // Background slots. Only ACTUAL DAMAGE escalates: frames stalled, or frames dropped.
+            //
+            // Buffer depth is deliberately NOT a trigger any more, only a logged diagnostic.
+            // Measured on AFTKRT 2026-09-17 with the keep-alive removed: 71 of 89 escalations
+            // came from the buffer branches with zero dropped frames, at depths of 20-325ms,
+            // producing 8 needless HARD_RESETs in 100 seconds. A live progressive stream cannot
+            // be seeked and is consumed as it arrives, so a few hundred ms is its NORMAL depth —
+            // the old 500ms/1000ms thresholds were calibrated while this signal was returning
+            // the ~56s timestamp skew instead of a real depth, so they effectively never fired
+            // and were never validated. Worse, the escalation was self-reinforcing: a hard reset
+            // empties the buffer, which instantly re-trips "buffer empty", which resets again.
+            //
+            // Nothing is lost by dropping it: if a buffer genuinely runs dry, frames stop
+            // advancing and the frozen-frame signal catches it — that signal measures the
+            // outcome the user actually sees, rather than predicting it.
             when {
                 frozenDuration >= FROZEN_THRESHOLD_MS -> PlaybackHealth.FROZEN
                 dropsPerSec > DROPS_PER_SEC_CHOPPING -> PlaybackHealth.CHOPPING
-                bufferMs in 0 until BUFFER_EMPTY_MS -> PlaybackHealth.CHOPPING
                 dropsPerSec > DROPS_PER_SEC_STUTTER -> PlaybackHealth.SLIGHT_STUTTER
-                bufferMs in 0 until BUFFER_CRITICAL_MS -> PlaybackHealth.SLIGHT_STUTTER
                 else -> PlaybackHealth.SMOOTH
             }
         }
@@ -356,13 +393,15 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         if (isActive && health != PlaybackHealth.FROZEN) return
 
         val action = if (isActive) {
-            // Active slot recovery ladder: soft → hard → nuclear → signal lost
-            // Always start gentle to minimize audio disruption
+            // Active slot ladder: hard → nuclear → signal lost.
+            //
+            // SOFT_RESET is deliberately skipped here. The active slot only ever reaches this
+            // code on FROZEN (guarded above), and on a live progressive source a soft reset is
+            // a no-op by design (see MultiViewPlayerManager.softReset) because the seek it used
+            // to issue was itself a stream-reconnect. With a 30s active cooldown, burning two
+            // no-op rungs first would leave the audio tile frozen for a minute before reaching
+            // the rung that actually rebuilds the media item and recovers.
             when {
-                state.softResetCount < MAX_SOFT_RESETS -> {
-                    state.softResetCount++
-                    RecoveryAction.SOFT_RESET
-                }
                 state.hardResetCount < MAX_HARD_RESETS -> {
                     state.hardResetCount++
                     RecoveryAction.HARD_RESET
@@ -474,23 +513,16 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         }
     }
 
-    // ── Keep-Alive & Auto-Retry ──────────────────────────────────────
-
-    /**
-     * Keep-alive: periodically seek to live edge to prevent drift.
-     */
-    private fun startKeepAlive(slotIndex: Int, player: ExoPlayer) {
-        slotStates[slotIndex].keepAliveJob?.cancel()
-        slotStates[slotIndex].keepAliveJob = scope.launch {
-            while (isActive) {
-                delay(KEEP_ALIVE_INTERVAL_MS)
-                if (player.playbackState == Player.STATE_READY && player.isCurrentMediaItemLive) {
-                    player.seekToDefaultPosition()
-                    AudioLogger.log("MultiView slot $slotIndex: keep-alive seek-to-live")
-                }
-            }
-        }
-    }
+    // ── Auto-Retry ───────────────────────────────────────────────────
+    //
+    // The 60s "keep-alive seek-to-live" that used to live here was DELETED
+    // (2026-09-17). It could not do either job it was written for: it cannot
+    // reduce live latency (MediaItem.LiveConfiguration is inert on a progressive
+    // source — ProgressiveMediaSource hardcodes isDynamic=false, so the live
+    // playback-speed control is never engaged), and it cannot rescue a wedged
+    // slot (its own guard required STATE_READY, the one state a wedged slot is
+    // not in). What it DID do was reconnect the stream every 60s and freeze the
+    // slot. Do not reintroduce a periodic seek here.
 
     /**
      * Auto-retry from signal lost: every 30s, reset counters and try hard reset.

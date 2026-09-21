@@ -10,6 +10,7 @@ import com.ooustream.iptv.data.repository.ContentCacheRepository
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
+import com.ooustream.iptv.data.repository.RecentChannelsRepository
 import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -25,7 +26,8 @@ class LiveTvViewModel @Inject constructor(
     private val favoriteRepository: FavoriteRepository,
     private val epgCacheRepository: EpgCacheRepository,
     private val contentCacheRepository: ContentCacheRepository,
-    private val contentFilterManager: ContentFilterManager
+    private val contentFilterManager: ContentFilterManager,
+    private val recentChannelsRepository: RecentChannelsRepository
 ) : BaseViewModel() {
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
@@ -47,6 +49,18 @@ class LiveTvViewModel @Inject constructor(
 
     private val _selectedCategoryId = MutableStateFlow<String?>(FAVORITES_ID)
     val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
+
+    /**
+     * Non-null ⇒ the channel pane is legitimately empty, and this is the reason to show.
+     *
+     * This is a separate signal on purpose. The skeleton→real adapter swap in the fragment is
+     * gated on `channels.isNotEmpty()`, and a category that resolves to zero channels sets
+     * emptyList() on a StateFlow already holding emptyList() — StateFlow dedups, the collector
+     * never runs, and the shimmer rows would stay on screen forever (reading to a customer as
+     * "Live TV never loads"). A null→message transition always emits distinctly.
+     */
+    private val _emptyState = MutableStateFlow<String?>(null)
+    val emptyState: StateFlow<String?> = _emptyState.asStateFlow()
 
     val favorites = favoriteRepository.getAllFavorites()
 
@@ -75,13 +89,17 @@ class LiveTvViewModel @Inject constructor(
             try {
                 contentCacheRepository.getCategories("live").collect { categories ->
                     _categories.value = contentFilterManager.filterCategories("live", categories)
+                    // Both fallbacks must pick from the FILTERED list. Using the raw collector
+                    // parameter could auto-drop an empty-favorites user into a category parental
+                    // controls has hidden — whose streams are then all filtered out, leaving an
+                    // empty channel pane on first open.
                     if (_selectedCategoryId.value == FAVORITES_ID) {
                         val favCount = favoriteRepository.getFavoritesListByType("live").size
                         if (favCount == 0) {
-                            categories.firstOrNull()?.let { selectCategory(it.categoryId) }
+                            _categories.value.firstOrNull()?.let { selectCategory(it.categoryId) }
                         }
                     } else if (_selectedCategoryId.value == null) {
-                        categories.firstOrNull()?.let { selectCategory(it.categoryId) }
+                        _categories.value.firstOrNull()?.let { selectCategory(it.categoryId) }
                     }
                     _isLoading.value = false
                 }
@@ -95,12 +113,14 @@ class LiveTvViewModel @Inject constructor(
 
     fun selectCategory(categoryId: String) {
         _selectedCategoryId.value = categoryId
+        _emptyState.value = null
         selectCategoryJob?.cancel()
         selectCategoryJob = viewModelScope.launch {
             try {
-                if (categoryId == FAVORITES_ID) {
-                    val favs = favoriteRepository.getFavoritesListByType("live")
-                    _channels.value = favs.map { fav ->
+                when (categoryId) {
+                    FAVORITES_ID -> {
+                        val favs = favoriteRepository.getFavoritesListByType("live")
+                        _channels.value = favs.map { fav ->
                             LiveStream(
                                 num = null,
                                 name = fav.name,
@@ -116,9 +136,35 @@ class LiveTvViewModel @Inject constructor(
                                 tvArchiveDuration = null
                             )
                         }
-                } else {
-                    val streams = contentRepository.getLiveStreams(categoryId)
-                    _channels.value = contentFilterManager.filterContent("live", streams) { it.categoryId }
+                        _emptyState.value = if (_channels.value.isEmpty()) {
+                            "No favourite channels yet\nPress and hold OK on a channel to add one"
+                        } else null
+                    }
+                    RECENT_ID -> {
+                        // A Flow, not a one-shot read. WatchSessionLogger's insert is
+                        // fire-and-forget on a detached IO scope, dispatched from the PLAYER's
+                        // onPause — i.e. while this screen is coming back — and onResume
+                        // re-queries nothing. A suspend read loses that race and the channel the
+                        // user just watched would be missing, which is the one thing this rail
+                        // exists to show. Room's invalidation tracker re-emits whenever the
+                        // insert lands. The selectCategoryJob?.cancel() above already tears this
+                        // collector down on the next category selection; this call never returns
+                        // — the collector IS the branch.
+                        recentChannelsRepository.observeRecentLiveChannels().collect { list ->
+                            _channels.value = list
+                            _emptyState.value = if (list.isEmpty()) {
+                                "Nothing watched yet\nChannels you watch for 30 seconds or more show up here"
+                            } else null
+                        }
+                    }
+                    else -> {
+                        val streams = contentRepository.getLiveStreams(categoryId)
+                        _channels.value =
+                            contentFilterManager.filterContent("live", streams) { it.categoryId }
+                        _emptyState.value = if (_channels.value.isEmpty()) {
+                            "No channels in this category"
+                        } else null
+                    }
                 }
             } catch (e: Exception) {
                 _error.emit(e.message ?: "Failed to load channels")
@@ -128,6 +174,9 @@ class LiveTvViewModel @Inject constructor(
 
     companion object {
         const val FAVORITES_ID = "__favorites__"
+
+        /** Same literal MultiView's channel picker already ships — do not add a second spelling. */
+        const val RECENT_ID = "__recent__"
     }
 
     fun loadEpg(streamId: Int) {

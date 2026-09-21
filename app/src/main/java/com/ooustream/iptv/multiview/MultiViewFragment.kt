@@ -49,6 +49,8 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
     private var playerManager: MultiViewPlayerManager? = null
     private var stallDetector: MultiViewStallDetector? = null
     private var slotViews: Array<MultiViewSlotView?> = arrayOfNulls(4)
+    /** Per-slot recovery-mask safety timeouts, held so a real first frame can cancel them. */
+    private val maskTimeouts = arrayOfNulls<Runnable>(4)
     private var controlsTimer: CountDownTimer? = null
     private var emergencyQualityActive = false
     private var emergencyQualityActivatedAt = 0L
@@ -262,8 +264,14 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                 handleHealthChange(slotIndex, health)
             }
             onFirstFrameAfterRecovery = { slotIndex ->
-                // Dismiss fade mask when first frame renders after recovery
-                slotViews[slotIndex]?.hideRecoveryMask()
+                // Dismiss fade mask when first frame renders after recovery, and cancel the
+                // safety timeout — otherwise a stale timer from THIS recovery can fire during a
+                // LATER one and un-mask it early, exposing the glitch the mask exists to hide.
+                slotViews[slotIndex]?.let { sv ->
+                    maskTimeouts[slotIndex]?.let { sv.removeCallbacks(it) }
+                    maskTimeouts[slotIndex] = null
+                    sv.hideRecoveryMask()
+                }
             }
         }
     }
@@ -285,8 +293,12 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                     playerManager?.getPlayer(slotIndex)?.let {
                         stallDetector?.startMonitoring(slotIndex, it)
                     }
-                    // Safety timeout: dismiss mask after 3s even if no first frame
-                    slotView.postDelayed({ slotView.hideRecoveryMask() }, 3_000)
+                    // Safety timeout: dismiss mask after 3s even if no first frame.
+                    // Held so onFirstFrameAfterRecovery can cancel it.
+                    maskTimeouts[slotIndex]?.let { slotView.removeCallbacks(it) }
+                    val t = Runnable { slotView.hideRecoveryMask() }
+                    maskTimeouts[slotIndex] = t
+                    slotView.postDelayed(t, 3_000)
                 }
             }
             RecoveryAction.NUCLEAR_RESET -> {
@@ -297,8 +309,11 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                     playerManager?.getPlayer(slotIndex)?.let {
                         stallDetector?.startMonitoring(slotIndex, it)
                     }
-                    // Safety timeout: dismiss mask after 5s
-                    slotView.postDelayed({ slotView.hideRecoveryMask(300) }, 5_000)
+                    // Safety timeout: dismiss mask after 5s. Held so it can be cancelled.
+                    maskTimeouts[slotIndex]?.let { slotView.removeCallbacks(it) }
+                    val t = Runnable { slotView.hideRecoveryMask(300) }
+                    maskTimeouts[slotIndex] = t
+                    slotView.postDelayed(t, 5_000)
                 }
             }
             RecoveryAction.MARK_SIGNAL_LOST -> {

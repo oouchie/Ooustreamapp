@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
+import com.ooustream.iptv.data.local.dao.ChannelWatchLogDao
 import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.dao.WatchProgressDao
@@ -31,6 +32,7 @@ class BackupService @Inject constructor(
     private val favoriteDao: FavoriteDao,
     private val watchProgressDao: WatchProgressDao,
     private val searchHistoryDao: SearchHistoryDao,
+    private val channelWatchLogDao: ChannelWatchLogDao,
     private val credentialStore: CredentialStore,
     @ApplicationContext private val context: Context
 ) {
@@ -189,6 +191,9 @@ class BackupService @Inject constructor(
         favoriteDao.clearAll()
         watchProgressDao.clearAll()
         searchHistoryDao.clear()
+        // Live TV watch history — surfaced as the "Recently Watched" rail on Live TV, so it
+        // has to go when the user asks to clear all data.
+        channelWatchLogDao.clearAll()
         credentialStore.clear()
     }
 }

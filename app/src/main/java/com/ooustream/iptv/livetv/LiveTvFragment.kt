@@ -244,7 +244,11 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             }
         }
         guideIcon.setOnClickListener {
-            val categoryId = viewModel.selectedCategoryId.value
+            val selected = viewModel.selectedCategoryId.value
+            // The guide has no Recently Watched scope, and it would send "__recent__" to the
+            // API as a real category_id and render a silently blank guide. null already routes
+            // to its favourites / first-category fallback.
+            val categoryId = if (selected == LiveTvViewModel.RECENT_ID) null else selected
             val categoryName = viewModel.categories.value
                 .find { it.categoryId == categoryId }?.categoryName
             (activity as? com.ooustream.iptv.MainActivity)?.navigateToEpgGuide(categoryId, categoryName)
@@ -338,6 +342,10 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
             }
         })
         var skeletonSwapped = false
+        // Which category the channel pane is currently rendering. "Reset to top" must mean
+        // "a new category arrived", never "new data arrived" — the Recently Watched rail is
+        // Flow-backed and re-emits in place.
+        var lastRenderedCategoryId: String? = null
 
         // Observe categories
         viewLifecycleOwner.lifecycleScope.launch {
@@ -357,6 +365,7 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.channels.collect { channels ->
+                    val renderedCategoryId = viewModel.selectedCategoryId.value
                     updateChannelList(channelAdapter)
                     // Swap from skeleton to real adapter on first data arrival
                     if (!skeletonSwapped && channels.isNotEmpty()) {
@@ -373,14 +382,43 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
                                 if (DeviceUtils.isTV(requireContext())) channelsList.requestFocus()
                             }
                         }
-                    } else if (skeletonSwapped && channels.isNotEmpty()) {
-                        // v3.7.8: subsequent emissions = category switch. Reset the channel
-                        // list to the top so the user sees the new category from the
-                        // beginning instead of whatever scroll position the prior category
-                        // happened to be at.
+                    } else if (skeletonSwapped && channels.isNotEmpty() &&
+                        renderedCategoryId != lastRenderedCategoryId
+                    ) {
+                        // v3.7.8: a subsequent emission for a DIFFERENT category = category
+                        // switch. Reset the channel list to the top so the user sees the new
+                        // category from the beginning instead of the prior one's scroll position.
+                        //
+                        // The category check is load-bearing (v4.0.1 cursor-bug family): the
+                        // Recently Watched rail re-emits in place when a watch-session insert
+                        // lands — which happens while resumePreviewIfReturning()'s post{} is
+                        // restoring the gold cursor — so an unconditional reset would land last
+                        // and yank the cursor to row 0 on the exact navigation this rail exists
+                        // to serve.
                         channelsList.post {
                             TouchGridSetup.setSelected(channelsList, 0, channelAdapter.size())
                         }
+                    }
+                    lastRenderedCategoryId = renderedCategoryId
+                }
+            }
+        }
+
+        // Observe the empty-channel-pane state (Recently Watched with no history, empty
+        // Favorites, an empty API category). Separate from `channels` on purpose: an empty
+        // category sets emptyList() on a StateFlow already holding emptyList(), StateFlow
+        // dedups, and the channels collector above never runs — so the skeleton swap there
+        // can never fire and the shimmer rows would stay on screen forever. A null→message
+        // transition always emits, which is what clears the skeleton here.
+        val channelsEmptyText = view.findViewById<TextView>(R.id.channels_empty_text)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.emptyState.collect { msg ->
+                    channelsEmptyText?.text = msg ?: ""
+                    channelsEmptyText?.visibility = if (msg != null) View.VISIBLE else View.GONE
+                    if (msg != null && !skeletonSwapped) {
+                        channelsList.adapter = channelBridgeAdapter
+                        skeletonSwapped = true
                     }
                 }
             }
@@ -703,17 +741,35 @@ class LiveTvFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {
-        val favoritesCat = CategoryItem(LiveTvViewModel.FAVORITES_ID, "Favorites")
         val apiCats = viewModel.categories.value
             .filter { searchFilter.isEmpty() || it.categoryName.lowercase().contains(searchFilter) }
             .map { CategoryItem(it.categoryId, it.categoryName) }
-        val cats = if (searchFilter.isEmpty() || "favorites".contains(searchFilter)) {
-            listOf(favoritesCat) + apiCats
-        } else {
-            apiCats
+
+        // Pseudo-categories test whether their OWN label contains the query — REVERSED
+        // containment vs the API filter above. Same shape VodFragment/SeriesFragment use for
+        // their virtual rows. Miss this guard and the row vanishes the moment anything is
+        // typed in the header search.
+        val virtualCats = mutableListOf<CategoryItem>()
+        if (searchFilter.isEmpty() || "favorites".contains(searchFilter)) {
+            virtualCats += CategoryItem(LiveTvViewModel.FAVORITES_ID, "Favorites")
         }
-        val emojiColors = mapOf(LiveTvViewModel.FAVORITES_ID to 0xFFEF4444.toInt())
-        categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
+        if (searchFilter.isEmpty() || "recently watched".contains(searchFilter)) {
+            virtualCats += CategoryItem(LiveTvViewModel.RECENT_ID, "Recently Watched")
+        }
+
+        // This map is the ONLY styling channel for a pseudo-row: CategoryListAdapter reads
+        // specialEmojiColors[cat.id] and ignores CategoryItem.accentColor / iconRes / isSpecial.
+        // The glyph itself comes from the NAME — CategoryEmoji.get("Recently Watched") already
+        // returns the clock, so there is nothing to register there.
+        val emojiColors = mapOf(
+            LiveTvViewModel.FAVORITES_ID to 0xFFEF4444.toInt(), // red heart
+            LiveTvViewModel.RECENT_ID to 0xFF90CAF9.toInt()     // light blue, matches MultiView
+        )
+        categoryAdapter?.updateData(
+            virtualCats + apiCats,
+            viewModel.selectedCategoryId.value,
+            emojiColors
+        )
     }
 
     /** Start the muted preview for a channel with a crossfade + now-playing overlay. */

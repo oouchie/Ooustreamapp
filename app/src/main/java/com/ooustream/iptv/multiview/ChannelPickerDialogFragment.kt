@@ -18,14 +18,15 @@ import androidx.recyclerview.widget.RecyclerView
 import com.ooustream.iptv.R
 import com.ooustream.iptv.common.CategoryItem
 import com.ooustream.iptv.common.CategoryListAdapter
-import com.ooustream.iptv.data.local.dao.ChannelWatchLogDao
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
+import com.ooustream.iptv.data.repository.RecentChannelsRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -48,12 +49,13 @@ class ChannelPickerDialogFragment : DialogFragment() {
     lateinit var favoriteRepository: FavoriteRepository
 
     @Inject
-    lateinit var channelWatchLogDao: ChannelWatchLogDao
+    lateinit var recentChannelsRepository: RecentChannelsRepository
 
     companion object {
         private const val ARG_SLOT_INDEX = "slot_index"
-        private const val CATEGORY_FAVORITES = "__favorites__"
-        private const val CATEGORY_RECENT = "__recent__"
+        // Same ids the Live TV rail uses — one spelling, one source of truth.
+        private val CATEGORY_FAVORITES = com.ooustream.iptv.livetv.LiveTvViewModel.FAVORITES_ID
+        private val CATEGORY_RECENT = com.ooustream.iptv.livetv.LiveTvViewModel.RECENT_ID
 
         fun newInstance(slotIndex: Int): ChannelPickerDialogFragment {
             return ChannelPickerDialogFragment().apply {
@@ -314,24 +316,14 @@ class ChannelPickerDialogFragment : DialogFragment() {
             channelsRecyclerView.visibility = View.GONE
 
             try {
-                val logs = withContext(Dispatchers.IO) {
-                    channelWatchLogDao.getRecentLogs()
+                // Shared with the Live TV "Recently Watched" rail — one implementation only.
+                // The old inline version pulled 90 days of session rows onto the heap to
+                // produce 20 items, applied no parental filter, and had already drifted from
+                // the Live TV mapper (tvArchive null vs 0). .first() because this dialog is
+                // short-lived and does not need live updates.
+                val uniqueChannels = withContext(Dispatchers.IO) {
+                    recentChannelsRepository.observeRecentLiveChannels(limit = 20).first()
                 }
-
-                // Deduplicate by channelId, keep most recent
-                val uniqueChannels = logs
-                    .sortedByDescending { it.timestamp }
-                    .distinctBy { it.channelId }
-                    .take(20)
-                    .map { log ->
-                        LiveStream(
-                            num = null, name = log.channelName, streamType = "live",
-                            streamId = log.channelId, streamIcon = log.channelIcon,
-                            epgChannelId = null, added = null, categoryId = log.categoryId,
-                            customSid = null, tvArchive = null, directSource = null,
-                            tvArchiveDuration = null
-                        )
-                    }
 
                 channelAdapter.updateChannels(uniqueChannels)
                 loadingSpinner.visibility = View.GONE

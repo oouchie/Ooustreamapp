@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.player.resyncProgressiveLive
 import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.player.withoutBogusLiveDurationStuckDetection
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -155,7 +156,10 @@ class MultiViewPlayerManager(
             }
         })
 
-        // Live offset: start 3s behind live edge for faster keyframe acquisition
+        // NOTE: the MediaItem's LiveConfiguration (targetOffsetMs / speed window) is INERT for
+        // this source type — ProgressiveMediaSource hardcodes isDynamic=false, so Media3's live
+        // playback-speed control is never engaged. It is kept only because removing it does not
+        // change behaviour either way (liveness comes from the unknown-length body, not here).
         player.setMediaItem(buildLiveMediaItem(streamUrl))
         player.prepare()
         player.play()
@@ -332,17 +336,24 @@ class MultiViewPlayerManager(
     // ── Recovery Methods ──────────────────────────────────────────────
 
     /**
-     * Soft reset: seek to live edge to resync decoder. ~100ms, invisible to user.
-     * Clears accumulated decoder buffer debt without rebuilding player.
+     * Soft reset. NO-OP for live progressive streams — see [resyncProgressiveLive].
+     *
+     * This used to call seekToDefaultPosition() and was documented as "~100ms, invisible to
+     * user". That was false and it was the bug: on an Xtream .ts the seek reconnects the stream
+     * and keeps the old timestamp baseline, so rung 1 of the recovery ladder MANUFACTURED the
+     * freeze it was escalating from. The ladder now skips straight to HARD_RESET for live,
+     * which rebuilds the media item and is the only thing that actually recovers.
      */
     fun softReset(slotIndex: Int) {
         val player = players[slotIndex] ?: return
-        AudioLogger.log("MultiView slot $slotIndex: SOFT RESET (seek to live edge)")
         if (player.isCurrentMediaItemLive) {
-            player.seekToDefaultPosition()
-        } else {
-            player.seekTo(player.currentPosition)
+            AudioLogger.log(
+                "MultiView slot $slotIndex: SOFT RESET skipped (live progressive — seek would reconnect)"
+            )
+            return
         }
+        AudioLogger.log("MultiView slot $slotIndex: SOFT RESET (seek to current position)")
+        player.seekTo(player.currentPosition)
     }
 
     /**
@@ -355,11 +366,9 @@ class MultiViewPlayerManager(
         val url = streamUrls[slotIndex] ?: return
         AudioLogger.log("MultiView slot $slotIndex: HARD RESET (stop/prepare/play)")
 
-        player.stop()
-        player.clearMediaItems()
-        player.setMediaItem(buildLiveMediaItem(url))
-        player.prepare()
-        player.play()
+        // Rebuilding the MediaItem is what re-seeds the extractor + TimestampAdjuster, which is
+        // why this is the only rung that recovers a wedged live slot. One shared helper.
+        player.resyncProgressiveLive(buildLiveMediaItem(url))
     }
 
     /**

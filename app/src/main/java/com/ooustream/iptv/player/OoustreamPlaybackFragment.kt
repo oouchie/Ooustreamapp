@@ -1405,9 +1405,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                             viewLifecycleOwner.lifecycleScope.launch {
                                 delay(1000)
                                 val p = player ?: return@launch
-                                p.seekToDefaultPosition()
-                                p.prepare()
-                                p.play()
+                                // Full re-tune, not a seek. A seek on a live progressive .ts
+                                // reconnects the stream but keeps the old timestamp baseline,
+                                // which wedges the renderer (every frame reads ~1 min early and
+                                // is held, not dropped). The trailing prepare() here was also
+                                // dead: ExoPlayer.prepare() no-ops unless STATE_IDLE, and the
+                                // seek had already masked the state to BUFFERING.
+                                p.resyncProgressiveLive()
                             }
                             return
                         }
@@ -1711,9 +1715,14 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         p.playbackState == Player.STATE_BUFFERING ||
                         p.playerError != null) {
                         retryCount = 0
-                        if (viewModel.contentType == ContentType.LIVE) p.seekToDefaultPosition()
-                        p.prepare()
-                        p.play()
+                        if (viewModel.contentType == ContentType.LIVE) {
+                            // Live: re-tune. See resyncProgressiveLive — a seek here reconnects
+                            // the stream with a stale timestamp baseline and freezes it.
+                            p.resyncProgressiveLive()
+                        } else {
+                            p.prepare()
+                            p.play()
+                        }
                     }
                 }
             }
@@ -4109,8 +4118,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (viewModel.contentType == ContentType.LIVE) {
             player?.let { p ->
                 if (!p.isPlaying) {
-                    p.seekToDefaultPosition()
-                    p.play()
+                    // Re-tune rather than seek: this path had no prepare() at all, so the
+                    // destructive seek WAS the whole recovery on return from background.
+                    p.resyncProgressiveLive()
                 }
             }
         }

@@ -70,6 +70,21 @@
                     android:nextFocusLeft="@+id/categories_list"
                     android:nextFocusRight="@+id/preview_container"
                     android:nextFocusUp="@+id/header_search_icon" />
+
+                <!-- Empty-state message for the channel pane (Recently Watched with no
+                     history, empty Favorites, empty API category). Not focusable — it must
+                     never become a D-pad dead end. -->
+                <TextView
+                    android:id="@+id/channels_empty_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:paddingHorizontal="16dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp"
+                    android:lineSpacingExtra="4dp"
+                    android:visibility="gone" />
             </FrameLayout>
 
             <!-- Preview + EPG Panel (45%) - Glass Card -->

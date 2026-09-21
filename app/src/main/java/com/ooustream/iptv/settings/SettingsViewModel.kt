@@ -64,6 +64,11 @@ class SettingsViewModel @Inject constructor(
             try {
                 watchProgressDao.clearAll()
                 seriesTrackingDao.clearAll()
+                // Live TV history too — it feeds the "Recently Watched" rail on Live TV and
+                // Home's "For You — Live Now". Leaving these behind makes this action a
+                // visible lie now that the channel log is surfaced as a list.
+                database.channelWatchLogDao().clearAll()
+                database.channelScoreDao().clearAll()
             } catch (e: Exception) {
                 _error.emit("Failed to clear watch history: ${e.message}")
             }
