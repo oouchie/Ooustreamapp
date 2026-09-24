@@ -199,4 +199,17 @@
     <string name="remove_favorite_title">Remove Favorite</string>
     <string name="remove_favorite_message">Remove \"%s\" from favorites?</string>
     <string name="remove">Remove</string>
+    <!-- Series episodes screen (TV) -->
+    <string name="sd_start_over">Start over</string>
+    <string name="sd_resume">▶  Resume %1$s</string>
+    <string name="sd_play">▶  Play %1$s</string>
+    <string name="sd_watch_again">▶  Watch again from %1$s</string>
+    <string name="sd_min_left">%1$d min left</string>
+    <string name="sd_watched">Watched</string>
+    <string name="sd_episode_n">Episode %1$d</string>
+    <string name="sd_season_heading">%1$s, %2$d episodes</string>
+    <string name="sd_season_heading_one">%1$s, 1 episode</string>
+    <string name="binge_play_now">Play now</string>
+    <string name="binge_next_episode">Next episode</string>
+    <string name="binge_new_season">Season %1$d starts</string>
 </resources>

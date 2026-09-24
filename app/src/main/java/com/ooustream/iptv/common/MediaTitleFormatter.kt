@@ -62,6 +62,26 @@ object MediaTitleFormatter {
     }
 
     /**
+     * Just the episode's own name, for places that already show the series and the episode number
+     * (the episode list, the Watch Next card): "(Un)Well S01E01" → "", "The Closer (2005) - S01E02 -
+     * About Face" → "About Face". Empty when the provider title carries nothing but the series name
+     * and token — callers render "Episode N" themselves in that case.
+     */
+    fun episodeOwnTitle(seriesName: String, rawEpisodeTitle: String?): String {
+        var ep = rawEpisodeTitle?.trim().orEmpty()
+        val name = seriesName.trim()
+        if (name.isNotBlank()) {
+            ep = Regex("(?i)" + Regex.escape(name)).replace(ep, " ")
+            val bare = TRAILING_YEAR.replace(name, "").trim()
+            if (bare.isNotBlank() && !bare.equals(name, ignoreCase = true)) {
+                ep = Regex("(?i)" + Regex.escape(bare)).replace(ep, " ")
+            }
+        }
+        ep = EPISODE_TOKEN.replace(ep, " ")
+        return tidySegments(ep).joinToString(JOIN)
+    }
+
+    /**
      * Display-time cleanup for titles we didn't just build — legacy watch_progress names, provider
      * VOD names. Removes exact duplicate segments (case-insensitive, keeps first occurrence).
      * Legacy compounded series strings ("Series – StaleEpTitle – CurrentEpTitle") collapse to

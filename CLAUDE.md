@@ -4,20 +4,19 @@
 Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 
 - **Package**: `com.ooustream.iptv`
-- **Server**: `https://flarecoral.com` (Xtream Codes API) — **hardcoded** in
+- **Server**: `https://bp-v2.net` (Xtream Codes API) — **hardcoded** in
   `res/values/strings.xml` → `default_server_url`, hidden from the user (the login screen asks
-  only for username + password). **The move to `https://bp-v2.net` is written and staged but NOT
-  active** — flip that one string, bump the version and update `update.json`. Everything needed
-  for the flip already ships in the tree: `CredentialStore.load()` silently moves any saved login
-  onto the canonical host (so one string migrates the whole installed base), and
-  `ProviderMigration` drops every cache keyed by the old provider's ids and re-matches parental
-  blocks by category name. Held 2026-09-20: bp-v2.net was up but answered
-  `{"user_info":{"auth":0}}` for a live account — the provider had not activated it yet. See
+  only for username + password). Live since **v4.2.17 (released 2026-09-21)**; the old host
+  `flarecoral.com` is switched off. `CredentialStore.load()` silently moves any saved login onto
+  the canonical host, and `ProviderMigration` drops caches keyed by the old provider's ids and
+  re-matches parental blocks by category name. As of 2026-09-24 the account authenticates
+  (`auth=1`) and the panel carries 199 live categories incl. 20 "Replay" categories and 235
+  channels with `tv_archive=1` (catch-up — not yet supported by the app). See
   `tasks/provider-cutover-bp-v2.md`.
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.16 (versionCode 104)
+- **Current Version**: 4.2.18 (versionCode 106)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -553,7 +552,32 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 
 ## Version Release History
 
-- **v4.2.17 (NOT RELEASED — PREPARED AND REVERTED IN THE TREE)** — Provider cutover:
+- **v4.2.18 (versionCode 106) — Series screen redesign + Watch Next card + real episode names.**
+  Device-verified on .84 (AFTKRT, release build installed over the top) and installed on .82; NOT
+  walked on an Ooustick or a phone. Plan + results: `tasks/series-detail-redesign.md`.
+  - **TV series screen** — new `layout/fragment_series_detail_tv.xml`, picked at runtime by
+    `DeviceUtils.isTV()` in `SeriesDetailFragment` (phone keeps `fragment_series_detail.xml`
+    untouched). Driven by new `series/SeriesDetailTvScreen.kt` + `series/SeriesDetailTvAdapters.kt`
+    (episodes + seasons in Leanback `VerticalGridView`s, so rows recycle). One primary action from
+    new `SeriesDetailViewModel.resumeTarget` (RESUME / NEXT / START / REWATCH) + "Start over".
+    Brand face bundled: `res/font/space_grotesk_bold.ttf` (OFL; Fire TV has no GMS font provider).
+    Colors `values/colors_series_detail.xml` (`sd_*`), drawables `sd_*.xml`.
+  - **Gotchas learned:** the Up Next placeholder row (`position 0, duration 1, 6%`) is not real
+    progress — treat `position == 0` as "play next" (same test as `ContinueWatchingPresenter`).
+    Leanback grids swallow UP at row 0 (`app:focusOutFront` defaults false) — it trapped focus in the
+    season list. Don't give buttons a `minWidth` wider than the column (~274dp on a 1080p stick).
+  - **Real episode names** — new `data/repository/EpisodeNameResolver.kt`: TMDB `search/tv` by name +
+    year (exact normalized name, year ±1, otherwise no name — a wrong name is worse than "Episode 3"),
+    then `tv/{id}/season/{n}`; 30-day SharedPreferences cache. The provider titles every episode
+    "Show S01E01" and sends no TMDB id. `MediaTitleFormatter.episodeOwnTitle()` added for the rest.
+  - **Watch Next card** (`overlay_binge_countdown.xml`, `player/BingeCountdownOverlay.kt`) — thumbnail
+    + numeral + real name, gold fill draining out of Play now, no full-screen scrim. Shows at 20s left
+    with a 15s countdown (`BINGE_SHOW_BEFORE_END_MS` / `BINGE_COUNTDOWN_SECONDS`), so the advance still
+    lands ~5s before the end. `CountDownTimer` is the clock; the drain `ValueAnimator` is visual only
+    (it obeys the system animator scale). BACK on the card = Cancel (was: exited the player); focused
+    button now has a visible gold ring. `NextEpisodeResult` gained `episodeTitle` + `imageUrl`.
+
+- **v4.2.17 (versionCode 105, released 2026-09-21 after a first attempt was reverted on 2026-09-20 — the historical notes below describe that first attempt)** — Provider cutover:
   flarecoral.com → bp-v2.net. The migration machinery below IS in the tree and shipping-ready;
   only the host string, the version bump and `update.json` were rolled back on 2026-09-20 after
   the new panel rejected a live account (it is not switched on yet). Re-applying is a three-line

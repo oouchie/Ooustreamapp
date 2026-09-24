@@ -69,7 +69,7 @@ class OoustreamPlaybackGlue(
     // to show the controls bar. Without this, e.g. pressing OK on "Watch Next"
     // in the binge overlay just showed controls and never advanced episodes.
     var isModalOverlayShowing: (() -> Boolean)? = null
-    var onDismissTrackPicker: (() -> Unit)? = null
+    var onDismissModalOverlay: (() -> Unit)? = null
     var onCcToggle: (() -> Unit)? = null
 
     // Seek/navigation callbacks (wired by fragment). v4.0.0: the glue no longer calls
@@ -171,7 +171,7 @@ class OoustreamPlaybackGlue(
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (event?.action == KeyEvent.ACTION_DOWN) {
                 if (isModalOverlayShowing?.invoke() == true) {
-                    onDismissTrackPicker?.invoke()
+                    onDismissModalOverlay?.invoke()
                     backConsumedOnDown = true
                     return true
                 }

@@ -22,7 +22,42 @@ interface TmdbApiService {
         @Path("id") tmdbId: String,
         @Query("api_key") apiKey: String
     ): TmdbTvResponse
+
+    /** Series lookup by name — the provider sends no TMDB id for series. */
+    @GET("search/tv")
+    suspend fun searchTv(
+        @Query("query") query: String,
+        @Query("first_air_date_year") year: Int?,
+        @Query("api_key") apiKey: String
+    ): TmdbTvSearchResponse
+
+    @GET("tv/{id}/season/{season}")
+    suspend fun getTvSeason(
+        @Path("id") tmdbId: Int,
+        @Path("season") season: Int,
+        @Query("api_key") apiKey: String
+    ): TmdbSeasonResponse
 }
+
+data class TmdbTvSearchResponse(
+    @SerializedName("results") val results: List<TmdbTvSearchResult>?
+)
+
+data class TmdbTvSearchResult(
+    @SerializedName("id") val id: Int,
+    @SerializedName("name") val name: String?,
+    @SerializedName("original_name") val originalName: String?,
+    @SerializedName("first_air_date") val firstAirDate: String?
+)
+
+data class TmdbSeasonResponse(
+    @SerializedName("episodes") val episodes: List<TmdbEpisode>?
+)
+
+data class TmdbEpisode(
+    @SerializedName("episode_number") val episodeNumber: Int,
+    @SerializedName("name") val name: String?
+)
 
 data class TmdbMovieResponse(
     @SerializedName("poster_path") val posterPath: String?,

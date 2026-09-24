@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="2dp"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:background="@drawable/sd_row_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:textColor="@color/sd_text_secondary"
+    android:textSize="19sp"
+    android:maxLines="1"
+    android:ellipsize="end"
+    tools:text="Season 2" />

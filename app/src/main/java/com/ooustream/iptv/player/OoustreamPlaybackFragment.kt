@@ -1050,6 +1050,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         controlsManager?.hide()
                         return
                     }
+                    // BACK on the binge card = Cancel (stay on this episode), not "leave the
+                    // player" — it used to fall through and exit to the episode list.
+                    if (bingeOverlay?.isShowing == true) {
+                        bingeOverlay?.cancel()
+                        return
+                    }
                     if (watchNextOverlay?.isShowing == true) {
                         watchNextOverlay?.dismiss()
                     }
@@ -1137,7 +1143,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     val dur = p.duration
                     val pos = p.currentPosition
                     if (dur > 0) lastKnownDurationMs = dur
-                    if (dur > 0 && pos > 0 && (dur - pos) < 15_000 && !bingeShown) {
+                    // Card at 20s left with a 15s countdown: auto-advance still lands ~5s before the end, as it
+                    // did with the old 15s/10s pair, but the viewer gets 5 more seconds to decide.
+                    if (dur > 0 && pos > 0 && (dur - pos) < BINGE_SHOW_BEFORE_END_MS && !bingeShown) {
                         bingeShown = true
                         val nextInfo = viewModel.resolveNextEpisode()
                         if (nextInfo != null) {
@@ -1165,7 +1173,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 streamDiagnosticLogger.logAppEvent("PREBUFFER_SKIPPED_HIRES",
                                     "w=${p.videoFormat?.width}, h=${p.videoFormat?.height} — sequential advance to protect memory")
                             }
-                            bingeOverlay?.show(nextInfo.name, 10)
+                            bingeOverlay?.show(
+                                episodeNum = nextInfo.episodeNum,
+                                // Blank when the provider has no real name — the card's big
+                                // numeral already says "4"; "Episode 4" under it is noise.
+                                episodeTitle = nextInfo.episodeTitle,
+                                imageUrl = nextInfo.imageUrl,
+                                newSeason = nextInfo.season.takeIf {
+                                    it > 0 && viewModel.seasonNum > 0 && it != viewModel.seasonNum
+                                } ?: 0,
+                                countdownSeconds = BINGE_COUNTDOWN_SECONDS
+                            )
                         } else {
                             seriesCompleteOverlay?.show(viewModel.streamName)
                         }
@@ -4231,7 +4249,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 || watchNextOverlay?.isShowing == true
                 || seriesCompleteOverlay?.isShowing == true
         }
-        g.onDismissTrackPicker = { trackPickerOverlay?.dismiss() }
+        // Glue-side BACK path (only reached when focus is inside the glue host; with focus on
+        // an overlay button BACK goes to the OnBackPressedCallback instead — device-verified).
+        // Close whichever modal is showing rather than only the track picker.
+        g.onDismissModalOverlay = {
+            when {
+                trackPickerOverlay?.isShowing == true -> trackPickerOverlay?.dismiss()
+                bingeOverlay?.isShowing == true -> bingeOverlay?.cancel()
+                watchNextOverlay?.isShowing == true -> watchNextOverlay?.dismiss()
+                seriesCompleteOverlay?.isShowing == true -> seriesCompleteOverlay?.dismiss()
+            }
+        }
         g.onCcToggle = { toggleClosedCaptions() }
         // Route the glue's "key fired but callback was null" warnings into the
         // customer-visible diagnostic file. Lets us spot future "channel switch
@@ -4587,6 +4615,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     }
 
     companion object {
+        private const val BINGE_SHOW_BEFORE_END_MS = 20_000L
+        private const val BINGE_COUNTDOWN_SECONDS = 15
         private const val MAX_RETRIES_LIVE = 3
         private const val MAX_RETRIES_SERIES = 5
         private const val MAX_RETRIES_VOD = 6

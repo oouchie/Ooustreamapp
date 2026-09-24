@@ -79,6 +79,9 @@ class SeriesDetailFragment : Fragment() {
     // Standard RecyclerView adapter for episodes
     private val episodesRvAdapter = EpisodeRecyclerAdapter { episode -> playEpisode(episode) }
 
+    /** Non-null when the TV (D-pad) layout is in use — chosen by isTV(), never by resource qualifier. */
+    private var tvScreen: SeriesDetailTvScreen? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         seriesId = arguments?.getInt(ARG_SERIES_ID, 0) ?: 0
@@ -91,11 +94,25 @@ class SeriesDetailFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        return inflater.inflate(R.layout.fragment_series_detail, container, false)
+        val layout = if (DeviceUtils.isTV(requireContext())) R.layout.fragment_series_detail_tv
+        else R.layout.fragment_series_detail
+        return inflater.inflate(layout, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        if (DeviceUtils.isTV(requireContext())) {
+            tvScreen = SeriesDetailTvScreen(
+                root = view,
+                scope = viewLifecycleOwner.lifecycleScope,
+                seriesName = { viewModel.seriesInfo.value?.info?.name?.takeIf { it.isNotBlank() } ?: seriesName },
+                onPlay = { episode, fromStart -> playEpisode(episode, fromStart) },
+                onSelectSeason = { key -> viewModel.selectSeason(key) }
+            )
+            observeTv(tvScreen!!)
+            viewModel.loadSeriesInfo(seriesId)
+            return
+        }
         // v3.7.11: phone-only back-arrow toolbar overlay.
         com.ooustream.iptv.common.PhoneToolbarHelper.attach(
             this, view as android.view.ViewGroup, seriesName
@@ -126,6 +143,27 @@ class SeriesDetailFragment : Fragment() {
         seasonsRow.adapter = ItemBridgeAdapter(seasonsAdapter)
         episodesList.layoutManager = LinearLayoutManager(requireContext())
         episodesList.adapter = episodesRvAdapter
+    }
+
+    override fun onDestroyView() {
+        tvScreen = null
+        super.onDestroyView()
+    }
+
+    private fun observeTv(screen: SeriesDetailTvScreen) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { viewModel.isLoading.collect { screen.setLoading(it) } }
+                launch { viewModel.seriesInfo.collect { it?.let(screen::bindSeries) } }
+                launch { viewModel.seasonTabs.collect { screen.bindSeasons(it) } }
+                launch { viewModel.selectedSeasonKey.collect { screen.bindSelectedSeason(it) } }
+                launch { viewModel.episodes.collect { screen.bindEpisodes(it) } }
+                launch { viewModel.episodeWatchProgress.collect { screen.bindProgress(it) } }
+                launch { viewModel.resumeTarget.collect { screen.bindResumeTarget(it) } }
+                launch { viewModel.episodeNames.collect { screen.bindEpisodeNames(it) } }
+                launch { collectErrors() }
+            }
+        }
     }
 
     override fun onResume() {
@@ -306,7 +344,7 @@ class SeriesDetailFragment : Fragment() {
         }
     }
 
-    private fun playEpisode(episode: Episode) {
+    private fun playEpisode(episode: Episode, fromStart: Boolean = false) {
         // Null means the provider's listing for this episode has no usable stream id. Say so here
         // rather than launching the player at a bogus URL and letting the panel's reply masquerade
         // as a playback failure.
@@ -324,11 +362,13 @@ class SeriesDetailFragment : Fragment() {
         val epName = com.ooustream.iptv.common.MediaTitleFormatter.episodeTitle(
             seriesName, episode.title, episode.episodeNum, seasonNum = episode.season ?: 0
         )
-        val progress = viewModel.episodeWatchProgress.value[episodeId]
+        // "Start over" skips the silent resume (and its "Resuming from" toast) entirely.
+        val progress = if (fromStart) null else viewModel.episodeWatchProgress.value[episodeId]
         com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
             context = requireContext(),
             progress = progress
-        ) { forceBeginning ->
+        ) { resumeDeclined ->
+            val forceBeginning = fromStart || resumeDeclined
             val fragment = OoustreamPlaybackFragment.newInstance(
                 streamUrl = url,
                 contentType = ContentType.SERIES,

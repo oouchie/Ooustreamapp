@@ -25,6 +25,7 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val watchProgressRepository: WatchProgressRepository,
+    private val episodeNameResolver: com.ooustream.iptv.data.repository.EpisodeNameResolver,
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
     private val recommendationEngine: RecommendationEngine,
     private val seriesTrackingDao: SeriesTrackingDao
@@ -304,7 +305,7 @@ class PlayerViewModel @Inject constructor(
             // Try next episode in same season
             if (currentIdx + 1 < currentEpisodes.size) {
                 val next = currentEpisodes[currentIdx + 1]
-                return buildNextResult(next, resolvedSeriesName(info.info?.name))
+                return buildNextResult(next, resolvedSeriesName(info.info?.name), info.info?.releaseDate)
             }
 
             // Try first episode of next season
@@ -313,7 +314,7 @@ class PlayerViewModel @Inject constructor(
                 val nextSeasonKey = sortedSeasons[currentSeasonIdx + 1]
                 val nextEpisodes = episodesMap[nextSeasonKey]
                 if (!nextEpisodes.isNullOrEmpty()) {
-                    return buildNextResult(nextEpisodes.first(), resolvedSeriesName(info.info?.name))
+                    return buildNextResult(nextEpisodes.first(), resolvedSeriesName(info.info?.name), info.info?.releaseDate)
                 }
             }
 
@@ -336,7 +337,30 @@ class PlayerViewModel @Inject constructor(
      * unplayable but got PERSISTED into `watch_progress.extra` by [insertUpNextRow], so one bad
      * listing seeded a permanently broken Continue Watching row.
      */
-    private fun buildNextResult(episode: com.ooustream.iptv.data.model.Episode, seriesName: String): NextEpisodeResult? {
+    /**
+     * Real name for the Watch Next card. Normally a cache hit (the series screen fetched it); capped
+     * at 2s so a slow TMDB can never hold up the advance — the card just shows the number instead.
+     */
+    private suspend fun tmdbEpisodeName(
+        seriesName: String,
+        releaseDate: String?,
+        episode: com.ooustream.iptv.data.model.Episode
+    ): String? {
+        val season = episode.season?.takeIf { it > 0 } ?: return null
+        val yearRe = Regex("\\s*\\((19|20)\\d{2}\\)\\s*$")
+        val name = seriesName.replace(yearRe, "").trim()
+        val year = releaseDate?.take(4)?.toIntOrNull()
+            ?: yearRe.find(seriesName)?.value?.filter(Char::isDigit)?.toIntOrNull()
+        return kotlinx.coroutines.withTimeoutOrNull(2_000) {
+            episodeNameResolver.seasonNames(name, year, season)[episode.episodeNum]
+        }
+    }
+
+    private suspend fun buildNextResult(
+        episode: com.ooustream.iptv.data.model.Episode,
+        seriesName: String,
+        releaseDate: String? = null
+    ): NextEpisodeResult? {
         val id = com.ooustream.iptv.data.model.StreamUrlBuilder.episodeStreamId(episode.id) ?: return null
         val url = contentRepository.buildSeriesStreamUrl(
             id,
@@ -350,7 +374,10 @@ class PlayerViewModel @Inject constructor(
             episodeId = episode.id ?: "",
             name = name,
             season = episode.season ?: 0,
-            episodeNum = episode.episodeNum
+            episodeNum = episode.episodeNum,
+            episodeTitle = tmdbEpisodeName(seriesName, releaseDate, episode)
+                ?: com.ooustream.iptv.common.MediaTitleFormatter.episodeOwnTitle(seriesName, episode.title),
+            imageUrl = episode.info?.movieImage
         )
     }
 }
@@ -360,5 +387,8 @@ data class NextEpisodeResult(
     val episodeId: String,
     val name: String,
     val season: Int,
-    val episodeNum: Int
+    val episodeNum: Int,
+    /** The episode's own name only (no series / S E token); blank when the provider has none. */
+    val episodeTitle: String = "",
+    val imageUrl: String? = null
 )

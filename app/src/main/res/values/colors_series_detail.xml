@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Series episodes screen + Watch Next card (2026-09-24 redesign). Unqualified on purpose:
+     the Ooustick resolves values/ not values-television/, and it must look identical. -->
+<resources>
+    <color name="sd_base">#0A0A0A</color>
+    <color name="sd_surface">#15171C</color>
+    <color name="sd_surface_raised">#23262D</color>
+    <color name="sd_text">#F4F5F7</color>
+    <color name="sd_text_secondary">#A3A9B4</color>
+    <color name="sd_hairline">#33FFFFFF</color>
+    <color name="sd_gold">#FFC107</color>
+    <color name="sd_gold_drain">#59FFC107</color>
+</resources>

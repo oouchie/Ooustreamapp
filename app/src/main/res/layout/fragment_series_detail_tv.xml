@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Series episodes screen, TV (D-pad) variant. Chosen at RUNTIME via DeviceUtils.isTV(), never via
+  the -television qualifier: the Ooustick reports uiMode NORMAL and resolves plain layout/, so a
+  qualifier-selected TV layout would never reach it (CLAUDE.md "DEVICE CLASSIFICATION" rule 3).
+  All sizes are literal dp/sp for the same reason — values-television/dimens.xml doesn't apply there.
+
+  Two columns: identity + one primary action + seasons on the left, the episode list on the right.
+  The page itself never scrolls; only the two lists do.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/sd_base">
+
+    <ImageView
+        android:id="@+id/sd_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.6"
+        android:contentDescription="@null" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/sd_scrim_left" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/sd_scrim_bottom" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:paddingStart="56dp"
+        android:paddingEnd="32dp"
+        android:paddingTop="40dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- ── Left column ───────────────────────────────────────── -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="36"
+            android:orientation="vertical"
+            android:paddingEnd="40dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <TextView
+                android:id="@+id/sd_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/space_grotesk_bold"
+                android:textColor="@color/sd_text"
+                android:textSize="40sp"
+                android:lineSpacingMultiplier="0.95"
+                android:letterSpacing="-0.01"
+                android:maxLines="2"
+                android:ellipsize="end"
+                tools:text="(Un)Well" />
+
+            <LinearLayout
+                android:id="@+id/sd_meta_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/sd_year"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/sd_text_secondary"
+                    android:textSize="16sp"
+                    android:layout_marginEnd="18dp"
+                    android:visibility="gone"
+                    tools:text="2020"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/sd_genre"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/sd_text_secondary"
+                    android:textSize="16sp"
+                    android:layout_marginEnd="18dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"
+                    tools:text="Documentary"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/sd_rating"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/sd_gold"
+                    android:textSize="16sp"
+                    android:visibility="gone"
+                    tools:text="★ 3.0"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/sd_plot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="15sp"
+                android:lineSpacingMultiplier="1.3"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:visibility="gone"
+                tools:text="This docuseries takes a deep dive into the lucrative wellness industry, which touts health and healing. But do the products live up to the promises?"
+                tools:visibility="visible" />
+
+            <!-- Primary action: two lines, e.g. "Resume S1 E3" / "23 min left" -->
+            <LinearLayout
+                android:id="@+id/sd_primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="28dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
+                android:background="@drawable/sd_primary_btn"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusRight="@+id/sd_episodes"
+                android:visibility="invisible"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/sd_primary_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/sd_base"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:duplicateParentState="true"
+                    tools:text="▶  Resume S1 E3" />
+
+                <TextView
+                    android:id="@+id/sd_primary_sub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="#B30A0A0A"
+                    android:textSize="15sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    tools:text="23 min left" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/sd_start_over"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:paddingStart="24dp"
+                android:paddingEnd="28dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:background="@drawable/sd_secondary_btn"
+                android:text="@string/sd_start_over"
+                android:textColor="@color/sd_text"
+                android:textSize="17sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusRight="@+id/sd_episodes"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <!-- Seasons: vertical, only when there is more than one. focusOutFront: Leanback grids
+                 swallow UP at the first row by default, which trapped focus in the season list
+                 with no way back to Play / Start over. -->
+            <androidx.leanback.widget.VerticalGridView
+                android:id="@+id/sd_seasons"
+                app:focusOutFront="true"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="28dp"
+                android:layout_marginStart="-14dp"
+                android:clipToPadding="false"
+                android:paddingBottom="40dp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <!-- Fills the space instead of the seasons list when there is only one season -->
+            <Space
+                android:id="@+id/sd_seasons_spacer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+        </LinearLayout>
+
+        <!-- ── Right column: episodes ────────────────────────────── -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="64"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/sd_season_heading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginBottom="6dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="16sp"
+                tools:text="Season 1, 11 episodes" />
+
+            <androidx.leanback.widget.VerticalGridView
+                android:id="@+id/sd_episodes"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingTop="6dp"
+                android:paddingBottom="80dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/sd_loading"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/sd_gold"
+        android:visibility="gone" />
+
+</FrameLayout>

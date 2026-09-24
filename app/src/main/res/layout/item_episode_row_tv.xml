@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One episode on the TV series screen. The numeral is the one loud element on the page:
+     episodes ARE a sequence, so the number carries information rather than decorating. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="4dp"
+    android:orientation="horizontal"
+    android:paddingStart="20dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp"
+    android:background="@drawable/sd_row_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <TextView
+        android:id="@+id/er_number"
+        android:layout_width="76dp"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/space_grotesk_bold"
+        android:includeFontPadding="false"
+        android:textColor="@color/sd_text"
+        android:textSize="40sp"
+        tools:text="3" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/er_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/sd_text"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                tools:text="Liquid gold" />
+
+            <TextView
+                android:id="@+id/er_meta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="15sp"
+                tools:text="23 min left" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/er_plot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/sd_text_secondary"
+            android:textSize="15sp"
+            android:lineSpacingMultiplier="1.25"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone"
+            tools:text="Bodybuilding is just one reason why some adults are pumped to drink so-called liquid gold."
+            tools:visibility="visible" />
+
+        <ProgressBar
+            android:id="@+id/er_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="10dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/sd_progress"
+            android:visibility="gone"
+            tools:progress="560"
+            tools:visibility="visible" />
+    </LinearLayout>
+</LinearLayout>

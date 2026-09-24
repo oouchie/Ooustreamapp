@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backdrop sits on the right; the left 40% is solid base so the title/action column reads. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="0" android:type="linear"
+        android:startColor="#FF0A0A0A" android:centerX="0.42"
+        android:centerColor="#E60A0A0A" android:endColor="#A60A0A0A" />
+</shape>
