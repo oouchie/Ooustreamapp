@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Movie details, TV (D-pad) variant — 5.0. Same language as fragment_series_detail_tv: chosen at
+  RUNTIME via DeviceUtils.isTV() (the Ooustick resolves plain layout/), literal dp/sp throughout.
+  Left column: identity + one primary action; bottom: "More like this".
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/sd_base">
+
+    <ImageView
+        android:id="@+id/vd_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.65"
+        android:contentDescription="@null" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/sd_scrim_left" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/sd_scrim_bottom" />
+
+    <!-- The page scrolls: the top section is sized in code to the screen minus a peek, so the
+         "More like this" heading shows at the bottom; D-pad DOWN into the row scrolls it into view
+         (ScrollView follows focus). The backdrop stays fixed behind. -->
+    <ScrollView
+        android:id="@+id/vd_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none"
+        android:focusable="false"
+        android:overScrollMode="never">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="40dp"
+        android:paddingBottom="24dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:id="@+id/vd_left"
+            android:layout_width="440dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="56dp"
+            android:orientation="vertical"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <TextView
+                android:id="@+id/vd_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/space_grotesk_bold"
+                android:textColor="@color/sd_text"
+                android:textSize="40sp"
+                android:lineSpacingMultiplier="0.95"
+                android:letterSpacing="-0.01"
+                android:maxLines="2"
+                android:ellipsize="end"
+                tools:text="Apex" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/vd_year"
+                    style="@style/SdMeta"
+                    tools:text="2026" />
+
+                <TextView
+                    android:id="@+id/vd_runtime"
+                    style="@style/SdMeta"
+                    tools:text="1 h 36 min" />
+
+                <TextView
+                    android:id="@+id/vd_genre"
+                    style="@style/SdMeta"
+                    android:maxWidth="200dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    tools:text="Thriller" />
+
+                <TextView
+                    android:id="@+id/vd_rating"
+                    style="@style/SdMeta"
+                    android:layout_marginEnd="0dp"
+                    android:textColor="@color/sd_gold"
+                    tools:text="★ 6.4" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/vd_plot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="15sp"
+                android:lineSpacingMultiplier="1.3"
+                android:maxLines="4"
+                android:ellipsize="end"
+                android:visibility="gone"
+                tools:text="A grieving woman on a solo trip into the Australian wilderness is hunted by a killer."
+                tools:visibility="visible" />
+
+            <LinearLayout
+                android:id="@+id/vd_primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
+                android:background="@drawable/sd_primary_btn"
+                android:focusable="true"
+                android:focusableInTouchMode="true">
+
+                <TextView
+                    android:id="@+id/vd_primary_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/sd_base"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    tools:text="▶  Resume" />
+
+                <TextView
+                    android:id="@+id/vd_primary_sub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="#B30A0A0A"
+                    android:textSize="15sp"
+                    android:visibility="gone"
+                    tools:text="1h 29m left"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:clipChildren="false">
+
+                <TextView
+                    android:id="@+id/vd_start_over"
+                    style="@style/SdSecondaryButton"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="12dp"
+                    android:text="@string/sd_start_over"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/vd_trailer"
+                    style="@style/SdSecondaryButton"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:text="@string/vd_trailer"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/vd_cast"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="15sp"
+                android:lineSpacingMultiplier="1.25"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:visibility="gone"
+                tools:text="With Charlize Theron, Taron Egerton, Eric Bana"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/vd_more_heading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="56dp"
+            android:layout_marginBottom="4dp"
+            android:text="@string/vd_more_like_this"
+            android:textColor="@color/sd_text"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <androidx.leanback.widget.HorizontalGridView
+            android:id="@+id/vd_more"
+            android:layout_width="match_parent"
+            android:layout_height="208dp"
+            android:paddingStart="50dp"
+            android:paddingEnd="50dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </LinearLayout>
+    </ScrollView>
+
+    <ProgressBar
+        android:id="@+id/vd_loading"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/sd_gold"
+        android:visibility="gone" />
+
+</FrameLayout>

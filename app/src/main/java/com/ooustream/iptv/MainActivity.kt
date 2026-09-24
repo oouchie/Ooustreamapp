@@ -391,6 +391,10 @@ class MainActivity : FragmentActivity() {
                     .commit()
             }
             is DeepLinkTarget.Guide -> navigateToEpgGuide(null, null)
+            is DeepLinkTarget.CatchUp -> supportFragmentManager.beginTransaction()
+                .replace(R.id.main_container, com.ooustream.iptv.catchup.CatchUpFragment())
+                .addToBackStack(null)
+                .commit()
             is DeepLinkTarget.Live -> {
                 val streamId = target.streamId.toIntOrNull() ?: return
                 val streamUrl = contentRepository.buildLiveStreamUrl(streamId)

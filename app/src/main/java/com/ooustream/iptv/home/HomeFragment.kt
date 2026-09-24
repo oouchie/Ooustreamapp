@@ -1668,10 +1668,12 @@ class HomeFragment : Fragment(), KeyEventHandler {
                 // Crossfade: video in, backdrop + overlays out
                 playerView.animate().alpha(1f).setDuration(500).start()
                 heroBackdrop.animate().alpha(0f).setDuration(500).start()
-                // Fade out title/genre/buttons/indicators and gradients for clean full-bleed video
-                heroContentOverlay?.animate()?.alpha(0f)?.setDuration(400)?.start()
-                heroGradientBottom?.animate()?.alpha(0f)?.setDuration(400)?.start()
-                heroGradientLeft?.animate()?.alpha(0f)?.setDuration(400)?.start()
+                // 5.0: title + Play / More Info STAY visible over the trailer. Fading the whole content
+                // layer to 0 left the focused Play button invisible while it still held focus, and the
+                // hero read as a video with no way in. Only the scrims lighten (to 70%), so the trailer
+                // shows through while the text stays legible.
+                heroGradientBottom?.animate()?.alpha(0.7f)?.setDuration(400)?.start()
+                heroGradientLeft?.animate()?.alpha(0.7f)?.setDuration(400)?.start()
                 heroRotationJob?.cancel()
             }
 
@@ -2012,6 +2014,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
         }
         val fragment = when (section.id) {
             "live" -> LiveTvFragment()
+            "catchup" -> com.ooustream.iptv.catchup.CatchUpFragment()
             "movies" -> VodFragment()
             "series" -> SeriesFragment()
             "favorites" -> FavoritesFragment()

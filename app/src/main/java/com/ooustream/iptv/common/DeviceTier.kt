@@ -81,6 +81,17 @@ object DeviceTierDetector {
     )
 
     /**
+     * True on MTK chips whose hardware decoders are known-good (see [GOOD_MTK_HARDWARE]). The frame
+     * watchdog trusts the hardware decoder on these: a frozen picture there is a stream or clock
+     * problem, and the platform software decoder is a step DOWN (it failed every ~6s on AFTKRT for
+     * customer larrydaw, 2026-09-24).
+     */
+    fun isGoodMtkHardware(): Boolean {
+        val hardware = Build.HARDWARE.lowercase()
+        return GOOD_MTK_HARDWARE.any { hardware.contains(it) }
+    }
+
+    /**
      * Return the device's capability tier. Cached on first call.
      *
      * Decision order:

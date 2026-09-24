@@ -163,7 +163,54 @@ class ContentRepository @Inject constructor(
         val creds = getCreds()
         return StreamUrlBuilder.series(creds.serverUrl, creds.username, creds.password, streamId, ext)
     }
+
+    fun buildCatchUpUrl(streamId: Int, programme: CatchUpProgramme): String {
+        val creds = getCreds()
+        val minutes = ((programme.stopEpochSec - programme.startEpochSec) / 60L).toInt()
+        return StreamUrlBuilder.timeshift(
+            creds.serverUrl, creds.username, creds.password, streamId, programme.startEpochSec, minutes
+        )
+    }
+
+    /**
+     * Past programmes this channel can replay, newest first. Only rows the panel flags
+     * `has_archive=1` that have already FINISHED (a replay of the airing show would just race the
+     * live edge). Titles/descriptions arrive base64-encoded.
+     */
+    suspend fun getCatchUpProgrammes(streamId: Int): List<CatchUpProgramme> {
+        val creds = getCreds()
+        val nowSec = System.currentTimeMillis() / 1000L
+        return getApi().getSimpleDataTable(creds.username, creds.password, streamId = streamId)
+            .epgListings.orEmpty()
+            .mapNotNull { p ->
+                val start = p.startTimestamp?.toLongOrNull() ?: return@mapNotNull null
+                val stop = p.stopTimestamp?.toLongOrNull() ?: return@mapNotNull null
+                if (p.hasArchive != 1 || stop <= start || stop > nowSec) return@mapNotNull null
+                CatchUpProgramme(
+                    title = decodeB64(p.title).ifBlank { "Programme" },
+                    description = decodeB64(p.description),
+                    startEpochSec = start,
+                    stopEpochSec = stop
+                )
+            }
+            .sortedByDescending { it.startEpochSec }
+    }
+
+    private fun decodeB64(s: String?): String {
+        if (s.isNullOrBlank()) return ""
+        return runCatching {
+            String(android.util.Base64.decode(s, android.util.Base64.DEFAULT), Charsets.UTF_8)
+        }.getOrDefault(s).trim()
+    }
 }
+
+/** One replayable past programme on a catch-up channel. Epoch seconds, UTC. */
+data class CatchUpProgramme(
+    val title: String,
+    val description: String,
+    val startEpochSec: Long,
+    val stopEpochSec: Long
+)
 
 data class SearchResults(
     val live: List<LiveStream>,

@@ -124,7 +124,12 @@ object AudioPipelineFactory {
      *
      * Audio chain identical to [createRenderersFactory] (full downmix matrices).
      */
-    fun createFfmpegVideoSoftwareRenderersFactory(context: Context): DefaultRenderersFactory {
+    fun createFfmpegVideoSoftwareRenderersFactory(
+        context: Context,
+        /** Keep FFmpeg-first audio when the player being replaced already had it (see
+         *  [createSoftwareVideoRenderersFactory]). */
+        preferFfmpegAudio: Boolean = false
+    ): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
             override fun buildVideoRenderers(
                 context: Context,
@@ -158,7 +163,9 @@ object AudioPipelineFactory {
                 // codec in libavcodec), we still get a chance via MediaCodec.
                 super.buildVideoRenderers(
                     context,
-                    extensionRendererMode,
+                    // PREFER is for audio only here; the FFmpeg video renderer was added above.
+                    if (preferFfmpegAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                    else extensionRendererMode,
                     mediaCodecSelector,
                     enableDecoderFallback,
                     eventHandler,
@@ -192,8 +199,12 @@ object AudioPipelineFactory {
             }
         }.apply {
             // ON = FFmpeg audio extension is fallback for AC3/DTS/EAC3 (hardware first for AAC/MP3).
+            // PREFER when the replaced player had already moved audio onto FFmpeg.
             // Video is steered via our custom buildVideoRenderers override above, not this mode.
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            setExtensionRendererMode(
+                if (preferFfmpegAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            )
             setEnableDecoderFallback(true)
             setEnableAudioOutputPlaybackParameters(true)
             forceEnableMediaCodecAsynchronousQueueing()
@@ -204,9 +215,19 @@ object AudioPipelineFactory {
      * Creates a [DefaultRenderersFactory] identical to [createRenderersFactory] but with
      * a software-only [MediaCodecSelector] for video. Hardware audio decoders are kept.
      * Used as a fallback when the hardware video decoder inits but fails to render frames.
+     *
+     * [preferFfmpegAudio]: the player being replaced had already moved audio onto FFmpeg (the MTK
+     * 5.1 preemptive rebuild or the AC3/EAC3 error recovery). Before 2026-09-24 this factory always
+     * started from the hardware-first audio setup, so a video-decoder rebuild silently put 5.1 AC3
+     * back on the hardware Dolby decoder (customer larrydaw, AFTKRT: ffmpegLavc-ac3 → c2.dolby.ac3).
      */
-    fun createSoftwareVideoRenderersFactory(context: Context): DefaultRenderersFactory {
-        return createRenderersFactory(context).apply {
+    fun createSoftwareVideoRenderersFactory(
+        context: Context,
+        preferFfmpegAudio: Boolean = false
+    ): DefaultRenderersFactory {
+        val base = if (preferFfmpegAudio) createFfmpegPreferredRenderersFactory(context)
+        else createRenderersFactory(context)
+        return base.apply {
             setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
                 val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
                 if (mimeType.startsWith("video/")) {

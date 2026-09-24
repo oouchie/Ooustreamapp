@@ -90,4 +90,13 @@ interface XtreamApiService {
         // The EPG grid guide passes ~20 for an 8-12h forward horizon. Null = omitted.
         @Query("limit") limit: Int? = null
     ): EpgResponse
+
+    /** Full EPG table for one channel, including PAST programmes flagged has_archive=1 (catch-up). */
+    @GET("player_api.php")
+    suspend fun getSimpleDataTable(
+        @Query("username") username: String,
+        @Query("password") password: String,
+        @Query("action") action: String = "get_simple_data_table",
+        @Query("stream_id") streamId: Int
+    ): EpgResponse
 }

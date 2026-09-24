@@ -16,7 +16,8 @@ import javax.inject.Inject
 @HiltViewModel
 class VodDetailViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
-    private val watchProgressRepository: WatchProgressRepository
+    private val watchProgressRepository: WatchProgressRepository,
+    private val contentFilterManager: com.ooustream.iptv.parental.ContentFilterManager
 ) : BaseViewModel() {
 
     private val _vodInfo = MutableStateFlow<VodInfo?>(null)
@@ -24,6 +25,10 @@ class VodDetailViewModel @Inject constructor(
 
     private val _watchProgress = MutableStateFlow<WatchProgressEntity?>(null)
     val watchProgress: StateFlow<WatchProgressEntity?> = _watchProgress.asStateFlow()
+
+    /** "More like this": same category, best rated first, parental filter applied, self excluded. */
+    private val _similar = MutableStateFlow<List<com.ooustream.iptv.data.model.VodStream>>(emptyList())
+    val similar: StateFlow<List<com.ooustream.iptv.data.model.VodStream>> = _similar.asStateFlow()
 
     private var loadedVodId: Int = 0
 
@@ -36,10 +41,33 @@ class VodDetailViewModel @Inject constructor(
                 _vodInfo.value = info
                 // Load watch progress alongside
                 loadWatchProgress(vodId)
+                loadSimilar(vodId, info.movieData?.categoryId)
             } catch (e: Exception) {
                 _error.emit(e.message ?: "Failed to load movie info")
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    private fun loadSimilar(vodId: Int, categoryId: String?) {
+        if (categoryId.isNullOrBlank()) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            try {
+                val list = contentRepository.getVodStreams(categoryId)
+                // Parental controls apply here too — a blocked category must never leak in
+                // through a side door. (Same category as the movie, but the filter is the
+                // single source of truth, and it also covers the temporary-unlock window.)
+                val allowed = contentFilterManager.filterContent("vod", list) { it.categoryId }
+                _similar.value = allowed.asSequence()
+                    .filter { it.streamId != vodId }
+                    .map { it to (it.rating5based ?: it.rating?.toDoubleOrNull()?.div(2) ?: 0.0) }
+                    .sortedByDescending { it.second }
+                    .map { it.first }
+                    .take(20)
+                    .toList()
+            } catch (_: Exception) {
+                _similar.value = emptyList()
             }
         }
     }

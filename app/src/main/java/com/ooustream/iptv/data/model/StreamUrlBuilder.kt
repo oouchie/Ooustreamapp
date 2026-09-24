@@ -50,4 +50,20 @@ object StreamUrlBuilder {
 
     fun series(server: String, user: String, pass: String, streamId: Int, ext: String): String =
         "$server/series/$user/$pass/$streamId.${sanitizeExt(ext)}"
+
+    /**
+     * Catch-up (Xtream timeshift): `/timeshift/u/p/<minutes>/<YYYY-MM-DD:HH-MM>/<id>.ts`.
+     *
+     * The start is formatted in **UTC** from the epoch `start_timestamp` — the panel's clock is UTC
+     * (`server_info.timezone = UTC`, verified on bp-v2.net 2026-09-24) and so are its listing times.
+     * Formatting with the device's local zone would silently shift every replay by the viewer's
+     * UTC offset (4-5 hours for US Eastern).
+     */
+    fun timeshift(server: String, user: String, pass: String, streamId: Int, startEpochSec: Long, durationMin: Int): String {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val start = fmt.format(java.util.Date(startEpochSec * 1000L))
+        return "$server/timeshift/$user/$pass/${durationMin.coerceAtLeast(1)}/$start/$streamId.ts"
+    }
 }

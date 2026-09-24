@@ -35,67 +35,36 @@ class ContinueWatchingPresenter : Presenter() {
         val title = root.findViewById<TextView>(R.id.cw_title)
         val progressBar = root.findViewById<ProgressBar>(R.id.cw_progress)
         val resumeText = root.findViewById<TextView>(R.id.cw_resume)
-        val episodeBadge = root.findViewById<TextView>(R.id.cw_episode_badge)
-        val timeLeft = root.findViewById<TextView>(R.id.cw_time_left)
 
-        title.text = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
-            progress.name, isSeries = progress.type == "series",
-            seasonNum = progress.seasonNum ?: 0, episodeNum = progress.episodeNum ?: 0
-        )
-
-        // Series subtitle: "S1 E2 · Up Next" or "S1 E2 · Resume"
         val isSeries = progress.type == "series" && progress.seasonNum != null
+        // Up Next placeholder rows (position 0) are queued, not watched — their stored 6% only
+        // clears the Continue Watching filter, so no progress bar and no "time left".
         val isUpNext = isSeries && progress.position == 0L
 
-        // "Up Next" rows are queued, not watched — their stored 6% is only there to clear the
-        // Continue Watching filter. Showing it as a progress bar reads as phantom progress.
-        if (isUpNext) {
-            progressBar.visibility = View.GONE
-        } else {
-            progressBar.visibility = View.VISIBLE
-            progressBar.progress = (progress.progressPercent * 100).toInt()
-        }
-        if (isSeries) {
-            resumeText.text = if (isUpNext) {
-                "S${progress.seasonNum} E${progress.episodeNum} \u00B7 Up Next"
-            } else {
-                "S${progress.seasonNum} E${progress.episodeNum} \u00B7 Resume"
-            }
-            resumeText.visibility = View.VISIBLE
-        } else {
-            resumeText.text = "Resume"
-            resumeText.visibility = View.GONE
-        }
+        // One title line (the show, for series) + one detail line. Before 5.0 the episode showed up
+        // three times: an "S3 E3" badge, inside the title, and again in the resume line — and a
+        // separate "time left" badge sat on top of the text panel.
+        val clean = com.ooustream.iptv.common.MediaTitleFormatter.cleanDisplayTitle(
+            progress.name, isSeries = isSeries,
+            seasonNum = progress.seasonNum ?: 0, episodeNum = progress.episodeNum ?: 0
+        )
+        title.text = if (isSeries) clean.split(" – ").first() else clean
 
-        // Episode badge: "S1 E5" shown top-left for series only
-        if (isSeries && progress.seasonNum != null && progress.episodeNum != null) {
-            episodeBadge.text = "S${progress.seasonNum} E${progress.episodeNum}"
-            episodeBadge.visibility = View.VISIBLE
-        } else {
-            episodeBadge.visibility = View.GONE
-        }
+        progressBar.visibility = if (isUpNext) View.GONE else View.VISIBLE
+        if (!isUpNext) progressBar.progress = (progress.progressPercent * 100).toInt()
 
-        // Time remaining label: "(N)m left", hidden for completed content or unknown duration
-        val isCompleted = progress.progressPercent >= 0.95f
-        val duration = progress.duration
-        if (duration > 0L && !isCompleted) {
-            val minutesLeft = ((duration - progress.position) / 60000L).toInt()
-            if (minutesLeft > 0) {
-                timeLeft.text = "${minutesLeft}m left"
-                timeLeft.visibility = View.VISIBLE
-            } else {
-                timeLeft.visibility = View.GONE
-            }
-        } else {
-            timeLeft.visibility = View.GONE
-        }
+        val left = if (!isUpNext && progress.duration > 1L && progress.progressPercent < 0.95f)
+            formatLeft(progress.duration - progress.position) else null
+        val se = if (isSeries) "S${progress.seasonNum} E${progress.episodeNum}" else null
+        resumeText.text = listOfNotNull(se, if (isUpNext) "Up next" else left).joinToString(" \u00B7 ")
+        resumeText.visibility = if (resumeText.text.isNullOrBlank()) View.GONE else View.VISIBLE
 
-        progress.icon?.let { url ->
-            if (url.isNotBlank()) {
-                image.load(PosterUrlRewriter.rewrite(url)) {
-                    crossfade(200)
-                }
-            }
+        val iconUrl = progress.icon?.takeIf { it.isNotBlank() }
+        if (iconUrl != null) {
+            image.load(PosterUrlRewriter.rewrite(iconUrl)) { crossfade(200) }
+        } else {
+            // Recycled card: without this it keeps the previous title's poster.
+            image.setImageDrawable(null)
         }
 
         root.setOnFocusChangeListener { v, hasFocus ->
@@ -106,13 +75,18 @@ class ContinueWatchingPresenter : Presenter() {
                     v.overlay.add(FocusBracketDrawable())
                 }
                 v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(200).start()
-                resumeText.visibility = View.VISIBLE
             } else {
                 v.overlay.clear()
                 v.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
-                if (!isSeries) resumeText.visibility = View.GONE
             }
         }
+    }
+
+    /** "26m left" / "1h 29m left" (compact — the card is ~180dp wide); null when nothing to show. */
+    private fun formatLeft(ms: Long): String? {
+        val mins = (ms / 60_000L).toInt()
+        if (mins <= 0) return null
+        return if (mins >= 60) "${mins / 60}h ${mins % 60}m left" else "${mins}m left"
     }
 
     override fun onUnbindViewHolder(viewHolder: ViewHolder) {

@@ -265,6 +265,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // full restart). FFmpeg-preferred factory lets FFmpeg handle both decode AND downmix
     // in one pass, which keeps up. Applied once per channel on the first onTracksChanged.
     private var mtkMultichannelFfmpegApplied = false
+    /**
+     * The current player decodes audio FFmpeg-first (set by [rebuildPlayerWithFfmpegPreferred]).
+     * Every later rebuild must keep it — the video-decoder rebuilds used to reset audio to the
+     * hardware-first setup, silently undoing the MTK 5.1 AC3 fix. Lives as long as the player
+     * chain does; a channel switch reuses the same player, so it is deliberately not reset there.
+     */
+    private var ffmpegAudioPreferred = false
     private var bufferStormWindowStart = 0L
     private var ffmpegRebuildAttemptedForBufferStorm = false
 
@@ -1447,7 +1454,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 }
                             }
                         }
-                        if (viewModel.contentType == ContentType.VOD) {
+                        if (viewModel.isCatchUp) {
+                            // A replayed programme ended — back to where it was picked, not movie picks.
+                            activity?.onBackPressedDispatcher?.onBackPressed()
+                        } else if (viewModel.contentType == ContentType.VOD) {
                             viewLifecycleOwner.lifecycleScope.launch {
                                 val suggestions = viewModel.getWatchNextSuggestions()
                                 if (suggestions.isNotEmpty()) {
@@ -2225,6 +2235,12 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             // Track whether HW decoder has ever sustained 24fps — if yes, black screens
             // are rebuffer recovery issues, not decoder incompatibility. Don't escalate to SW.
             var hwDecoderProvenGood = false
+            // Known-good MTK (mt8696 / AFTKRT): trust the hardware decoder from the first frame.
+            // Proving it takes 30+ frames in one poll, which a live channel that freezes within
+            // seconds of starting never gets — and the step-2 fallback it then took (platform
+            // software AVC) fails repeatedly on this chip, looping for ~3 minutes into a false
+            // "format not supported" (customer larrydaw, FOX 5, 2026-09-24).
+            val trustedHwChip = DeviceTierDetector.isGoodMtkHardware()
             var watchdogOverlayShown = false
             var consecutiveSlideshowPolls = 0
             // HEVC slideshow detection: SW HEVC decoder renders frames but too slowly (8fps)
@@ -2348,11 +2364,33 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         // null, the decoder never initialized. No point running steps 3/4 (they just
                         // restart the same broken SW player). Give up immediately.
                         val swDecoderFailedToInit = usingSoftwareVideoDecoder && p.videoDecoderCounters == null
+                        // Trust applies only while MediaTek's own hardware decoder is the one running —
+                        // not when Media3 auto-picked a software/FFmpeg renderer for a codec the
+                        // hardware rejected (that case still needs the normal ladder).
+                        val onTrustedHw = trustedHwChip && activeVideoDecoderName.let {
+                            it.startsWith("OMX.MTK", ignoreCase = true) || it.startsWith("c2.mtk", ignoreCase = true)
+                        }
 
                         if (watchdogResetCount > MAX_WATCHDOG_RESETS || swDecoderFailedToInit) {
                             val codecs = cachedVideoCodecs.ifEmpty { p.videoFormat?.codecs ?: "" }
                             val mime = cachedVideoMime.ifEmpty { p.videoFormat?.sampleMimeType ?: "" }
                             val decoderNull = p.videoDecoderCounters == null
+
+                            // Trusted hardware decoder that hard resets couldn't revive: the stream
+                            // stopped delivering usable picture. Swapping decoders can't fix that, and
+                            // "format not supported" would be false — this channel played fine before.
+                            if (onTrustedHw && !usingSoftwareVideoDecoder && !usingFfmpegVideoDecoder) {
+                                streamDiagnosticLogger.logAppEvent("WATCHDOG_GIVE_UP",
+                                    "reason=hw_trusted_stalled, resets=$watchdogResetCount, codecs=$codecs, mime=$mime, channel=$channelName")
+                                withContext(Dispatchers.Main) {
+                                    showFriendlyError(
+                                        if (viewModel.contentType == ContentType.LIVE)
+                                            "This channel stopped sending a picture. Try again in a moment, or pick another channel."
+                                        else "This title stopped sending a picture. Try again in a moment."
+                                    )
+                                }
+                                return@launch
+                            }
 
                             // v3.7.10: Final escalation before giving up — if we haven't yet tried
                             // the FFmpeg software video decoder (libavcodec via PR #1591), do that
@@ -2389,7 +2427,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         // If HW decoder has proven it works (sustained 24fps), black screens
                         // are rebuffer recovery issues. Use hard reset (stop/prepare/play)
                         // instead of escalating to SW decoder which would be worse.
-                        if (hwDecoderProvenGood && !usingSoftwareVideoDecoder) {
+                        if ((hwDecoderProvenGood || onTrustedHw) && !usingSoftwareVideoDecoder) {
                             // On amlogic, HEVC hard resets lead to buffer storms.
                             // After 2 hard resets, try FFmpeg audio (EAC3 interaction fix)
                             if (AudioPipelineFactory.isAmlogicDevice() && watchdogResetCount >= 2
@@ -2404,12 +2442,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                     continue
                                 }
                             }
-                            AudioLogger.log("Frame watchdog: HW decoder proven good — hard reset (step $watchdogResetCount)")
+                            AudioLogger.log("Frame watchdog: HW decoder trusted — hard reset (step $watchdogResetCount)")
                             streamDiagnosticLogger.logAppEvent("WATCHDOG_HARD_RESET",
-                                "reset=$watchdogResetCount, hwProven=true, channel=$channelName")
+                                "reset=$watchdogResetCount, hwProven=$hwDecoderProvenGood, trustedHw=$onTrustedHw, decoder=$activeVideoDecoderName, channel=$channelName")
                             val pos = p.currentPosition
                             p.stop()
-                            p.seekTo(pos)
+                            // Live rejoins the live edge; a stale live position just re-freezes.
+                            if (viewModel.contentType == ContentType.LIVE) p.seekToDefaultPosition() else p.seekTo(pos)
                             p.prepare()
                             p.play()
                             continue
@@ -2639,7 +2678,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         mediaSession = null
         safeReleasePlayer(p)
 
-        val softwareRenderersFactory = AudioPipelineFactory.createSoftwareVideoRenderersFactory(requireContext())
+        val softwareRenderersFactory = AudioPipelineFactory.createSoftwareVideoRenderersFactory(
+            requireContext(), preferFfmpegAudio = ffmpegAudioPreferred
+        )
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
@@ -2786,7 +2827,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         mediaSession = null
         safeReleasePlayer(p)
 
-        val ffmpegVideoFactory = AudioPipelineFactory.createFfmpegVideoSoftwareRenderersFactory(requireContext())
+        val ffmpegVideoFactory = AudioPipelineFactory.createFfmpegVideoSoftwareRenderersFactory(
+            requireContext(), preferFfmpegAudio = ffmpegAudioPreferred
+        )
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
@@ -2890,6 +2933,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
 
         // Rebuild with FFmpeg-preferred audio pipeline
         val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(requireContext())
+        ffmpegAudioPreferred = true
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
 
@@ -3244,8 +3288,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 return "Secure connection failed. Check your device's date and time, then try again."
             }
 
-            // DNS failure — couldn't resolve the hostname.
+            // DNS failure — couldn't resolve the hostname. If the host that failed is NOT our own
+            // server, the provider redirected the stream to a delivery host that doesn't resolve —
+            // a provider outage, not the viewer's WiFi (the API host resolved fine, or we'd never
+            // have had a stream URL). Seen 2026-09-24: bp-v2.net → "xyakqielska.net", a domain with
+            // no DNS records; every live channel failed for ~10 minutes (customer larrydaw).
             if (cause is UnknownHostException) {
+                val failedHost = Regex("\"([^\"]+)\"").find(cause.message.orEmpty())?.groupValues?.get(1)
+                val ourHost = runCatching { android.net.Uri.parse(viewModel.streamUrl).host }.getOrNull()
+                if (failedHost != null && ourHost != null && !failedHost.equals(ourHost, ignoreCase = true)) {
+                    streamDiagnosticLogger.logAppEvent("PROVIDER_STREAM_HOST_UNRESOLVED",
+                        "host=$failedHost, server=$ourHost")
+                    return "Your provider's stream server can't be reached right now. " +
+                        "This isn't your internet — try again in a few minutes."
+                }
                 return "Can't reach the server. Check your WiFi or DNS settings."
             }
 
@@ -4667,7 +4723,9 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             seasonNum: Int = 0,
             episodeNum: Int = 0,
             forceStartFromBeginning: Boolean = false,
-            seriesName: String = ""
+            seriesName: String = "",
+            /** Catch-up (timeshift) programme: VOD-style playback, no history, no Watch Next. */
+            catchUp: Boolean = false
         ): OoustreamPlaybackFragment {
             return OoustreamPlaybackFragment().apply {
                 arguments = Bundle().apply {
@@ -4681,6 +4739,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     putInt("season_num", seasonNum)
                     putInt("episode_num", episodeNum)
                     putBoolean("force_start_from_beginning", forceStartFromBeginning)
+                    putBoolean("catch_up", catchUp)
                 }
             }
         }
@@ -4698,6 +4757,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             viewModel.seriesId = it.getInt("series_id", 0)
             viewModel.seasonNum = it.getInt("season_num", 0)
             viewModel.episodeNum = it.getInt("episode_num", 0)
+            viewModel.isCatchUp = it.getBoolean("catch_up", false)
         }
         // Legacy watch_progress rows carry compounded titles ("Series - Series - S01E03 - ..."):
         // sanitize at entry so the player displays a clean name AND the next progress save

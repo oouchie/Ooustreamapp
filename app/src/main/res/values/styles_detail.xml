@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared by the 5.0 TV detail screens (movies; series uses literal attributes). Unqualified
+     values/ on purpose — the Ooustick resolves values/, not values-television/. -->
+<resources>
+    <style name="SdMeta">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">18dp</item>
+        <item name="android:textColor">@color/sd_text_secondary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="SdSecondaryButton">
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:background">@drawable/sd_secondary_btn</item>
+        <item name="android:textColor">@color/sd_text</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+</resources>

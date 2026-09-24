@@ -47,12 +47,82 @@ class VodDetailFragment : Fragment() {
         }
     }
 
+    /** Non-null when the TV (D-pad) layout is in use — chosen by isTV(), never by resource qualifier. */
+    private var tvScreen: VodDetailTvScreen? = null
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        return inflater.inflate(R.layout.fragment_vod_detail, container, false)
+        val layout = if (DeviceUtils.isTV(requireContext())) R.layout.fragment_vod_detail_tv
+        else R.layout.fragment_vod_detail
+        return inflater.inflate(layout, container, false)
+    }
+
+    override fun onDestroyView() {
+        tvScreen = null
+        super.onDestroyView()
+    }
+
+    /** One play path for both layouts. [fromStart] = "Start over" (skips resume and its toast). */
+    private fun playMovie(fromStart: Boolean) {
+        val ext = containerExtension ?: "mp4"
+        val streamUrl = viewModel.buildStreamUrl(vodId, ext)
+        com.ooustream.iptv.common.ResumePlaybackHelper.showIfNeeded(
+            context = requireContext(),
+            progress = if (fromStart) null else viewModel.watchProgress.value
+        ) { resumeDeclined ->
+            val fragment = OoustreamPlaybackFragment.newInstance(
+                streamUrl = streamUrl,
+                contentType = ContentType.VOD,
+                streamId = vodId.toString(),
+                streamName = vodName,
+                streamIcon = coverUrl ?: "",
+                forceStartFromBeginning = fromStart || resumeDeclined
+            )
+            requireActivity().supportFragmentManager.beginTransaction()
+                .also { tx -> FragmentTransitions.apply(tx, TransitionDirection.PLAYER) }
+                .replace(R.id.main_container, fragment)
+                .addToBackStack(null)
+                .commit()
+        }
+    }
+
+    private fun setupTv(view: View) {
+        val screen = VodDetailTvScreen(
+            root = view,
+            fallbackTitle = vodName,
+            onPlay = { fromStart -> playMovie(fromStart) },
+            onOpenMovie = { m ->
+                val fragment = newInstance(m.streamId, m.name, m.streamIcon, m.containerExtension)
+                requireActivity().supportFragmentManager.beginTransaction()
+                    .replace(R.id.main_container, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            }
+        )
+        tvScreen = screen
+        screen.setPlaceholderArt(coverUrl)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { viewModel.isLoading.collect { screen.setLoading(it) } }
+                launch {
+                    viewModel.vodInfo.collect { info ->
+                        if (info == null) return@collect
+                        info.movieData?.containerExtension?.let { containerExtension = it }
+                        screen.bindInfo(info, coverUrl)
+                    }
+                }
+                launch { viewModel.watchProgress.collect { screen.bindProgress(it) } }
+                launch { viewModel.similar.collect { screen.bindSimilar(it) } }
+            }
+        }
+        viewModel.loadVodInfo(vodId)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        if (DeviceUtils.isTV(requireContext())) {
+            setupTv(view)
+            return
+        }
 
         // v3.7.11: phone-only Material-style back arrow at top of detail screen.
         // No-op on TV (Leanback uses D-pad back).

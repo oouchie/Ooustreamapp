@@ -177,6 +177,9 @@ class HomeViewModel @Inject constructor(
             cta = "Browse Channels \u2192", gradientStart = Color.parseColor("#0D47A1"), gradientEnd = Color.parseColor("#1976D2")),
         SectionItem("guide", "TV Guide", R.drawable.ic_guide, Color.parseColor("#00ACC1"),
             cta = "What\u2019s On Now \u2192", gradientStart = Color.parseColor("#006064"), gradientEnd = Color.parseColor("#00ACC1")),
+        // 5.0: catch-up — replay past shows on channels the provider archives.
+        SectionItem("catchup", "Catch Up", R.drawable.ic_catch_up, Color.parseColor("#7C3AED"),
+            cta = "Replay Past Shows \u2192", gradientStart = Color.parseColor("#4C1D95"), gradientEnd = Color.parseColor("#7C3AED")),
         SectionItem("movies", "Movies", R.drawable.ic_movies, Color.parseColor("#9C27B0"),
             cta = "Browse Movies \u2192", gradientStart = Color.parseColor("#4A148C"), gradientEnd = Color.parseColor("#9C27B0")),
         SectionItem("series", "Series", R.drawable.ic_series, Color.parseColor("#FB8C00"),

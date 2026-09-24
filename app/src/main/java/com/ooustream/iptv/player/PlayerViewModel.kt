@@ -32,6 +32,12 @@ class PlayerViewModel @Inject constructor(
 ) : BaseViewModel() {
 
     var hasResumed = false
+    /**
+     * Catch-up (timeshift) playback of a past live programme. Plays as VOD (seekable, from its
+     * start) but writes NO history: streamId is the CHANNEL id, so a progress row would show up in
+     * Continue Watching as a bogus "movie" and collide with the channel.
+     */
+    var isCatchUp = false
     var streamUrl: String = ""
     var contentType: ContentType = ContentType.LIVE
     var streamId: String = ""
@@ -94,7 +100,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun saveProgress(position: Long, duration: Long, percent: Float) {
-        if (contentType == ContentType.LIVE) return
+        if (contentType == ContentType.LIVE || isCatchUp) return
         // Snapshot identity SYNCHRONOUSLY at call time. The gapless binge advance swaps the
         // identity fields right after finalizing the previous episode — a coroutine that reads
         // the fields lazily would attribute the old episode's 100% save to the new one.
@@ -169,7 +175,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun markCompleted() {
-        if (contentType == ContentType.LIVE) return
+        // Catch-up too: watch_progress is keyed by streamId alone, and here that is a CHANNEL id —
+        // it could mark an unrelated movie with the same numeric id as watched.
+        if (contentType == ContentType.LIVE || isCatchUp) return
         val id = streamId   // snapshot — see saveProgress comment
         viewModelScope.launch {
             withContext(NonCancellable) {
@@ -218,6 +226,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun recordPlayStart(categoryId: String? = null) {
+        if (isCatchUp) return   // analytics feed recommendations; a channel id isn't a movie
         val type = when (contentType) {
             ContentType.LIVE -> "live"
             ContentType.VOD -> "vod"

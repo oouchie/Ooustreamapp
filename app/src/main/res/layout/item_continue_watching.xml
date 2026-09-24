@@ -17,32 +17,16 @@
         android:scaleType="centerCrop"
         tools:ignore="ContentDescription" />
 
-    <!-- Top-left episode badge: "S1 E5", shown only for series -->
-    <TextView
-        android:id="@+id/cw_episode_badge"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_margin="6dp"
-        android:background="@drawable/bg_slot_number_badge"
-        android:fontFamily="monospace"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="2dp"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/text_badge"
-        android:visibility="gone"
-        tools:text="S1 E5"
-        tools:visibility="visible" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="#CC1A1A24"
         android:orientation="vertical"
-        android:padding="8dp">
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="10dp">
 
         <TextView
             android:id="@+id/cw_title"
@@ -51,36 +35,20 @@
             android:ellipsize="end"
             android:maxLines="2"
             android:textColor="@color/text_primary"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/cw_resume"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Resume"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:textColor="@color/text_accent"
             android:textSize="12sp"
-            android:visibility="gone" />
+            tools:text="S3 E3 · 26m left" />
     </LinearLayout>
-
-    <!-- Bottom-right time remaining label, sits above the progress bar -->
-    <TextView
-        android:id="@+id/cw_time_left"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="6dp"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/bg_slot_number_badge"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="2dp"
-        android:textColor="#FFFFFF"
-        android:textSize="10sp"
-        android:visibility="gone"
-        tools:text="23m left"
-        tools:visibility="visible" />
 
     <!-- Progress bar overlays the bottom edge of the poster -->
     <ProgressBar

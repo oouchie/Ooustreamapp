@@ -210,6 +210,24 @@
     <string name="sd_season_heading">%1$s, %2$d episodes</string>
     <string name="sd_season_heading_one">%1$s, 1 episode</string>
     <string name="binge_play_now">Play now</string>
+    <!-- Catch up (5.0) -->
+    <string name="cu_title">Catch up</string>
+    <string name="cu_subtitle_days">Shows from the last %1$d days on %2$d channels</string>
+    <string name="cu_subtitle">Past shows on %1$d channels</string>
+    <string name="cu_loading_channels">Loading channels…</string>
+    <string name="cu_loading">Loading shows…</string>
+    <string name="cu_none_for_channel">No past shows for this channel yet. Try another channel.</string>
+    <string name="cu_failed">Couldn\'t load past shows. Try again in a moment.</string>
+    <string name="cu_no_channels">Your provider doesn\'t offer catch-up on any channels right now.</string>
+    <string name="cu_today">Today</string>
+    <string name="cu_yesterday">Yesterday</string>
+    <!-- Movie details screen (TV, 5.0) -->
+    <string name="vd_trailer">Trailer</string>
+    <string name="vd_more_like_this">More like this</string>
+    <string name="vd_with">With %1$s</string>
+    <string name="vd_play">▶  Play</string>
+    <string name="vd_resume">▶  Resume</string>
+    <string name="vd_watch_again">▶  Watch again</string>
     <string name="binge_next_episode">Next episode</string>
     <string name="binge_new_season">Season %1$d starts</string>
 </resources>

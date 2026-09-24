@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="2dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="10dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:background="@drawable/sd_row_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <FrameLayout
+        android:layout_width="56dp"
+        android:layout_height="40dp">
+
+        <ImageView
+            android:id="@+id/cc_logo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/cc_initials"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textColor="@color/sd_text_secondary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/cc_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/sd_text"
+            android:textSize="17sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="US: ABC East" />
+
+        <TextView
+            android:id="@+id/cc_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/sd_text_secondary"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="USA | Entertainment" />
+    </LinearLayout>
+</LinearLayout>

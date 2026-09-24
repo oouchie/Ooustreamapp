@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Catch up (5.0): channels the provider archives on the left, their past shows on the right.
+     Same visual language as the 5.0 detail screens (sd_* tokens, literal dp — see
+     fragment_series_detail_tv for why nothing here relies on -television qualifiers). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/sd_base"
+    android:orientation="vertical"
+    android:paddingStart="48dp"
+    android:paddingEnd="32dp"
+    android:paddingTop="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/space_grotesk_bold"
+        android:text="@string/cu_title"
+        android:textColor="@color/sd_text"
+        android:textSize="34sp" />
+
+    <TextView
+        android:id="@+id/cu_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="16dp"
+        android:textColor="@color/sd_text_secondary"
+        android:textSize="16sp"
+        tools:text="Shows from the last 2 days on 235 channels" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <androidx.leanback.widget.VerticalGridView
+            android:id="@+id/cu_channels"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="36"
+            android:layout_marginStart="-8dp"
+            android:clipToPadding="false"
+            android:paddingBottom="40dp"
+            app:focusOutFront="false" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="64"
+            android:layout_marginStart="24dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/cu_channel_heading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginBottom="4dp"
+                android:textColor="@color/sd_text"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                tools:text="US: ABC East" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.leanback.widget.VerticalGridView
+                    android:id="@+id/cu_programmes"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:paddingBottom="80dp" />
+
+                <TextView
+                    android:id="@+id/cu_message"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginTop="12dp"
+                    android:textColor="@color/sd_text_secondary"
+                    android:textSize="17sp"
+                    android:visibility="gone"
+                    tools:text="Loading shows…"
+                    tools:visibility="visible" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/cu_loading"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/sd_gold"
+        android:visibility="gone" />
+</LinearLayout>

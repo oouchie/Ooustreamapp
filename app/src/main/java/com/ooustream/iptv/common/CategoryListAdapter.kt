@@ -71,6 +71,8 @@ class CategoryListAdapter(
         fun bind(cat: CategoryItem, isSelected: Boolean, emojiColor: Int?) {
             name.text = cat.name
             count.text = if (cat.count > 0) cat.count.toString() else ""
+            // No count known → no pill (it used to draw an empty grey pill on every row).
+            count.visibility = if (cat.count > 0) android.view.View.VISIBLE else android.view.View.GONE
             emoji.text = CategoryEmoji.get(cat.name)
             emoji.setTextColor(emojiColor ?: 0xFFFFFFFF.toInt())
 

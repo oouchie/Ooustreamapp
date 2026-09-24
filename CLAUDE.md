@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 4.2.18 (versionCode 106)
+- **Current Version**: 5.0.0 (versionCode 107)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,57 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.0.0 (versionCode 107) — Catch up, movie page redesign, polish, larrydaw fixes.** Plan +
+  results: `tasks/v5.0-plan.md`. Device-verified on .84 (AFTKRT, release build); NOT walked on an
+  Ooustick or a phone.
+  - **Catch up (new)** — `catchup/CatchUpFragment.kt` + `CatchUpViewModel.kt`, Home card
+    `SectionItem("catchup")`, deep link `ooustream://catchup`. Channels = `get_live_streams` rows with
+    `tv_archive=1` (parental-filtered); shows = new `XtreamApiService.getSimpleDataTable` →
+    `ContentRepository.getCatchUpProgrammes()` (has_archive=1, already finished, base64-decoded).
+    URL = `StreamUrlBuilder.timeshift()` → `/timeshift/u/p/<min>/<YYYY-MM-DD:HH-MM>/<id>.ts`, start
+    formatted in **UTC** from `start_timestamp` (panel `server_info.timezone=UTC`). VERIFIED by
+    content: ABC East 16:00 UTC ("Eyewitness News at Noon") opens on the station clock at 11:58.
+    Playback = VOD + new `catchUp=true` arg → `PlayerViewModel.isCatchUp` skips saveProgress,
+    markCompleted and recordPlayStart (watch_progress is keyed by streamId alone, and the id here
+    is a CHANNEL id), and STATE_ENDED backs out instead of Watch Next. Archive depth 2026-09-24:
+    ~12-13h on every sampled channel; the provider advertises 2 days.
+  - **Movie details (TV)** — `layout/fragment_vod_detail_tv.xml` + `vod/VodDetailTvScreen.kt`,
+    chosen by `isTV()`; phone layout untouched. Scrolls (top section sized to screen minus a peek of
+    "More like this"); `VodDetailViewModel.similar` = same category, parental-filtered, best rated.
+    Back-navigation resets the restored ScrollView offset (`scroll.post { scrollTo(0,0) }`).
+  - **Polish** — Continue Watching card: one title + one line (`S1 E6 · 47m left`), duplicate
+    badges removed, stale poster cleared on recycle. Home hero keeps title/buttons over the trailer
+    (only scrims lighten to 0.7). Live TV category count pill hidden when there is no count.
+  - **Home memory (investigated, NOT changed)** — measured on .84: ~300-330MB PSS, of which ~145-167MB
+    "Graphics" (image bitmaps); ~1,100 views. Trailer on vs off: no difference. Coil
+    `Precision.EXACT` made it WORSE (+20-45MB — it upscales small images to view size); cache cap
+    15%→8%: no measurable change (run-to-run noise ±20-36MB). Both reverted. A "recycling Home"
+    rewrite would not address image memory — don't start it without a new measurement.
+
+- **(Shipped in v5.0.0) — Watchdog trusts mt8696 hardware; rebuilds keep FFmpeg
+  audio; honest message for a dead provider stream host.** Triaged from customer larrydaw's export
+  (`2026-09-24_13-53-larrydaw-DL-45E0D3CE`, AFTKRT, 4.2.17), reported as "buffering". Two causes:
+  **(1) provider outage, not app** — 13:15–13:25 every live stream 302'd to `xyakqielska.net`, a
+  domain registered 2026-09-21 with NO DNS records (checked on 1.1.1.1, 8.8.8.8 and locally); 188 ×
+  `UnknownHostException`. At 15:28 the same account/channel redirected to a raw IP and delivered
+  30 Mbps MPEG-TS. **(2) app** — FOX 5 froze at 12:17:53 with a 12s buffer (`fps=0.0`, cause not in
+  the log); the watchdog's step 2 on mt8696 (`WATCHDOG_MTK_SW_FALLBACK`, `hwProven=false` because
+  the channel had only played 8s) moved to `c2.android.avc.decoder`, which failed every ~6s, and the
+  ladder ended ~3 min later in a FALSE "format not supported". That software rebuild also reset
+  audio from `ffmpegLavc-ac3` to `c2.dolby.ac3` (7th [[project_rebuild_clone_drift]] instance).
+  **Fixes:** `DeviceTierDetector.isGoodMtkHardware()`; the watchdog treats a running `OMX.MTK`/`c2.mtk`
+  decoder on a good-MTK chip like `hwDecoderProvenGood` (hard reset, LIVE rejoins the live edge via
+  `seekToDefaultPosition`), and after `MAX_WATCHDOG_RESETS` gives up with "This channel stopped
+  sending a picture…" (`WATCHDOG_GIVE_UP reason=hw_trusted_stalled`) instead of swapping decoders.
+  New `ffmpegAudioPreferred` flag (set by `rebuildPlayerWithFfmpegPreferred`) is passed to
+  `createSoftwareVideoRenderersFactory` / `createFfmpegVideoSoftwareRenderersFactory(preferFfmpegAudio)`.
+  `causeChainMessage`: an `UnknownHostException` for a host other than our server now reads "Your
+  provider's stream server can't be reached right now. This isn't your internet…" and logs
+  `PROVIDER_STREAM_HOST_UNRESOLVED host=… server=…`. **Verification:** `assembleRelease` clean; .84
+  FOX 5 live smoke — HW AVC video, FFmpeg AC3 → PCM 2ch, playing. The trusted-HW watchdog path and
+  the new DNS message were NOT triggered on device (no way to force a full-buffer freeze or the
+  provider's dead redirect on demand).
 
 - **v4.2.18 (versionCode 106) — Series screen redesign + Watch Next card + real episode names.**
   Device-verified on .84 (AFTKRT, release build installed over the top) and installed on .82; NOT

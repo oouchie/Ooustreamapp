@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="2dp"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:background="@drawable/sd_row_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <TextView
+        android:id="@+id/cp_time"
+        android:layout_width="96dp"
+        android:layout_height="wrap_content"
+        android:textColor="@color/sd_text_secondary"
+        android:textSize="17sp"
+        tools:text="3:00 PM" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/cp_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/sd_text"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                tools:text="General Hospital" />
+
+            <TextView
+                android:id="@+id/cp_length"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textColor="@color/sd_text_secondary"
+                android:textSize="15sp"
+                tools:text="60 min" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/cp_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/sd_text_secondary"
+            android:textSize="15sp"
+            android:lineSpacingMultiplier="1.2"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone"
+            tools:text="Sonny and Carly face a difficult decision."
+            tools:visibility="visible" />
+    </LinearLayout>
+</LinearLayout>

@@ -37,6 +37,8 @@ class CategoryPresenter(
 
         name.text = cat.name
         count.text = if (cat.count > 0) cat.count.toString() else ""
+        // No count known → no pill (it used to draw an empty grey pill on every row).
+        count.visibility = if (cat.count > 0) android.view.View.VISIBLE else android.view.View.GONE
 
         if (cat.iconRes != null) {
             icon.setImageResource(cat.iconRes)
