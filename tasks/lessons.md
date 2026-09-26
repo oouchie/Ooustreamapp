@@ -52,3 +52,12 @@ you must peek at progress, label it explicitly as in-progress, not as the verdic
 any caller that synchronously swaps identity right after calling them (gapless binge advance; legacy
 advance with cached series info) attributes the write to the WRONG content.
 **Rule:** snapshot all identity state into locals/an entity BEFORE `launch`.
+
+## 2026-09-26 — Project skills must be `.claude/skills/<name>/SKILL.md`, not flat `.md` files
+- **What happened:** "firestick load skill 66" was run from memory and loaded only Ooustream on
+  192.168.1.66; IPTV Smarters was skipped until the user corrected it. The `load-firestick` skill
+  already said "both apps, always" — but it lived at `.claude/skills/load-firestick.md`, a layout
+  Claude Code does not discover, so it never appeared in the skill list.
+- **Rule:** When the user names a skill that isn't in the available-skills list, look for it on disk
+  (`.claude/skills/`, `~/.claude/skills/`) before improvising. Keep project skills in the
+  `<name>/SKILL.md` layout. `ooustream-dev.md` is still flat and therefore still invisible.

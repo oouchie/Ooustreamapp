@@ -1,14 +1,19 @@
 ---
 name: load-firestick
-description: Load a Fire TV Stick (or Ooustick) with BOTH the Ooustream app and IPTV Smarters over adb. Use when the user says "send the app to <ip>", "load the firestick at <ip>", "install on <ip>", or names a device by its last octet (e.g. "send it to 147" = 192.168.1.147). Handles adb auth, ABI matching, the IPTV Smarters Cloudflare-blocked download, and on-device version verification.
+description: Load a Fire TV Stick (or Ooustick) with BOTH the Ooustream app and IPTV Smarters over adb. Use when the user says "send the app to <ip>", "load the firestick at <ip>", "firestick load <ip>", "load skill <ip>", "install on <ip>", or names a device by its last octet (e.g. "send it to 147" = 192.168.1.147, "firestick load skill 66" = 192.168.1.66). Handles adb auth, ABI matching, the IPTV Smarters Cloudflare-blocked download, and on-device version verification.
 ---
 
 # Load Firestick
 
-Install BOTH apps on a stick on the LAN, verified end to end: the current Ooustream release build **and** IPTV Smarters (the comparison player). A load is not complete until both are confirmed on the device. Proven flow from the 2026-08-20 load of 192.168.1.147 (AFTMA08C15).
+Install BOTH apps on a stick on the LAN, verified end to end: the current Ooustream release build **and** IPTV Smarters (the comparison player). A load is not complete until both are confirmed on the device. Proven flow from the 2026-08-20 load of 192.168.1.147 (AFTMA08C15); re-proven 2026-09-26 on 192.168.1.66 (AFTMA08C15, Ooustream 5.0.0 + Smarters 3.1.5.1).
+
+> **Locked in 2026-09-26:** Smarters is NOT optional and NOT a follow-up question. The .66 load first
+> went out Ooustream-only because this skill was a flat `.claude/skills/load-firestick.md` file —
+> Claude Code only discovers `.claude/skills/<name>/SKILL.md`, so it never loaded and the flow was
+> run from memory. Keep it in this folder layout.
 
 ## Inputs
-- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a).
+- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.66` / `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a).
 - Nothing else is needed. **Both apps go on by default** — do not ask whether to include Smarters. Only skip it if the user explicitly says Ooustream only.
 
 ## Steps
@@ -23,7 +28,7 @@ $ADB -s <IP>:5555 shell getprop ro.product.model
 $ADB -s <IP>:5555 shell getprop ro.product.cpu.abilist
 ```
 
-If you get `device unauthorized`: an "Allow USB debugging?" dialog is on the TV screen. Tell the user to accept it (Always allow) and **stop the turn** — polling for ~a minute does not help; wait for them to confirm. If no dialog appears, have them toggle Settings → My Fire TV → Developer Options → ADB Debugging off/on, then reconnect.
+If you get `device unauthorized`: an "Allow USB debugging?" dialog is on the TV screen. Tell the user to accept it (Always allow). Either stop the turn and wait for them, or poll in the BACKGROUND (`run_in_background`, check `adb devices` every ~10s for up to ~10 min) and continue when the state flips to `device` — that worked for .66. Don't poll in the foreground. If no dialog appears, have them toggle Settings → My Fire TV → Developer Options → ADB Debugging off/on, then reconnect.
 
 ### 2. Pick the APK by ABI
 - `abilist` starts with `arm64-v8a` → `app-arm64-v8a-release.apk`
