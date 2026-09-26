@@ -13,7 +13,7 @@ Install BOTH apps on a stick on the LAN, verified end to end: the current Ooustr
 > run from memory. Keep it in this folder layout.
 
 ## Inputs
-- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.66` / `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a).
+- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.66` / `.80` / `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a).
 - Nothing else is needed. **Both apps go on by default** — do not ask whether to include Smarters. Only skip it if the user explicitly says Ooustream only.
 
 ## Steps
