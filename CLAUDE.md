@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.0.0 (versionCode 107)
+- **Current Version**: 5.0.1 (versionCode 108)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,27 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.0.1 (versionCode 108, released 2026-09-30) — Channel surfing snapped back to the channel the
+  player was OPENED on.** Reported twice as "everything says the channel changed but the picture
+  never does". Reproduced on .84 (AFTKRT mt8696, v5.0.0): OK on NBC → DOWN (ESPN plays) → DOWN
+  onto ABC 2 → banner/zap overlay say ABC 2, picture is NBC again; logcat shows `ExoPlayerImpl
+  Release/Init` + `Loaded FfmpegAudioRenderer` 0.3s after that zap. **Root cause:** `tuneToChannel`
+  called `setMediaItem` but never updated `viewModel.streamUrl`, and every `rebuildPlayerWith*` path
+  re-loads `viewModel.streamUrl`. ABC 2 carries Dolby 5.1, so the mt8696 `MTK_MULTICHANNEL_FFMPEG_REBUILD`
+  gate fired on the zap's first `onTracksChanged` and the rebuild re-tuned the ORIGINAL channel.
+  The v4.2.13-era "could not reproduce" triage zapped between AAC channels, where no rebuild fires
+  — **to reproduce a zap bug, zap ONTO a Dolby 5.1 channel.** Fixes (both in
+  `player/OoustreamPlaybackFragment.kt`): (1) `tuneToChannel` sets `viewModel.streamUrl` +
+  `streamIcon` before `setMediaItem` (identity follows the player, as the episode-advance paths
+  already did); (2) the MTK gate also requires `!ffmpegAudioPreferred` — once the player is
+  FFmpeg-first every later rebuild inherits it, and `mtkMultichannelFfmpegApplied` is per-channel
+  (reset by every zap), so each Dolby channel used to tear the player down again. **Device-verified
+  on .84** with the fixed release build: NBC → ESPN → ABC 2 → Reelz, banner and picture agree at
+  every step; the one Dolby rebuild re-loads the right URL; Reelz triggers no rebuild. NOT walked on
+  an Ooustick. Release-build triage tip: our own logs are absent, but
+  `logcat | grep -E "ExoPlayerImpl|DefaultRenderersFactory"` exposes every rebuild, and a
+  screenshot ~1.5s after a zap captures the banner (= what the app believes it tuned to).
 
 - **v5.0.0 (versionCode 107) — Catch up, movie page redesign, polish, larrydaw fixes.** Plan +
   results: `tasks/v5.0-plan.md`. Device-verified on .84 (AFTKRT, release build); NOT walked on an

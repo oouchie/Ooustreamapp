@@ -1603,7 +1603,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 // hardware EAC3 decoder freezes the playback clock, so video renders one frame and
                 // waits forever; mt8695 falsely claiming AC3/EAC3 support is our oldest documented
                 // failure (v2.3.5, v3.3.3). mt8696 keeps the >=6 gate — its hardware EAC3 works.
-                if (!mtkMultichannelFfmpegApplied && AudioLogger.isFfmpegAvailable) {
+                // ffmpegAudioPreferred: this player (or one it was rebuilt from) is already
+                // FFmpeg-first for audio, and every later rebuild inherits that — so a zap onto
+                // another Dolby channel needs no second rebuild. mtkMultichannelFfmpegApplied alone
+                // isn't enough: it is per-channel state that tuneToChannel resets on every zap.
+                if (!mtkMultichannelFfmpegApplied && !ffmpegAudioPreferred && AudioLogger.isFfmpegAvailable) {
                     val hw = android.os.Build.HARDWARE.lowercase()
                     val isMtk = hw.startsWith("mt8")
                     if (isMtk) {
@@ -3879,6 +3883,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Mute before loading new source to prevent audio pop from previous stream
         player?.volume = 0f
         val url = viewModel.buildLiveUrl(channel)
+        // The ViewModel's identity MUST follow the player here. Every rebuild path
+        // (rebuildPlayerWithFfmpegPreferred / SoftwareDecoder / FfmpegVideoDecoder) re-loads
+        // viewModel.streamUrl, and on mt8696 the Dolby-5.1 MTK gate in onTracksChanged fires on
+        // the first tracks of a zap — so with a stale URL that rebuild silently re-tuned the
+        // channel we had just zapped AWAY from ("everything says it changed, picture never does").
+        viewModel.streamUrl = url
+        viewModel.streamIcon = channel.streamIcon ?: ""
         player?.setMediaItem(MediaItem.fromUri(url))
         player?.prepare()
         player?.play()

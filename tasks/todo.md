@@ -709,7 +709,25 @@ user request "series must show season and episode number on all displays".
       with screen/foreground/duration/version/freeRam; zero PROCESS_EXIT leakage).
 - [x] Released v4.2.14 (vc102).
 
-### Investigated, NOT reproduced
+### Channel surfing snaps back to the FIRST channel (2026-09-30) — REPRODUCED + FIXED
+- [x] Repro on .84 (AFTKRT mt8696, v5.0.0 release): OK on NBC → NBC; DOWN → ESPN plays; DOWN
+      again → banner/overlay say "ABC 2 WSB" but the PICTURE is NBC again. logcat shows
+      `ExoPlayerImpl Release/Init` + `Loaded FfmpegAudioRenderer` only (= rebuildPlayerWithFfmpegPreferred)
+      0.3s after that zap. ABC 2 carries Dolby 5.1 → the mt8696 `MTK_MULTICHANNEL_FFMPEG_REBUILD`
+      gate fires on the zap's first onTracksChanged → the rebuild re-loads `viewModel.streamUrl`,
+      which `tuneToChannel` NEVER updated → it re-tunes the channel the player was OPENED on.
+      The earlier "could not reproduce" note below was on an AAC-only zap, where no rebuild fires.
+- [x] Fix 1 (root): `tuneToChannel` now sets `viewModel.streamUrl` + `streamIcon` before
+      `setMediaItem` — identity follows the player, same invariant the episode-advance paths keep.
+- [x] Fix 2: the MTK gate also requires `!ffmpegAudioPreferred` — once the player is FFmpeg-first
+      every later rebuild inherits it, so a zap onto another Dolby channel no longer tears the player
+      down again (`mtkMultichannelFfmpegApplied` is per-channel and reset by every zap).
+- [x] Device-verified on .84 (fixed release build, 17:16): NBC → ESPN → ABC 2 → Reelz, banner and
+      picture agree at every step; the one Dolby rebuild (ABC 2) now re-loads the RIGHT url; the
+      Reelz zap triggers no Release/Init. NOT walked on an Ooustick.
+- [ ] Still open (from below): OK while the zap overlay shows should commit the pending 300ms tune.
+
+### Investigated, NOT reproduced (SUPERSEDED — see the 2026-09-30 entry above)
 - [ ] User report: "channel scrolling — the channel number changes but the picture doesn't"
       (fullscreen CH+/CH−). **Could not reproduce on AFTKRT/4.2.13**: single zap tuned + rendered
       in ~800ms, and a before/after screenshot diff measured mean pixel delta 100.9 (whole frame

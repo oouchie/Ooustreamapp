@@ -1,9 +1,9 @@
 {
-  "version_name": "5.0.0",
-  "version_code": 107,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.0/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.0/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.0/app-armeabi-v7a-release.apk",
-  "changelog": "v5.0 — Catch up on shows you missed, and a new look for movies\n\n• New: Catch Up. Find it on the Home screen. Pick a channel and replay shows that aired over the last 2 days, from the beginning. Works on the channels your provider records (about 235 today, including major US networks, movie channels and sports).\n\n• Movie pages are redesigned to match series. One button plays or resumes, with Start over and Trailer beside it, the cast underneath, and a \"More like this\" row at the bottom.\n\n• Continue Watching is easier to read. Each card shows the title once, then the episode and how much time is left.\n\n• The Home screen keeps the title and the Play and More Info buttons on screen while a preview plays.\n\n• Live channels recover better. If the picture freezes, the app now restarts the stream instead of switching to a slower decoder, and it no longer shows \"format not supported\" for channels that normally play fine.\n\n• If your provider's stream server is down, the app now says so, instead of telling you to check your WiFi.\n\nIncludes everything from v4.2.18: the new series pages, real episode names, and the improved next-episode card.",
+  "version_name": "5.0.1",
+  "version_code": 108,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-armeabi-v7a-release.apk",
+  "changelog": "v5.0.1 — Channel surfing fix\n\n• Fixed: changing channels with Up/Down or CH+/CH- sometimes showed the new channel's name and guide info while the picture stayed on the channel you started from. This happened when you switched onto a channel with surround sound. The picture now always follows the channel you picked.\n\n• Switching between several surround-sound channels in a row is smoother, with less of a pause on each change.\n\nIncludes everything from v5.0: Catch Up, the redesigned movie pages, and the live channel recovery improvements.",
   "mandatory": false
 }
