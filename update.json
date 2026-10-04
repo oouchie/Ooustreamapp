@@ -1,9 +1,9 @@
 {
-  "version_name": "5.0.1",
-  "version_code": 108,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.1/app-armeabi-v7a-release.apk",
-  "changelog": "v5.0.1 — Channel surfing fix\n\n• Fixed: changing channels with Up/Down or CH+/CH- sometimes showed the new channel's name and guide info while the picture stayed on the channel you started from. This happened when you switched onto a channel with surround sound. The picture now always follows the channel you picked.\n\n• Switching between several surround-sound channels in a row is smoother, with less of a pause on each change.\n\nIncludes everything from v5.0: Catch Up, the redesigned movie pages, and the live channel recovery improvements.",
+  "version_name": "5.0.2",
+  "version_code": 109,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-armeabi-v7a-release.apk",
+  "changelog": "v5.0.2 — Dialogue now plays in both ears\n\n• Fixed: on movies, shows and channels with surround sound, voices and dialogue played mostly from the LEFT side, while music and background sound came from both. This was most noticeable with hearing aids, headphones and TV streamers. Dialogue is now centered and plays equally on the left and right.\n\n• No settings to change — the fix applies automatically after updating.\n\nIncludes everything from v5.0.1: the channel surfing fix, Catch Up, and the redesigned movie pages.",
   "mandatory": false
 }

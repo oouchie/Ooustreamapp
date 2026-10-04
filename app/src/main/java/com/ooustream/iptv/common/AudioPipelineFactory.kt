@@ -44,6 +44,53 @@ object AudioPipelineFactory {
      * clock (The Closer stall, proven on-device 2026-08-08). A null context only costs
      * API-34 virtual-device routing — irrelevant on TV sticks.
      */
+    /**
+     * The one stereo downmix used by every factory (main, FFmpeg-preferred, FFmpeg-video,
+     * software-video). Rows below are written per OUTPUT channel because that is how a
+     * downmix is read ("L = FL + 0.707*C + 0.707*SL").
+     *
+     * Media3 does NOT store them that way: ChannelMixingMatrix reads
+     * `coefficients[inputChannel * outputChannelCount + outputChannel]` — input-major
+     * (verified in the media3-common 1.10.0 bytecode). Until v5.0.2 every matrix here was
+     * passed output-major, so for 5.1 the CENTER channel (dialogue) went to the left ear only,
+     * FR leaked into left, LFE went to right, while music in the front/surround channels still
+     * reached both sides. Reported by a hearing-aid listener (keithahg, 2026-10-02): "voices
+     * only in the left ear, music in both". It surfaced once v4.2.13 made every Dolby track
+     * decode to PCM here instead of bitstreaming to the TV. [transposed] fixes the layout in
+     * one place — keep the rows readable and never hand-write input-major arrays.
+     */
+    private fun stereoDownmixer(): ChannelMixingAudioProcessor {
+        fun matrix(inputs: Int, left: FloatArray, right: FloatArray): ChannelMixingMatrix {
+            require(left.size == inputs && right.size == inputs)
+            return ChannelMixingMatrix(inputs, 2, transposed(left, right))
+        }
+        return ChannelMixingAudioProcessor().apply {
+            // Mono stays mono, stereo passes through (processor throws for an unmapped count).
+            putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
+            putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
+            //                      inputs  L row                                         R row
+            // 3ch: FL, FR, C — some European DVB broadcasts
+            putChannelMixingMatrix(matrix(3, floatArrayOf(1f, 0f, 0.707f),
+                                             floatArrayOf(0f, 1f, 0.707f)))
+            // 4ch: FL, FR, SL, SR — quadraphonic
+            putChannelMixingMatrix(matrix(4, floatArrayOf(1f, 0f, 0.707f, 0f),
+                                             floatArrayOf(0f, 1f, 0f, 0.707f)))
+            // 5ch: FL, FR, C, SL, SR — 5.0
+            putChannelMixingMatrix(matrix(5, floatArrayOf(1f, 0f, 0.707f, 0.707f, 0f),
+                                             floatArrayOf(0f, 1f, 0.707f, 0f, 0.707f)))
+            // 6ch: FL, FR, C, LFE, SL, SR — 5.1, ITU-R BS.775 (LFE dropped)
+            putChannelMixingMatrix(matrix(6, floatArrayOf(1f, 0f, 0.707f, 0f, 0.707f, 0f),
+                                             floatArrayOf(0f, 1f, 0.707f, 0f, 0f, 0.707f)))
+            // 8ch: FL, FR, C, LFE, BL, BR, SL, SR — 7.1
+            putChannelMixingMatrix(matrix(8, floatArrayOf(1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f),
+                                             floatArrayOf(0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
+        }
+    }
+
+    /** Output rows (L, R) → Media3's input-major layout: [in0→L, in0→R, in1→L, in1→R, …]. */
+    internal fun transposed(left: FloatArray, right: FloatArray): FloatArray =
+        FloatArray(left.size * 2) { i -> if (i % 2 == 0) left[i / 2] else right[i / 2] }
+
     @Suppress("DEPRECATION")
     private fun buildAudioSinkSafely(
         context: Context,
@@ -180,21 +227,7 @@ object AudioPipelineFactory {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
-                // Same downmix pipeline as createRenderersFactory
-                val downmixer = ChannelMixingAudioProcessor()
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(3, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 1f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(4, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0f, 1f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(5, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(6, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(8, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
-                    0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
+                val downmixer = stereoDownmixer()
                 return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
             }
         }.apply {
@@ -295,21 +328,7 @@ object AudioPipelineFactory {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
-                // Same downmix pipeline as createRenderersFactory
-                val downmixer = ChannelMixingAudioProcessor()
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(1, 1, floatArrayOf(1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(3, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 1f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(4, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0f, 1f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(5, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(6, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0.707f, 0f, 0f, 1f, 0.707f, 0f, 0f, 0.707f)))
-                downmixer.putChannelMixingMatrix(ChannelMixingMatrix(8, 2, floatArrayOf(
-                    1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,
-                    0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f)))
+                val downmixer = stereoDownmixer()
                 return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
             }
         }.apply {
@@ -393,57 +412,7 @@ object AudioPipelineFactory {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
-                val downmixer = ChannelMixingAudioProcessor()
-
-                // Passthrough: mono and stereo (processor throws if no matrix for channel count)
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(1, 1, floatArrayOf(1f))
-                )
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f))
-                )
-
-                // 3-channel (L, R, C) → stereo — some European DVB broadcasts
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(3, 2, floatArrayOf(
-                        1f, 0f, 0.707f,    // L = FL + 0.707*C
-                        0f, 1f, 0.707f     // R = FR + 0.707*C
-                    ))
-                )
-
-                // 4-channel (L, R, SL, SR) → stereo — quadraphonic
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(4, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f,    // L = FL + 0.707*SL
-                        0f, 1f, 0f, 0.707f     // R = FR + 0.707*SR
-                    ))
-                )
-
-                // 5-channel (L, R, C, SL, SR — 5.0 without LFE) → stereo
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(5, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0.707f, 0f,    // L = FL + 0.707*C + 0.707*SL
-                        0f, 1f, 0.707f, 0f, 0.707f     // R = FR + 0.707*C + 0.707*SR
-                    ))
-                )
-
-                // 5.1 surround (6ch) → stereo: ITU-R BS.775
-                // Channel order: FL, FR, C, LFE, SL, SR
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(6, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.707f, 0f,    // L = FL + 0.707*C + 0.707*SL
-                        0f, 1f, 0.707f, 0f, 0f, 0.707f     // R = FR + 0.707*C + 0.707*SR
-                    ))
-                )
-
-                // 7.1 surround (8ch) → stereo
-                // Channel order: FL, FR, C, LFE, BL, BR, SL, SR
-                downmixer.putChannelMixingMatrix(
-                    ChannelMixingMatrix(8, 2, floatArrayOf(
-                        1f, 0f, 0.707f, 0f, 0.5f, 0f, 0.707f, 0f,    // L = FL + 0.707*C + 0.5*BL + 0.707*SL
-                        0f, 1f, 0.707f, 0f, 0f, 0.5f, 0f, 0.707f     // R = FR + 0.707*C + 0.5*BR + 0.707*SR
-                    ))
-                )
+                val downmixer = stereoDownmixer()
 
                 return buildAudioSinkSafely(context, downmixer, enableFloatOutput, enableAudioTrackPlaybackParams)
             }

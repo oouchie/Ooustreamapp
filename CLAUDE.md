@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.0.1 (versionCode 108)
+- **Current Version**: 5.0.2 (versionCode 109)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,22 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.0.2 (versionCode 109, released 2026-10-04) — Surround dialogue played in the LEFT ear only.**
+  Customer keithahg (AFTKRT, 5.0.1, export `2026-10-02_20-30-keithahg-DL-BF5CD970`): a hearing-aid
+  listener on an Oticon TV streamer heard "voices only in the left ear, background and music in
+  both", on VOD and live. **Root cause:** Media3 `ChannelMixingMatrix` reads
+  `coefficients[input * outputCount + output]` (INPUT-major — verified from media3-common 1.10.0
+  bytecode and by running the class on the JVM), but every matrix in `AudioPipelineFactory` was
+  written OUTPUT-major ("L row, R row"). For 5.1 that sent C (dialogue) → L only, FR → L, LFE → R,
+  while FL/SL/SR still reached both sides. The bug had been there since v2.5.1; it surfaced when v4.2.13
+  made every Dolby track decode to PCM through this matrix (previously a Dolby-capable TV got the
+  bitstream and mixed it correctly). The 3/4/5/8-channel matrices were wrong the same way.
+  **Fix:** one `stereoDownmixer()` (readable L/R rows + `transposed()`) replaces the three
+  hand-copied matrix blocks (main, FFmpeg-preferred, FFmpeg-video; software-video inherits).
+  **Verification:** JVM run of the real Media3 class — old matrix C→L=0.707/R=0, new C→L=0.707/R=0.707;
+  `assembleRelease` clean. **NOT device-verified** (.84 offline, .82 adb unauthorized at release time).
+  Rule: never hand-write input-major arrays; all downmixing goes through `stereoDownmixer()`.
 
 - **v5.0.1 (versionCode 108, released 2026-09-30) — Channel surfing snapped back to the channel the
   player was OPENED on.** Reported twice as "everything says the channel changed but the picture
