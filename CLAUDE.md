@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.0.2 (versionCode 109)
+- **Current Version**: 5.0.3 (versionCode 110)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,32 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.0.3 (versionCode 110, released 2026-10-08) — Adult content kept off Home + parental PIN crash.**
+  **(1) Adult off Home, always.** The provider added a Movies category "18+ | Nutflix 🔞" (last in the
+  list). Home only filtered when parental controls were ON, and the history rows (Continue Watching,
+  Pick Up & New) plus For You / Because You Watched were never filtered at all. New
+  `parental/AdultContentGuard.kt` (@Singleton, independent of parental controls): fetches the three
+  category lists, picks adult ones by name (`AdultCategoryDetector`), then fetches ONLY those
+  categories to get the item ids (vod stream ids, series ids, live channel ids). `ids` is null until
+  the first resolve and the history rows wait on `filterNotNull()` (fail closed); last result persisted
+  in SharedPreferences `adult_content_guard`, 15-min TTL. Every Home source filters through it
+  (`HomeViewModel`: hero/trending/Top 10/genre rows/trending series/For You/BYW/For You Live Now/CW/
+  new episodes/watch-again — a series history row matches on `seriesId`, not `streamId`, which is the
+  EPISODE id). `RecommendationEngine` drops adult seeds, because the row title prints the seed
+  ("Because You Watched …"). `AdultCategoryDetector` broadened: `+18`, `18 +`, `XXXX`, `adults`,
+  `adultos/adulte/adulti`, playboy/hustler/brazzers. Adult content is still browsable in its category.
+  **Device-verified on .82:** played "Amateur: OnlyFans" from the 18+ category to 35s → its detail
+  page showed "Resume · 9m left" (progress saved) and Home showed it nowhere (uiautomator dump, 0 hits).
+  **(2) Parental PIN crash on API <26.** Customer export `2026-10-08_00-48-Oouchie247-DL-79600E15`
+  (AFTMM, Android 7.1 / API 25): 4 crashes on Confirm when setting a PIN —
+  `NoSuchAlgorithmException: PBKDF2WithHmacSHA256 SecretKeyFactory not available` (that factory is
+  API 26+). `ParentalControlManager.pbkdf2HmacSha256()` now computes PBKDF2 itself over `HmacSHA256`
+  (all API levels). Byte-identical to the platform factory — verified on the JDK and on .82 via
+  dalvikvm, 4 PINs each — so stored hashes still verify. One hash ≈1.3s on mt8696, so set/unlock/
+  change PIN moved to `Dispatchers.Default` in `ParentalViewModel.runPinWork` (re-entrant Confirm
+  ignored). **NOT verified on an API-25 stick** (the AFTMM wasn't on the LAN); PIN flow not walked on
+  .82 (it already has a PIN set). Rule: never use `SecretKeyFactory` PBKDF2 names — minSdk is 23.
 
 - **v5.0.2 (versionCode 109, released 2026-10-04) — Surround dialogue played in the LEFT ear only.**
   Customer keithahg (AFTKRT, 5.0.1, export `2026-10-02_20-30-keithahg-DL-BF5CD970`): a hearing-aid

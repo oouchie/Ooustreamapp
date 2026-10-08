@@ -3,11 +3,13 @@ package com.ooustream.iptv.parental
 import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 sealed class ParentalState {
@@ -29,6 +31,25 @@ class ParentalViewModel @Inject constructor(
 
     init {
         resolveInitialState()
+    }
+
+    // PIN hashing is 100k PBKDF2 rounds: ~1.3s per hash on an mt8696, slower on mt8695, and
+    // change-PIN does two. On the main thread that is an ANR risk, so it runs on Default.
+    // Repeated Confirm presses while a hash is running are ignored.
+    private var pinWorkInFlight = false
+
+    private fun runPinWork(block: suspend () -> Unit) {
+        if (pinWorkInFlight) return
+        pinWorkInFlight = true
+        _isLoading.value = true
+        viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                pinWorkInFlight = false
+                _isLoading.value = false
+            }
+        }
     }
 
     /**
@@ -63,27 +84,24 @@ class ParentalViewModel @Inject constructor(
             return
         }
 
-        _isLoading.value = true
-
-        if (parentalControlManager.unlock(pin)) {
-            _isLoading.value = false
-            _state.value = ParentalState.Unlocked
-            viewModelScope.launch {
+        runPinWork {
+            val unlocked = withContext(Dispatchers.Default) { parentalControlManager.unlock(pin) }
+            if (unlocked) {
+                _state.value = ParentalState.Unlocked
                 _toastEvent.emit("Parental controls unlocked")
-            }
-        } else {
-            _isLoading.value = false
-            if (parentalControlManager.isLockedOut()) {
-                startLockoutCountdown()
-                _state.value = ParentalState.LockedOut(
-                    parentalControlManager.getLockoutRemainingSeconds()
-                )
             } else {
-                val remaining = MAX_FAILED_ATTEMPTS -
-                    parentalControlManager.getFailedAttempts()
-                _state.value = ParentalState.Error(
-                    "Incorrect PIN. $remaining attempt${if (remaining != 1) "s" else ""} remaining."
-                )
+                if (parentalControlManager.isLockedOut()) {
+                    startLockoutCountdown()
+                    _state.value = ParentalState.LockedOut(
+                        parentalControlManager.getLockoutRemainingSeconds()
+                    )
+                } else {
+                    val remaining = MAX_FAILED_ATTEMPTS -
+                        parentalControlManager.getFailedAttempts()
+                    _state.value = ParentalState.Error(
+                        "Incorrect PIN. $remaining attempt${if (remaining != 1) "s" else ""} remaining."
+                    )
+                }
             }
         }
     }
@@ -97,9 +115,9 @@ class ParentalViewModel @Inject constructor(
             return
         }
 
-        parentalControlManager.setPin(pin)
-        _state.value = ParentalState.Unlocked
-        viewModelScope.launch {
+        runPinWork {
+            withContext(Dispatchers.Default) { parentalControlManager.setPin(pin) }
+            _state.value = ParentalState.Unlocked
             _toastEvent.emit("Parental PIN set successfully")
         }
     }
@@ -113,19 +131,20 @@ class ParentalViewModel @Inject constructor(
             return
         }
 
-        if (parentalControlManager.changePin(oldPin, newPin)) {
-            _state.value = ParentalState.Unlocked
-            viewModelScope.launch {
+        runPinWork {
+            val changed = withContext(Dispatchers.Default) { parentalControlManager.changePin(oldPin, newPin) }
+            if (changed) {
+                _state.value = ParentalState.Unlocked
                 _toastEvent.emit("PIN changed successfully")
-            }
-        } else {
-            if (parentalControlManager.isLockedOut()) {
-                startLockoutCountdown()
-                _state.value = ParentalState.LockedOut(
-                    parentalControlManager.getLockoutRemainingSeconds()
-                )
             } else {
-                _state.value = ParentalState.Error("Current PIN is incorrect")
+                if (parentalControlManager.isLockedOut()) {
+                    startLockoutCountdown()
+                    _state.value = ParentalState.LockedOut(
+                        parentalControlManager.getLockoutRemainingSeconds()
+                    )
+                } else {
+                    _state.value = ParentalState.Error("Current PIN is incorrect")
+                }
             }
         }
     }

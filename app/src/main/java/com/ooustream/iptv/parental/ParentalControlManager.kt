@@ -8,8 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -217,9 +217,7 @@ class ParentalControlManager @Inject constructor(
     private fun hashPin(pin: String): String {
         val salt = ByteArray(16)
         java.security.SecureRandom().nextBytes(salt)
-        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val hash = factory.generateSecret(spec).encoded
+        val hash = pbkdf2HmacSha256(pin, salt)
         val saltHex = salt.joinToString("") { "%02x".format(it) }
         val hashHex = hash.joinToString("") { "%02x".format(it) }
         return "$saltHex:$hashHex"
@@ -229,11 +227,32 @@ class ParentalControlManager @Inject constructor(
         val parts = storedHash.split(":")
         if (parts.size != 2) return false
         val salt = parts[0].chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val hash = factory.generateSecret(spec).encoded
+        val hash = pbkdf2HmacSha256(pin, salt)
         val hashHex = hash.joinToString("") { "%02x".format(it) }
         return hashHex == parts[1]
+    }
+
+    /**
+     * PBKDF2-HMAC-SHA256 (RFC 8018), 256-bit output.
+     *
+     * Hand-rolled on purpose: `SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")` only exists
+     * on API 26+, and on Android 7.x sticks (AFTMM, API 25) setting a PIN threw
+     * NoSuchAlgorithmException and killed the app. HmacSHA256 is available on every API level,
+     * and the output is byte-identical to the platform factory (verified against the JDK), so
+     * hashes saved by older builds on API 26+ devices still verify.
+     */
+    private fun pbkdf2HmacSha256(pin: String, salt: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(pin.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        // 256-bit key = exactly one SHA-256 block, so only block index 1 is needed.
+        mac.update(salt)
+        var u = mac.doFinal(byteArrayOf(0, 0, 0, 1))
+        val result = u.copyOf()
+        repeat(PBKDF2_ITERATIONS - 1) {
+            u = mac.doFinal(u)
+            for (i in result.indices) result[i] = (result[i].toInt() xor u[i].toInt()).toByte()
+        }
+        return result
     }
 
     /** Legacy SHA-256 hash for migration from old format. */

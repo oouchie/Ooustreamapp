@@ -15,6 +15,8 @@ import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.data.repository.WatchHistoryPruner
 import com.ooustream.iptv.data.repository.WatchProgressRepository
+import com.ooustream.iptv.parental.AdultCategoryDetector
+import com.ooustream.iptv.parental.AdultContentGuard
 import com.ooustream.iptv.parental.ContentFilterManager
 import kotlin.math.ln
 import com.ooustream.iptv.epg.ChannelContentType
@@ -34,6 +36,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
 import javax.inject.Inject
@@ -71,10 +75,14 @@ class HomeViewModel @Inject constructor(
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
     private val favoriteDao: FavoriteDao,
     private val contentFilterManager: ContentFilterManager,
-    private val watchHistoryPruner: WatchHistoryPruner
+    private val watchHistoryPruner: WatchHistoryPruner,
+    private val adultContentGuard: AdultContentGuard
 ) : BaseViewModel() {
 
     init {
+        // Resolve adult ids up front: the history rows below stay empty until this is known.
+        viewModelScope.launch(Dispatchers.IO) { adultContentGuard.ensure() }
+
         // Kick off predictive pre-fetching of EPG data for top channels (WiFi only)
         predictivePreFetcher.prefetchIfNeeded()
 
@@ -83,15 +91,19 @@ class HomeViewModel @Inject constructor(
         // if no watch history exists.
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val adult = adultContentGuard.ensure() ?: return@launch
                 val grouped = recommendationEngine.getGroupedRecommendations()
+                    .map { row -> row.copy(recommendations = withoutAdult(row.recommendations, adult)) }
+                    .filter { it.recommendations.isNotEmpty() }
                 if (grouped.isNotEmpty()) {
                     _becauseYouWatchedRows.value = grouped
                 } else {
-                    _forYouContent.value = recommendationEngine.getRecommendations()
+                    _forYouContent.value = withoutAdult(recommendationEngine.getRecommendations(), adult)
                 }
             } catch (_: Exception) {
                 try {
-                    _forYouContent.value = recommendationEngine.getRecommendations()
+                    val adult = adultContentGuard.ensure() ?: return@launch
+                    _forYouContent.value = withoutAdult(recommendationEngine.getRecommendations(), adult)
                 } catch (_: Exception) { }
             }
         }
@@ -100,10 +112,15 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (!channelRecommendationEngine.hasEnoughData()) return@launch
+                val adult = adultContentGuard.ensure() ?: return@launch
 
                 // Recompute scores on Home load (fast — bounded data)
                 channelRecommendationEngine.recomputeScores()
                 val recommendations = channelRecommendationEngine.getRecommendations()
+                    .filterNot { rec ->
+                        adult.isAdultItem("live", rec.channelId) ||
+                            AdultCategoryDetector.isAdultCategory(rec.categoryName.orEmpty())
+                    }
 
                 // Enrich each recommendation with smart EPG
                 val channels = recommendations.map { rec ->
@@ -130,14 +147,30 @@ class HomeViewModel @Inject constructor(
         // Quick Tune channel strip removed (v3.7.13) — decluttered Home
     }
 
+    // History rows wait for the adult ids (filterNotNull) rather than showing unfiltered first.
+    private val adultIds = adultContentGuard.ids.filterNotNull()
+
     val continueWatching: Flow<List<WatchProgressEntity>> =
         watchProgressRepository.getContinueWatching()
+            .combine(adultIds) { rows, adult -> rows.filterNot { isAdultHistory(it, adult) } }
 
     val newEpisodes: Flow<List<SeriesTrackingEntity>> =
         seriesTrackingDao.getSeriesWithNewEpisodes()
+            .combine(adultIds) { rows, adult -> rows.filterNot { adult.isAdultItem("series", it.seriesId) } }
 
     val watchItAgain: Flow<List<WatchProgressEntity>> =
         watchProgressRepository.getCompletedContent()
+            .combine(adultIds) { rows, adult -> rows.filterNot { isAdultHistory(it, adult) } }
+
+    /** A series row's streamId is the EPISODE id; the series is what the adult set holds. */
+    private fun isAdultHistory(row: WatchProgressEntity, adult: AdultContentGuard.AdultIds): Boolean =
+        when (row.type) {
+            "series" -> adult.isAdultItem("series", row.seriesId)
+            else -> adult.isAdultItem(row.type, row.streamId.toIntOrNull())
+        }
+
+    private fun withoutAdult(items: List<RecommendedItem>, adult: AdultContentGuard.AdultIds) =
+        items.filterNot { adult.isAdultItem(it.type, it.streamId) }
 
     private val _featuredContent = MutableStateFlow<List<FeaturedItem>>(emptyList())
     val featuredContent: StateFlow<List<FeaturedItem>> = _featuredContent.asStateFlow()
@@ -238,7 +271,10 @@ class HomeViewModel @Inject constructor(
             // blocked categories look deleted. The prune itself runs off the hero critical path
             // (in the parallel block below) so it never delays first paint.
             val vodIdsForPrune = rawVodStreams.map { it.streamId }
+            // Fail closed: no adult ids → no catalog rows, rather than unfiltered ones.
+            val adult = adultContentGuard.ensure() ?: throw IllegalStateException("adult ids unavailable")
             val vodStreams = contentFilterManager.filterContent("vod", rawVodStreams) { it.categoryId }
+                .filterNot { adult.isAdultCategory("vod", it.categoryId) || adult.isAdultItem("vod", it.streamId) }
             val sorted = vodStreams.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
             val heroVods = sorted.take(6)
 
@@ -283,6 +319,7 @@ class HomeViewModel @Inject constructor(
                     try {
                         val rawSeries = contentRepository.getSeries()
                         val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
+                            .filterNot { adult.isAdultCategory("series", it.categoryId) || adult.isAdultItem("series", it.seriesId) }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
                         // Prune AFTER the row is published so it doesn't delay first paint.
                         watchHistoryPruner.pruneSeries(rawSeries.map { it.seriesId })
@@ -303,6 +340,7 @@ class HomeViewModel @Inject constructor(
                     try {
                         val categories = contentRepository.getVodCategories()
                         val filteredCats = contentFilterManager.filterCategories("vod", categories)
+                            .filterNot { adult.isAdultCategory("vod", it.categoryId) || AdultCategoryDetector.isAdultCategory(it.categoryName) }
                         val userCounts = try {
                             watchAnalyticsRepository.getCategoryWatchCounts("vod")
                                 .associate { it.categoryId to it.totalCount }

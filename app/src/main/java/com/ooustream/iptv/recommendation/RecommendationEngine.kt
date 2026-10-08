@@ -3,6 +3,7 @@ package com.ooustream.iptv.recommendation
 import com.ooustream.iptv.data.local.dao.FavoriteDao
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
+import com.ooustream.iptv.parental.AdultContentGuard
 import android.util.Log
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -30,7 +31,8 @@ data class RecommendedItem(
 class RecommendationEngine @Inject constructor(
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
     private val contentRepository: ContentRepository,
-    private val favoriteDao: FavoriteDao
+    private val favoriteDao: FavoriteDao,
+    private val adultContentGuard: AdultContentGuard
 ) {
     private var cachedRecommendations: List<RecommendedItem>? = null
     private var cacheTimestamp: Long = 0
@@ -180,7 +182,13 @@ class RecommendationEngine @Inject constructor(
 
         try {
             val recentlyWatched = watchAnalyticsRepository.getRecentlyWatched(20)
+            // An adult seed would put its title on Home ("Because You Watched …"). Unknown
+            // adult ids → no rows at all, never unfiltered ones.
+            val adult = adultContentGuard.ensure() ?: return emptyList()
             val eligible = recentlyWatched.filter { it.type == "vod" || it.type == "series" }
+                .filterNot {
+                    adult.isAdultCategory(it.type, it.categoryId) || adult.isAdultItem(it.type, it.streamId)
+                }
             if (eligible.isEmpty()) {
                 cachedGrouped = emptyList()
                 groupedCacheTimestamp = now

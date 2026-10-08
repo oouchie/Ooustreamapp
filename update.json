@@ -1,9 +1,9 @@
 {
-  "version_name": "5.0.2",
-  "version_code": 109,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.2/app-armeabi-v7a-release.apk",
-  "changelog": "v5.0.2 — Dialogue now plays in both ears\n\n• Fixed: on movies, shows and channels with surround sound, voices and dialogue played mostly from the LEFT side, while music and background sound came from both. This was most noticeable with hearing aids, headphones and TV streamers. Dialogue is now centered and plays equally on the left and right.\n\n• No settings to change — the fix applies automatically after updating.\n\nIncludes everything from v5.0.1: the channel surfing fix, Catch Up, and the redesigned movie pages.",
+  "version_name": "5.0.3",
+  "version_code": 110,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-armeabi-v7a-release.apk",
+  "changelog": "v5.0.3 — Adult content kept off Home + parental controls fix\n\n• Adult (18+) titles and channels no longer appear anywhere on the Home screen — not in the featured banner, Trending, Top 10, recommendations, Continue Watching or Pick Up & New. They are still available inside their own category if you go looking for them.\n\n• Fixed: on some older Fire TV Sticks, the app closed when you tried to create a parental controls PIN. Setting, entering and changing your PIN now works on every stick.\n\nIncludes everything from v5.0.2: dialogue plays in both ears, the channel surfing fix, Catch Up, and the redesigned movie pages.",
   "mandatory": false
 }
