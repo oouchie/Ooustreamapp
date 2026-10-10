@@ -23,7 +23,7 @@ Source: `tasks/catalog-layout-options-2026-10-09.md` (items 1–3 = this release
 - [x] 8. Build (`compileDebugKotlin` + `assembleRelease`), device-walk Movies + Series sidebars on .82:
       groups expand/collapse by D-pad, focus stays sane, genre/decade grids populate, adult titles absent from
       every virtual category, Recently Added shows the 2026-10-07 drop.
-- [ ] 9. CLAUDE.md + release notes; version bump 5.1.0 (111); `update.json`; GitHub release.
+- [x] 9. CLAUDE.md + release notes; version bump 5.1.0 (111); `update.json`; GitHub release.
 
 ## Decisions
 - Recently Added window = **14 days** (plan said 7; with the catalog's lumpy drops a 7-day row would blink
