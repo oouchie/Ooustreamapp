@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Non-focusable section label in the Movies / Series sidebar ("BROWSE BY", "SERVICES").
+     D-pad focus skips it; it only exists to break the list into readable blocks. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/category_header"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="4dp"
+    android:textColor="@color/text_muted"
+    android:textSize="10sp"
+    android:textAllCaps="true"
+    android:letterSpacing="0.12"
+    android:maxLines="1"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    android:clickable="false" />

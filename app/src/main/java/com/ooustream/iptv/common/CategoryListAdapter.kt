@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
  */
 class CategoryListAdapter(
     private val onCategorySelected: (CategoryItem) -> Unit
-) : RecyclerView.Adapter<CategoryListAdapter.CategoryViewHolder>() {
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var items: List<CategoryItem> = emptyList()
     private var selectedId: String? = null
@@ -47,19 +47,39 @@ class CategoryListAdapter(
         diff.dispatchUpdatesTo(this)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CategoryViewHolder {
+    override fun getItemViewType(position: Int): Int =
+        if (items[position].kind == CategoryItem.Kind.HEADER) TYPE_HEADER else TYPE_ROW
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        if (viewType == TYPE_HEADER) {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_category_header, parent, false)
+            return HeaderViewHolder(view as TextView)
+        }
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_category, parent, false)
         // Explicit focus target — bypasses geometric search which fails when scrolled
         view.nextFocusRightId = R.id.channels_list
         return CategoryViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: CategoryViewHolder, position: Int) {
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val cat = items[position]
-        holder.bind(cat, selectedId == cat.id, specialEmojiColors[cat.id])
+        when (holder) {
+            is HeaderViewHolder -> holder.label.text = cat.name
+            is CategoryViewHolder -> holder.bind(cat, selectedId == cat.id, specialEmojiColors[cat.id])
+        }
     }
 
     override fun getItemCount(): Int = items.size
+
+    /** Adapter position of a row id, or -1. Used to scroll a just-expanded group's children into view. */
+    fun positionOf(id: String): Int = items.indexOfFirst { it.id == id }
+
+    private companion object {
+        const val TYPE_ROW = 0
+        const val TYPE_HEADER = 1
+    }
+
+    class HeaderViewHolder(val label: TextView) : RecyclerView.ViewHolder(label)
 
     inner class CategoryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val root = itemView as LinearLayout
@@ -73,8 +93,16 @@ class CategoryListAdapter(
             count.text = if (cat.count > 0) cat.count.toString() else ""
             // No count known → no pill (it used to draw an empty grey pill on every row).
             count.visibility = if (cat.count > 0) android.view.View.VISIBLE else android.view.View.GONE
-            emoji.text = CategoryEmoji.get(cat.name)
+            emoji.text = cat.emojiOverride ?: CategoryEmoji.get(cat.name)
             emoji.setTextColor(emojiColor ?: 0xFFFFFFFF.toInt())
+            // Group children sit inset under their toggle row.
+            val density = root.resources.displayMetrics.density
+            root.setPaddingRelative(
+                ((if (cat.indent) 26 else 10) * density).toInt(),
+                root.paddingTop,
+                root.paddingEnd,
+                root.paddingBottom
+            )
 
             // Phone: strip focusability so a finger-tap selects on the FIRST tap. The XML
             // focusableInTouchMode is for D-pad on TV; on a touchscreen it makes the first tap

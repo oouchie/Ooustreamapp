@@ -1,9 +1,9 @@
 {
-  "version_name": "5.0.3",
-  "version_code": 110,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.0.3/app-armeabi-v7a-release.apk",
-  "changelog": "v5.0.3 — Adult content kept off Home + parental controls fix\n\n• Adult (18+) titles and channels no longer appear anywhere on the Home screen — not in the featured banner, Trending, Top 10, recommendations, Continue Watching or Pick Up & New. They are still available inside their own category if you go looking for them.\n\n• Fixed: on some older Fire TV Sticks, the app closed when you tried to create a parental controls PIN. Setting, entering and changing your PIN now works on every stick.\n\nIncludes everything from v5.0.2: dialogue plays in both ears, the channel surfing fix, Catch Up, and the redesigned movie pages.",
+  "version_name": "5.1.0",
+  "version_code": 111,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.0/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.0/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.0/app-armeabi-v7a-release.apk",
+  "changelog": "v5.1.0 — Browse Movies & Series by decade and genre\n\n• Movies: a new \"Browse by\" section in the sidebar lets you pick a decade — 2020s, 2010s, 2000s, 90s, 80s, 70s, or Classics.\n\n• Series: browse by genre (Drama, Comedy, Animation, Documentary, Sci-Fi & Fantasy, Crime and more) or by decade.\n\n• The sidebar is tidier: every service shows how many titles it has, the smallest ones are tucked under \"More services\", and \"Unlabeled\" is now \"All Other Movies / Series\".\n\n• Recently Added now shows only titles added in the last two weeks, newest first.\n\n• Faster: the movie and series lists load once and are shared across Home, Movies and Series instead of being downloaded again on every screen.\n\nIncludes everything from v5.0.3: adult content kept off the Home screen and the parental-controls PIN fix for older sticks.",
   "mandatory": false
 }

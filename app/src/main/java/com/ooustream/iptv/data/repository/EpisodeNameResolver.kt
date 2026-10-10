@@ -34,13 +34,14 @@ class EpisodeNameResolver @Inject constructor(
     private val mutex = Mutex()
 
     /** episodeNumber → name for one season; empty when unknown or not confidently matched. */
-    suspend fun seasonNames(seriesName: String, year: Int?, season: Int): Map<Int, String> {
+    suspend fun seasonNames(seriesName: String, year: Int?, season: Int, tmdbId: Int? = null): Map<Int, String> {
         val key = BuildConfig.TMDB_API_KEY
         if (key.isBlank() || season <= 0 || seriesName.isBlank()) return emptyMap()
         return withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
-                    val tvId = tvIdFor(seriesName, year, key) ?: return@withLock emptyMap()
+                    // A known TMDB id (from the bulk series list) skips the name search entirely.
+                    val tvId = tmdbId?.takeIf { it > 0 } ?: tvIdFor(seriesName, year, key) ?: return@withLock emptyMap()
                     seasonFromCache(tvId, season) ?: fetchSeason(tvId, season, key)
                 } catch (e: Exception) {
                     Log.w(TAG, "episode names unavailable for '$seriesName' S$season: ${e.message}")

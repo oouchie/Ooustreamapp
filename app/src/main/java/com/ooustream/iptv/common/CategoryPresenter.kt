@@ -16,8 +16,23 @@ data class CategoryItem(
     val count: Int = 0,
     val iconRes: Int? = null,
     val accentColor: Int = Color.WHITE,
-    val isSpecial: Boolean = false
-)
+    val isSpecial: Boolean = false,
+    /** Sidebar row type — see [Kind]. */
+    val kind: Kind = Kind.ITEM,
+    /** Glyph to show instead of the name-derived emoji (group chevrons, decade calendar). */
+    val emojiOverride: String? = null,
+    /** Child of an expanded group: drawn inset. */
+    val indent: Boolean = false
+) {
+    enum class Kind {
+        /** A selectable category. */
+        ITEM,
+        /** Non-focusable section label ("BROWSE BY"). */
+        HEADER,
+        /** Expand/collapse toggle; clicking it never selects a category. */
+        GROUP
+    }
+}
 
 class CategoryPresenter(
     private val selectedId: () -> String?

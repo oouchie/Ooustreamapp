@@ -1,6 +1,7 @@
 package com.ooustream.iptv.recommendation
 
 import com.ooustream.iptv.data.local.dao.FavoriteDao
+import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.parental.AdultContentGuard
@@ -32,7 +33,8 @@ class RecommendationEngine @Inject constructor(
     private val watchAnalyticsRepository: WatchAnalyticsRepository,
     private val contentRepository: ContentRepository,
     private val favoriteDao: FavoriteDao,
-    private val adultContentGuard: AdultContentGuard
+    private val adultContentGuard: AdultContentGuard,
+    private val catalogCache: CatalogCache
 ) {
     private var cachedRecommendations: List<RecommendedItem>? = null
     private var cacheTimestamp: Long = 0
@@ -249,7 +251,7 @@ class RecommendationEngine @Inject constructor(
 
         // Search ALL VOD for genre/cast matches — not limited to same category.
         // Shuffle to get variety, then cap at 40 info fetches to avoid overloading.
-        val allVod = contentRepository.getVodStreams()
+        val allVod = catalogCache.vod()
         val unwatched = allVod
             .filter { "vod_${it.streamId}" !in watchedIds && it.streamId != seedId }
             .shuffled()
@@ -299,7 +301,7 @@ class RecommendationEngine @Inject constructor(
         watchedIds: Set<String>
     ): List<RecommendedItem> {
         // Find the seed series to get genre/cast
-        val allSeries = contentRepository.getSeries()
+        val allSeries = catalogCache.series()
         val seedSeries = allSeries.find { it.seriesId == seedId } ?: return emptyList()
         val seedTitle = seedSeries.name
         val seedGenres = parseTokens(seedSeries.genre)
@@ -361,7 +363,7 @@ class RecommendationEngine @Inject constructor(
                     val streams = if (categoryId != null)
                         contentRepository.getVodStreams(categoryId)
                     else
-                        contentRepository.getVodStreams()
+                        catalogCache.vod()
                     val match = streams.find { it.streamId == streamId }
                     Pair(match?.name ?: "", match?.streamIcon)
                 }
@@ -369,7 +371,7 @@ class RecommendationEngine @Inject constructor(
                     val seriesList = if (categoryId != null)
                         contentRepository.getSeries(categoryId)
                     else
-                        contentRepository.getSeries()
+                        catalogCache.series()
                     val match = seriesList.find { it.seriesId == streamId }
                     Pair(match?.name ?: "", match?.cover)
                 }

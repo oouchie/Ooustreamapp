@@ -42,7 +42,8 @@ data class ResumeTarget(
 class SeriesDetailViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val watchProgressRepository: WatchProgressRepository,
-    private val episodeNameResolver: com.ooustream.iptv.data.repository.EpisodeNameResolver
+    private val episodeNameResolver: com.ooustream.iptv.data.repository.EpisodeNameResolver,
+    private val catalogCache: com.ooustream.iptv.data.repository.CatalogCache
 ) : BaseViewModel() {
 
     companion object {
@@ -143,7 +144,9 @@ class SeriesDetailViewModel @Inject constructor(
             for (key in keys) {
                 val eps = bySeason[key].orEmpty()
                 val seasonNum = eps.firstOrNull()?.season?.takeIf { it > 0 } ?: key.toIntOrNull() ?: continue
-                val names = episodeNameResolver.seasonNames(name, year, seasonNum)
+                // The bulk series list carries a TMDB id (get_series_info does not); when it's in
+                // memory, use it and skip the name search — fewer wrong-show matches.
+                val names = episodeNameResolver.seasonNames(name, year, seasonNum, catalogCache.seriesTmdbId(loadedSeriesId))
                 if (names.isEmpty()) continue
                 val add = eps.mapNotNull { e -> names[e.episodeNum]?.let { n -> e.id?.let { it to n } } }
                 if (add.isNotEmpty()) _episodeNames.value = _episodeNames.value + add

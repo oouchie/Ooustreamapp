@@ -19,5 +19,5 @@ data class Series(
     @SerializedName("youtube_trailer") val youtubeTrailer: String?,
     @SerializedName("episode_run_time") val episodeRunTime: String?,
     @SerializedName("category_id") val categoryId: String?,
-    @SerializedName("tmdb") val tmdbId: String? = null
+    @SerializedName(value = "tmdb", alternate = ["tmdb_id"]) val tmdbId: String? = null
 )

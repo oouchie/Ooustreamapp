@@ -21,7 +21,8 @@ class SettingsViewModel @Inject constructor(
     private val database: OoustreamDatabase,
     private val contentCacheRepository: ContentCacheRepository,
     private val watchProgressDao: WatchProgressDao,
-    private val seriesTrackingDao: SeriesTrackingDao
+    private val seriesTrackingDao: SeriesTrackingDao,
+    private val catalogCache: com.ooustream.iptv.data.repository.CatalogCache
 ) : BaseViewModel() {
 
     sealed class SettingsEvent {
@@ -79,6 +80,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 contentCacheRepository.clearContentCache()
+                catalogCache.invalidate()
                 contentCacheRepository.getCategories("live").collect {}
                 contentCacheRepository.getCategories("vod").collect {}
                 contentCacheRepository.getCategories("series").collect {}

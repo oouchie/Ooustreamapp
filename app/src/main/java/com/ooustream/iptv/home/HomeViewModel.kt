@@ -9,6 +9,7 @@ import com.ooustream.iptv.data.local.entity.SeriesTrackingEntity
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
+import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
@@ -76,7 +77,8 @@ class HomeViewModel @Inject constructor(
     private val favoriteDao: FavoriteDao,
     private val contentFilterManager: ContentFilterManager,
     private val watchHistoryPruner: WatchHistoryPruner,
-    private val adultContentGuard: AdultContentGuard
+    private val adultContentGuard: AdultContentGuard,
+    private val catalogCache: CatalogCache
 ) : BaseViewModel() {
 
     init {
@@ -265,7 +267,7 @@ class HomeViewModel @Inject constructor(
 
     suspend fun loadFeaturedContent() {
         try {
-            val rawVodStreams = contentRepository.getVodStreams()
+            val rawVodStreams = catalogCache.vod()
             // Ids for the Continue Watching prune (movies renumbered by the July 2026 VOD backend
             // migration). Validated against the RAW list — the parental-filtered one would make
             // blocked categories look deleted. The prune itself runs off the hero critical path
@@ -317,7 +319,7 @@ class HomeViewModel @Inject constructor(
                 // Trending Series: rating × recency, boosted by user preferences
                 launch {
                     try {
-                        val rawSeries = contentRepository.getSeries()
+                        val rawSeries = catalogCache.series()
                         val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
                             .filterNot { adult.isAdultCategory("series", it.categoryId) || adult.isAdultItem("series", it.seriesId) }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)

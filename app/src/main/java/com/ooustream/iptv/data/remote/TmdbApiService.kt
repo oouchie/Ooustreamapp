@@ -23,7 +23,7 @@ interface TmdbApiService {
         @Query("api_key") apiKey: String
     ): TmdbTvResponse
 
-    /** Series lookup by name — the provider sends no TMDB id for series. */
+    /** Series lookup by name — fallback when the bulk list's `tmdb_id` isn't at hand (`get_series_info` carries none). */
     @GET("search/tv")
     suspend fun searchTv(
         @Query("query") query: String,

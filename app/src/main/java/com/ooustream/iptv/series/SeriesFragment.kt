@@ -24,6 +24,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ooustream.iptv.KeyEventHandler
 import com.ooustream.iptv.R
+import com.ooustream.iptv.catalog.BrowseSidebar
 import com.ooustream.iptv.common.CategoryEmoji
 import com.ooustream.iptv.common.CategoryItem
 import com.ooustream.iptv.common.CategoryListAdapter
@@ -106,8 +107,22 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         categoriesList.setHasFixedSize(true)
         categoriesList.setItemViewCacheSize(20)
         categoryAdapter = CategoryListAdapter { cat ->
-            viewModel.selectCategory(cat.id)
-            updateCategoryList(categoriesList)
+            if (cat.kind == CategoryItem.Kind.GROUP) {
+                viewModel.toggleGroup(cat.id)   // expand/collapse only — never a selection
+                updateCategoryList(categoriesList)
+                // A group at the bottom of the list expands below the fold; bring its first
+                // children into view so the expansion is visible without another key press.
+                if (cat.id in viewModel.expandedGroups.value) {
+                    val pos = categoryAdapter?.positionOf(cat.id) ?: -1
+                    val last = (categoryAdapter?.itemCount ?: 0) - 1
+                    if (pos >= 0) categoriesList.post {
+                        categoriesList.smoothScrollToPosition(minOf(pos + 3, last))
+                    }
+                }
+            } else {
+                viewModel.selectCategory(cat.id)
+                updateCategoryList(categoriesList)
+            }
         }
         categoriesList.adapter = categoryAdapter
 
@@ -276,6 +291,18 @@ class SeriesFragment : Fragment(), KeyEventHandler {
             }
         }
 
+        // Sidebar groups: rebuild when the browse index lands or a group is toggled.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.browseIndex.collect { updateCategoryList(categoriesList) }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.expandedGroups.collect { updateCategoryList(categoriesList) }
+            }
+        }
+
         viewModel.loadCategories()
     }
 
@@ -328,22 +355,34 @@ class SeriesFragment : Fragment(), KeyEventHandler {
     }
 
     private fun updateCategoryList(recyclerView: RecyclerView) {
-        val favoritesCat = CategoryItem(SeriesViewModel.FAVORITES_ID, "Favorites")
-        val recentlyAddedCat = CategoryItem(SeriesViewModel.RECENTLY_ADDED_ID, "Recently Added")
-        val apiCats = viewModel.categories.value
-            .filter { searchFilter.isEmpty() || it.categoryName.lowercase().contains(searchFilter) }
-            .map { CategoryItem(it.categoryId, it.categoryName) }
+        val index = viewModel.browseIndex.value
+        val selectedId = viewModel.selectedCategoryId.value
 
-        val virtualCats = mutableListOf<CategoryItem>()
-        if (searchFilter.isEmpty() || "favorites".contains(searchFilter)) virtualCats.add(favoritesCat)
-        if (searchFilter.isEmpty() || "recently added".contains(searchFilter)) virtualCats.add(recentlyAddedCat)
-        val cats = virtualCats + apiCats
+        // Pseudo-rows test whether their OWN label contains the query — see VodFragment.
+        val fixedTop = mutableListOf<CategoryItem>()
+        if (searchFilter.isEmpty() || "favorites".contains(searchFilter)) {
+            fixedTop += CategoryItem(SeriesViewModel.FAVORITES_ID, "Favorites")
+        }
+        val recentKnownEmpty = index != null && index.recentCount == 0 &&
+            selectedId != SeriesViewModel.RECENTLY_ADDED_ID
+        if (!recentKnownEmpty && (searchFilter.isEmpty() || "recently added".contains(searchFilter))) {
+            fixedTop += CategoryItem(SeriesViewModel.RECENTLY_ADDED_ID, "Recently Added", count = index?.recentCount ?: 0)
+        }
 
+        val cats = BrowseSidebar.build(
+            fixedTop = fixedTop,
+            apiCats = viewModel.categories.value,
+            index = index,
+            expanded = viewModel.expandedGroups.value,
+            selectedId = selectedId,
+            search = searchFilter,
+            section = "series"
+        )
         val emojiColors = mapOf(
             SeriesViewModel.FAVORITES_ID to 0xFFEF4444.toInt(),
             SeriesViewModel.RECENTLY_ADDED_ID to 0xFF10B981.toInt()
         )
-        categoryAdapter?.updateData(cats, viewModel.selectedCategoryId.value, emojiColors)
+        categoryAdapter?.updateData(cats, selectedId, emojiColors)
     }
 
     override fun onDestroyView() {

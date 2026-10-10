@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.0.3 (versionCode 110)
+- **Current Version**: 5.1.0 (versionCode 111)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,44 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.1.0 (versionCode 111, released 2026-10-09) — "Browse by" sidebar on Movies & Series + one
+  shared catalog cache.** Plan + API survey: `tasks/catalog-layout-options-2026-10-09.md`,
+  `tasks/todo.md`. **Why:** the bp-v2.net panel's categories are streaming SERVICES (Netflix, Prime,
+  …, 36 movie / 33 series), with no genre or year grouping and no nesting (`parent_id` always 0);
+  `get_vod_streams` carries NO genre/year/plot (only `rating`, `added`, `tmdb_id` — year is the
+  title's trailing `(YYYY)`, 97.6%); `get_series` DOES carry genre/releaseDate/plot/cast/trailer.
+  **New:** `data/repository/CatalogCache.kt` (@Singleton, 10-min TTL, single-flight, dropped on
+  expiry + "Update Playlist") — before this Home hero/trending, the BYW rows and both screens'
+  "Recently Added" EACH re-downloaded the 10 MB / 6.5 MB lists. `catalog/CatalogBrowse.kt` (pure
+  index: movie decades from the title year, series genres ≥5 titles + decades from `releaseDate`,
+  "Classics" fold before 1970 / 1990, per-category counts, 14-day recent count; stable ids
+  `__genre__:Drama`, `__decade__:2010`, `__decade__:classics`). `catalog/BrowseSidebar.kt` builds
+  the row list for BOTH fragments: fixed pseudo-rows → `BROWSE BY` header → `▸ By genre` /
+  `▸ By decade` groups → `SERVICES` header → services with ≥50 titles (count pills) → "All Other
+  Movies/Series" (was "Unlabeled …", 20% / 14% of the catalog) → `▸ More services` (the <50 tail).
+  `CategoryItem` gained `kind` (ITEM / HEADER / GROUP), `emojiOverride`, `indent`;
+  `CategoryListAdapter` has a second view type (`item_category_header.xml`, non-focusable).
+  Groups are collapsed by default, live in the ViewModel (`expandedGroups`, survives back-nav), a
+  selected child auto-opens its group, header search flattens the list. Virtual categories are
+  filtered on `Dispatchers.Default` (the old Recently Added sorted 29k items on MAIN) through
+  parental blocks AND adult exclusion (category NAME from the loaded list + `AdultContentGuard`
+  ids) — adult titles only ever appear inside their own category. **"Recently Added" is now a real
+  14-day window** (95% of the catalog shares the 2026-09-21 migration `added` day, so "newest
+  first" showed arbitrary titles) and hides itself when empty. **`tmdb_id`:** the panel sends
+  `tmdb_id`; the models read `tmdb` → `tmdbId` was null everywhere (poster fallback never fired).
+  Fixed with `alternate = ["tmdb_id"]`; `EpisodeNameResolver.seasonNames(..., tmdbId)` skips the
+  TMDB name search when the bulk list is in memory (`CatalogCache.seriesTmdbId`;
+  `get_series_info` carries no id). **Device-verified on .82 (AFTKRT, release build):** Movies
+  sidebar renders the groups; By decade → 2020s 9,329 / 2010s 8,764 / … ; 1990s grid newest-first;
+  Recently Added (777) shows the 2026-10-07 drop with zero adult titles in view; "All Other Movies
+  5897" + "More services (8)"; Series: By genre (16) → Drama 2,654 … Soap 19, Crime grid populates,
+  By decade (5), Recently Added 1,195. No ANR/crash in logcat. **NOT verified:** the name-based
+  adult exclusion path (this stick has parental ON, so parental filtering covered it); Ooustick;
+  phone. **Observation, not changed:** Home's "genre rows" are built from the top VOD categories,
+  which on this panel are SERVICES — the Home rows now read "Netflix", "Amazon Prime Video".
+  Follow-up (plan item C): widen the `get_vod_info` backfill cache (genre/runtime/backdrop) to
+  bring genre browsing to Movies at zero extra network cost.
 
 - **v5.0.3 (versionCode 110, released 2026-10-08) — Adult content kept off Home + parental PIN crash.**
   **(1) Adult off Home, always.** The provider added a Movies category "18+ | Nutflix 🔞" (last in the
