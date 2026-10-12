@@ -289,7 +289,7 @@ object AudioPipelineFactory {
      * so video went into a frame-drop spiral. Discovered via customer wash1220's v3.7.3
      * debug log: 102 FRAMES_DROPPED events right after the factory was applied.
      *
-     * This override forces [EXTENSION_RENDERER_MODE_OFF] for video, keeping hardware first
+     * This override forces [EXTENSION_RENDERER_MODE_ON] for video (FFmpeg after MediaCodec), keeping hardware first
      * and [setEnableDecoderFallback] handling HW failures via c2.android software decoders.
      * Audio still gets MODE_PREFER so FFmpeg wins for AC3/EAC3/DTS decode + downmix.
      *
@@ -309,11 +309,16 @@ object AudioPipelineFactory {
                 allowedVideoJoiningTimeMs: Long,
                 out: ArrayList<Renderer>
             ) {
-                // Force MODE_OFF for video — FFmpeg must never outrank MediaCodec here.
+                // MODE_ON for video — FFmpeg must never outrank MediaCodec here, but it must
+                // still be PRESENT: MODE_ON appends it after MediaCodec, so it only wins when
+                // no hardware decoder handles the format. MODE_OFF dropped it entirely, so a
+                // 10-bit H.264 (High 10) title with DTS/Dolby 5.1 lost its only video decoder
+                // the moment the MTK multichannel audio rebuild fired ("Home (2015)" on .84:
+                // ~27s of watchdog rebuilds before the FFmpeg-video rung brought it back).
                 // Audio chain still sees MODE_PREFER via setExtensionRendererMode below.
                 super.buildVideoRenderers(
                     context,
-                    DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+                    DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON,
                     mediaCodecSelector,
                     enableDecoderFallback,
                     eventHandler,

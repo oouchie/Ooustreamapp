@@ -1693,16 +1693,19 @@ class HomeFragment : Fragment(), KeyEventHandler {
         player.play()
         // Seek past opening logos/credits to show actual movie content
         player.seekTo(120_000L) // 2 minutes in
+        // Both timers belong to THIS player. Gate on identity, not just heroPreviewActive: a
+        // timer from the previous trailer otherwise fires into the next one (onn: the last
+        // title's 15s timer cut "Practical Magic 2" off 3s after its first frame).
         viewLifecycleOwner.lifecycleScope.launch {
             delay(15_000) // 15s preview, not 20
-            if (heroPreviewActive) {
+            if (heroPreviewActive && heroPreviewPlayer === player) {
                 releaseHeroPreview()
                 startHeroRotation()
             }
         }
         viewLifecycleOwner.lifecycleScope.launch {
             delay(5_000)
-            if (heroPreviewActive && playerView.alpha < 0.5f) {
+            if (heroPreviewActive && heroPreviewPlayer === player && playerView.alpha < 0.5f) {
                 android.util.Log.w("OOUSTREAM", "Hero trailer: 5s buffer timeout — no first frame, releasing")
                 releaseHeroPreview()
             }
