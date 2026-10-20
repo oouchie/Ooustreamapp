@@ -2,6 +2,8 @@
 agp = "8.7.3"
 kotlin = "2.2.21"
 ksp = "2.2.21-2.0.5"
+composeBom = "2026.06.01"
+tvMaterial = "1.0.1"
 hilt = "2.57.2"
 room = "2.7.2"
 retrofit = "2.9.0"
@@ -24,12 +26,19 @@ hilt-work = "1.2.0"
 constraintlayout = "2.1.4"
 swiperefreshlayout = "1.1.0"
 zxing = "3.5.2"
+youtubePlayer = "12.1.2"
 material = "1.11.0"
 firebase-bom = "33.0.0"
 google-services = "4.4.0"
 firebase-crashlytics-plugin = "2.9.9"
 
 [libraries]
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 # AndroidX
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
@@ -97,6 +106,7 @@ swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefre
 
 # ZXing (QR code generation)
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+youtube-player = { group = "com.pierfrancescosoffritti.androidyoutubeplayer", name = "core", version.ref = "youtubePlayer" }
 
 # Material (mobile UI components)
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
@@ -118,6 +128,7 @@ firebase-storage = { group = "com.google.firebase", name = "firebase-storage-ktx
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
 firebase-crashlytics-plugin = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }

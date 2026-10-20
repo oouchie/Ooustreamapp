@@ -1203,7 +1203,7 @@ class HomeFragment : Fragment(), KeyEventHandler {
                                 // See navigateToContinueWatching for why the saved URL is not reused.
                                 val url = viewModel.buildVodStreamUrl(
                                     id,
-                                    containerExtFrom(item.extra) ?: "mp4"
+                                    viewModel.containerExtFrom(item.extra) ?: "mp4"
                                 )
                                 playVodWithResumeCheck(url, item.streamId, item.name, item.icon ?: "")
                             }
@@ -1876,23 +1876,6 @@ class HomeFragment : Fragment(), KeyEventHandler {
 
     // ── Navigation ───────────────────────────────────────────────────────
 
-    /**
-     * Pull the container extension out of a stored `watch_progress.extra` stream URL.
-     *
-     * The rest of that URL (host, credentials, stream id) is deliberately discarded — it is a frozen
-     * snapshot of a previous play and goes stale the moment the provider moves a backend. Only the
-     * extension is worth carrying forward, because it was proven by a real successful play.
-     *
-     * Returns null for anything that is not plausibly an extension, so callers fall back to "mp4".
-     */
-    private fun containerExtFrom(savedUrl: String?): String? {
-        val url = savedUrl?.takeIf { it.isNotBlank() } ?: return null
-        val path = url.substringBefore('?').substringBefore('#').substringAfterLast('/')
-        if (!path.contains('.')) return null
-        val ext = path.substringAfterLast('.')
-        return ext.takeIf { it.length in 2..5 && it.all(Char::isLetterOrDigit) }?.lowercase()
-    }
-
     private fun navigateToContinueWatching(item: WatchProgressEntity) {
         val contentType = when (item.type.lowercase()) {
             "live" -> ContentType.LIVE
@@ -1901,20 +1884,8 @@ class HomeFragment : Fragment(), KeyEventHandler {
             else -> ContentType.VOD
         }
 
-        // ALWAYS rebuild the URL from the CURRENT credentials. `item.extra` holds the absolute URL
-        // captured at the previous play (host + creds + id + extension) and nothing ever expires it,
-        // so replaying it verbatim survives a provider server/catalog migration as a dead link — the
-        // July 2026 VOD backend move renumbered every movie id and broke this whole row.
-        // The one part of `extra` still worth keeping is its container extension: that value was
-        // proven correct by an actual play, and a hardcoded "mp4" fails .m2ts titles on first attempt
-        // (v4.2.1).
-        val id = item.streamId.toIntOrNull() ?: return
-        val ext = containerExtFrom(item.extra) ?: "mp4"
-        val streamUrl = when (contentType) {
-            ContentType.LIVE -> viewModel.buildLiveStreamUrl(id)
-            ContentType.VOD -> viewModel.buildVodStreamUrl(id, ext)
-            ContentType.SERIES -> viewModel.buildSeriesStreamUrl(id, ext)
-        }
+        // Rebuilt from current credentials — see HomeViewModel.resumeStreamUrl.
+        val streamUrl = viewModel.resumeStreamUrl(item) ?: return
 
         val fragment = OoustreamPlaybackFragment.newInstance(
             streamUrl = streamUrl,
@@ -2016,9 +1987,9 @@ class HomeFragment : Fragment(), KeyEventHandler {
             return
         }
         val fragment = when (section.id) {
-            "live" -> LiveTvFragment()
+            "live" -> (activity as? com.ooustream.iptv.MainActivity)?.liveTvScreen() ?: LiveTvFragment()
             "catchup" -> com.ooustream.iptv.catchup.CatchUpFragment()
-            "movies" -> VodFragment()
+            "movies" -> com.ooustream.iptv.vod.spotlight.MoviesSpotlightFragment()
             "series" -> SeriesFragment()
             "favorites" -> FavoritesFragment()
             "search" -> SearchFragment()

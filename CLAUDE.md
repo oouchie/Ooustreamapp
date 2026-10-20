@@ -13,10 +13,10 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
   (`auth=1`) and the panel carries 199 live categories incl. 20 "Replay" categories and 235
   channels with `tv_archive=1` (catch-up — not yet supported by the app). See
   `tasks/provider-cutover-bp-v2.md`.
-- **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
+- **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.1.1 (versionCode 112)
+- **Current Version**: 5.2.0 (versionCode 113)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,33 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.2.0 (versionCode 113, released 2026-10-20) — Kotlin 2.2 + Compose for TV screens + in-app
+  trailers.** Merged from trial branch `try/kotlin-2.2` (plan/review: `tasks/todo.md`). **Toolchain:**
+  Kotlin 2.2.21, KSP2, Hilt 2.57.2, Room 2.7.2 (Room schema hash unchanged — no migration), Compose
+  BOM + tv-material + coil-compose; one lint check (`NullSafeMutableLiveData`) disabled because the
+  Compose lifecycle lint jar crashes AGP 8.7.3 lint — needs an AGP bump. **New screens (TV only,
+  Fragment hosting a ComposeView; the Leanback screens are untouched and still used for "See all"):**
+  `home/hub/` (Hub with section tiles + Pick Up panel), `vod/spotlight/` + `series/spotlight/`
+  ("Spotlight + Rows", cyan #00D4FF accent), `livetv/bleed/` (Full-Bleed: focused channel plays behind
+  the list, audible, released before fullscreen for 1-connection accounts; off on memoryClass<=128).
+  `MainActivity.liveTvScreen()` picks Live TV for every entry point (sidebar, Favorites, old Home).
+  **Row scrolling:** `common/compose/PinFocusedRow.kt` — `PinnedRowList` overrides
+  `LocalBringIntoViewSpec` with a no-op for the row LazyColumn (its default pivot scroll fought the
+  pin and made the row above bounce), `WithRowScroll` gives LazyRows the original spec back.
+  **Series detail (still Leanback/XML):** `sd_gold`/`sd_gold_drain` recoloured to cyan (shared by
+  movie detail, Catch Up and the Watch Next card); rating shown out of 10; the season grid gets a
+  top-edge `clipBounds` — the column is `clipChildren=false` (focus bleed), so seasons scrolled
+  above the grid drew over "Start over" (setting the GRID's clipChildren does nothing: that clips
+  each child to its own bounds). **In-app trailers:** `trailer/TrailerPlayerFragment.kt`
+  (android-youtube-player 12.1.2 IFrame in a WebView, controls hidden, remote drives it, WebView
+  never focusable, sets `origin` so YouTube accepts the embed; on an embed error OK opens the YouTube
+  app). All three trailer buttons (movie detail, long-press info overlay, phone sheet) go through
+  `TrailerPlayerFragment.open()`. **Device-verified on .82 (AFTKRT, release build):** row pinning
+  (slow/fast RIGHT, UP, fast DOWN), series page cyan + ★ 8.0, season list at Season 8 and back, a
+  movie trailer playing in-app (first frame 5.7s, RIGHT skips, Back returns to the detail page).
+  **NOT verified:** Ooustick (.222) — shipped without the walk at the owner's direction, against the
+  standing rule; Favorites → Live TV path; Movies screen after the scroll change; phone.
 
 - **v5.1.1 (versionCode 112, released 2026-10-19) — Posters on Continue Watching / Pick Up & New.**
   **Bug:** some history cards were blank (The Drop, The First 48, Def Comedy Jam on .82) while the

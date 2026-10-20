@@ -75,7 +75,24 @@ class SeriesDetailViewModel @Inject constructor(
 
     private var loadedSeriesId: Int = 0
 
-    fun loadSeriesInfo(seriesId: Int) {
+    /**
+     * Opened from Pick Up & New: start on the last season with its newest episode focused. Applied
+     * once — Back from the player rebuilds the view and must land where the viewer was, not here.
+     */
+    private var focusNewestPending = false
+    private var focusNewestUsed = false
+    private val _focusEpisodeId = MutableStateFlow<String?>(null)
+    val focusEpisodeId: StateFlow<String?> = _focusEpisodeId.asStateFlow()
+
+    fun consumeFocusEpisode() {
+        _focusEpisodeId.value = null
+    }
+
+    fun loadSeriesInfo(seriesId: Int, focusNewest: Boolean = false) {
+        if (focusNewest && !focusNewestUsed) {
+            focusNewestUsed = true
+            focusNewestPending = true
+        }
         Log.i(TAG, "loadSeriesInfo called with seriesId=$seriesId")
         if (seriesId == 0) {
             Log.e(TAG, "seriesId is 0 — invalid, aborting")
@@ -117,11 +134,16 @@ class SeriesDetailViewModel @Inject constructor(
                 _seasonTabs.value = tabs
                 loadEpisodeNames(info)
 
-                // Auto-select first season
-                tabs.firstOrNull()?.let {
-                    Log.i(TAG, "Auto-selecting first season: key=${it.key}")
+                // Auto-select first season (or the last one, with its newest episode, when asked)
+                val start = if (focusNewestPending) tabs.lastOrNull() else tabs.firstOrNull()
+                start?.let {
+                    Log.i(TAG, "Auto-selecting season: key=${it.key}")
                     selectSeason(it.key)
+                    if (focusNewestPending) {
+                        _focusEpisodeId.value = info.episodes?.get(it.key)?.maxByOrNull { e -> e.episodeNum }?.id
+                    }
                 }
+                focusNewestPending = false
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load series info for seriesId=$seriesId", e)
                 _error.emit(e.message ?: "Failed to load series info")

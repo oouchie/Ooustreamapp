@@ -230,4 +230,9 @@
     <string name="vd_watch_again">▶  Watch again</string>
     <string name="binge_next_episode">Next episode</string>
     <string name="binge_new_season">Season %1$d starts</string>
+    <!-- In-app trailer player -->
+    <string name="trailer_title">Trailer · %1$s</string>
+    <string name="trailer_loading">Loading trailer…</string>
+    <string name="trailer_paused">Paused</string>
+    <string name="trailer_cant_play">This trailer can\'t play inside the app.\nPress OK to open it in YouTube, or Back to return.</string>
 </resources>

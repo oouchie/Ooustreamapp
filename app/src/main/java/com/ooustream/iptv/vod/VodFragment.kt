@@ -340,6 +340,11 @@ class VodFragment : Fragment(), KeyEventHandler {
             }
         }
 
+        // Opened from a Spotlight "See all" card: start on that row's category instead of Favorites.
+        arguments?.getString(ARG_CATEGORY_ID)?.let { id ->
+            arguments?.remove(ARG_CATEGORY_ID)
+            viewModel.selectCategory(id)
+        }
         viewModel.loadCategories()
     }
 
@@ -478,5 +483,13 @@ class VodFragment : Fragment(), KeyEventHandler {
         v.findViewById<TextView>(R.id.header_title)?.visibility = View.VISIBLE
         v.findViewById<android.widget.TextClock>(R.id.header_clock)?.visibility = View.VISIBLE
         v.findViewById<ImageView>(R.id.header_center_logo)?.visibility = View.VISIBLE
+    }
+
+    companion object {
+        private const val ARG_CATEGORY_ID = "category_id"
+
+        fun newInstance(categoryId: String?): VodFragment = VodFragment().apply {
+            arguments = Bundle().apply { putString(ARG_CATEGORY_ID, categoryId) }
+        }
     }
 }

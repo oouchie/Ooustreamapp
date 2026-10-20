@@ -41,6 +41,10 @@ interface WatchProgressDao {
     @Query("UPDATE watch_progress SET dismissed = 1 WHERE streamId = :streamId")
     suspend fun dismiss(streamId: String)
 
+    /** Every unfinished episode, or Continue Watching would fall back to an older one. */
+    @Query("UPDATE watch_progress SET dismissed = 1 WHERE seriesId = :seriesId AND completed = 0")
+    suspend fun dismissSeries(seriesId: Int)
+
     @Query("SELECT * FROM watch_progress WHERE seriesId = :seriesId ORDER BY lastWatched DESC")
     suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity>
 
@@ -58,7 +62,7 @@ interface WatchProgressDao {
             WHERE completed = 1 AND seriesId IS NOT NULL
             GROUP BY groupKey
         ) grouped ON wp.seriesId = grouped.groupKey AND wp.lastWatched = grouped.maxWatched
-        WHERE wp.completed = 1 AND wp.seriesId IS NOT NULL
+        WHERE wp.completed = 1 AND wp.seriesId IS NOT NULL AND wp.dismissed = 0
         ORDER BY wp.lastWatched DESC
         LIMIT 15
     """)

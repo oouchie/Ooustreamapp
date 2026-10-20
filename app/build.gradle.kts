@@ -4,6 +4,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.google.services)
@@ -18,8 +19,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 112
-        versionName = "5.1.1"
+        versionCode = 113
+        versionName = "5.2.0"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -67,8 +68,14 @@ android {
         jvmTarget = "17"
     }
 
+    lint {
+        // The lifecycle lint jar pulled in by the Compose BOM crashes AGP 8.7's lint
+        // (KaCallableMemberCall class/interface mismatch). Trial branch only; goes away with an AGP bump.
+        disable += "NullSafeMutableLiveData"
+    }
     buildFeatures {
         viewBinding = true
+        compose = true
         buildConfig = true
     }
 
@@ -86,6 +93,13 @@ android {
 }
 
 dependencies {
+    // Compose for TV — trial screen (Movies "Spotlight + Rows"). Kotlin 2.x only.
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.tv.material)
+    implementation(libs.coil.compose)
     // AndroidX
     implementation(libs.core.ktx)
     implementation(libs.appcompat)
@@ -162,6 +176,9 @@ dependencies {
 
     // ZXing (QR code generation for MultiView upgrade)
     implementation(libs.zxing.core)
+    // In-app trailers (YouTube IFrame player in a WebView). 12.x is the version device-verified on
+    // 2026-10-20; TrailerPlayerFragment sets the origin 13.x would.
+    implementation(libs.youtube.player)
 
     // WorkManager
     implementation(libs.work.runtime)

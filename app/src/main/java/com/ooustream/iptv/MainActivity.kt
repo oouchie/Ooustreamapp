@@ -175,10 +175,10 @@ class MainActivity : FragmentActivity() {
         val nav = bottomNav ?: return
         val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
         val itemId = when (fragment) {
-            is HomeFragment -> R.id.nav_home
-            is LiveTvFragment -> R.id.nav_live
-            is VodFragment -> R.id.nav_movies
-            is SeriesFragment -> R.id.nav_series
+            is HomeFragment, is com.ooustream.iptv.home.hub.HomeHubFragment -> R.id.nav_home
+            is LiveTvFragment, is com.ooustream.iptv.livetv.bleed.LiveFullBleedFragment -> R.id.nav_live
+            is VodFragment, is com.ooustream.iptv.vod.spotlight.MoviesSpotlightFragment -> R.id.nav_movies
+            is SeriesFragment, is com.ooustream.iptv.series.spotlight.SeriesSpotlightFragment -> R.id.nav_series
             is SearchFragment -> R.id.nav_search
             else -> null
         }
@@ -228,6 +228,8 @@ class MainActivity : FragmentActivity() {
         val fragment = supportFragmentManager.findFragmentById(R.id.main_container)
         return when (fragment) {
             is HomeFragment,
+            is com.ooustream.iptv.home.hub.HomeHubFragment,
+            is com.ooustream.iptv.livetv.bleed.LiveFullBleedFragment,
             is VodFragment,
             is SeriesFragment,
             is FavoritesFragment,
@@ -237,15 +239,21 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun navigateFromSidebar(itemId: String) {
+    /** Full-bleed Live TV on TV (trial); phones keep the Leanback screen, built for touch. */
+    fun liveTvScreen(): androidx.fragment.app.Fragment =
+        if (DeviceUtils.isTV(this)) com.ooustream.iptv.livetv.bleed.LiveFullBleedFragment() else LiveTvFragment()
+
+    fun navigateFromSidebar(itemId: String) {
         val currentFragment = supportFragmentManager.findFragmentById(R.id.main_container)
 
         // Don't navigate to the same section
         val isSameSection = when (itemId) {
-            "home" -> currentFragment is HomeFragment
-            "live" -> currentFragment is LiveTvFragment
-            "vod" -> currentFragment is VodFragment
-            "series" -> currentFragment is SeriesFragment
+            "home" -> currentFragment is HomeFragment ||
+                currentFragment is com.ooustream.iptv.home.hub.HomeHubFragment
+            "live" -> currentFragment is LiveTvFragment || currentFragment is com.ooustream.iptv.livetv.bleed.LiveFullBleedFragment
+            "vod" -> currentFragment is VodFragment ||
+                currentFragment is com.ooustream.iptv.vod.spotlight.MoviesSpotlightFragment
+            "series" -> currentFragment is SeriesFragment || currentFragment is com.ooustream.iptv.series.spotlight.SeriesSpotlightFragment
             "favorites" -> currentFragment is FavoritesFragment
             "search" -> currentFragment is SearchFragment
             "settings" -> currentFragment is SettingsFragment
@@ -257,9 +265,9 @@ class MainActivity : FragmentActivity() {
             "home" -> navigateToHome()
             else -> {
                 val fragment = when (itemId) {
-                    "live" -> LiveTvFragment()
-                    "vod" -> VodFragment()
-                    "series" -> SeriesFragment()
+                    "live" -> liveTvScreen()
+                    "vod" -> com.ooustream.iptv.vod.spotlight.MoviesSpotlightFragment()
+                    "series" -> if (DeviceUtils.isTV(this)) com.ooustream.iptv.series.spotlight.SeriesSpotlightFragment() else SeriesFragment()
                     "favorites" -> FavoritesFragment()
                     "search" -> SearchFragment()
                     "settings" -> SettingsFragment()
@@ -285,7 +293,9 @@ class MainActivity : FragmentActivity() {
         if (fragment is IntroSplashFragment) return
 
         // Exit confirmation on Home screen
-        if (fragment is HomeFragment && supportFragmentManager.backStackEntryCount == 0) {
+        if ((fragment is HomeFragment || fragment is com.ooustream.iptv.home.hub.HomeHubFragment) &&
+            supportFragmentManager.backStackEntryCount == 0
+        ) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.exit_title)
                 .setMessage(R.string.exit_message)
@@ -328,7 +338,13 @@ class MainActivity : FragmentActivity() {
                 // Normal left navigation is never blocked.
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && isSidebarAllowedForCurrentFragment()) {
                     val focused = currentFocus
-                    val atLeftEdge = focused != null && focused.focusSearch(View.FOCUS_LEFT) == null
+                    // A Compose screen is one View, so focusSearch can't see its edges; the Hub
+                    // says itself when it allows the menu (only from the hero's Play button).
+                    val atLeftEdge = if (fragment is com.ooustream.iptv.common.compose.SidebarGate) {
+                        fragment.allowsSidebar()
+                    } else {
+                        focused != null && focused.focusSearch(View.FOCUS_LEFT) == null
+                    }
                     if (atLeftEdge) {
                         val now = System.currentTimeMillis()
                         if (now - lastLeftEdgeTime < 500) {
@@ -377,10 +393,15 @@ class MainActivity : FragmentActivity() {
                     androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
                 val tx = supportFragmentManager.beginTransaction()
                 FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
-                tx.replace(R.id.main_container, LiveTvFragment())
+                tx.replace(R.id.main_container, liveTvScreen())
                     .addToBackStack(null)
                     .commit()
             }
+            is DeepLinkTarget.OldLive -> supportFragmentManager.beginTransaction()
+                .replace(R.id.main_container, LiveTvFragment()).addToBackStack(null).commit()
+            is DeepLinkTarget.Movies -> navigateFromSidebar("vod")
+            is DeepLinkTarget.OldHome -> supportFragmentManager.beginTransaction()
+                .replace(R.id.main_container, HomeFragment()).addToBackStack(null).commit()
             is DeepLinkTarget.Favorites -> {
                 supportFragmentManager.popBackStackImmediate(null,
                     androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
@@ -486,7 +507,8 @@ class MainActivity : FragmentActivity() {
         }
         val tx = supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.HOME)
-        tx.replace(R.id.main_container, HomeFragment())
+        // Trial (Kotlin 2 branch): design 3 "Hub" in Compose replaces the Leanback HomeFragment.
+        tx.replace(R.id.main_container, com.ooustream.iptv.home.hub.HomeHubFragment())
             .commitAllowingStateLoss()
         syncBottomNav()
     }

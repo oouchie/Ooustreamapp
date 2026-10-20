@@ -52,6 +52,7 @@ class SeriesDetailTvScreen(
     private var target: ResumeTarget? = null
     private var tabs: List<SeasonTab> = emptyList()
     private var initialFocusDone = false
+    private var pendingFocusEpisode: Pair<String, () -> Unit>? = null
     private var seasonSettleJob: Job? = null
 
     private val episodeAdapter = EpisodeRowTvAdapter(
@@ -85,6 +86,11 @@ class SeriesDetailTvScreen(
         seasons.itemAnimator = null
         // Short list: keep Season 1 pinned at the top instead of centring the focused season.
         seasons.windowAlignment = VerticalGridView.WINDOW_ALIGN_BOTH_EDGE
+        // Long lists (8 seasons) scroll seasons above the list's top edge, and the column doesn't clip
+        // (so focus rings can bleed), so they drew over "Start over". Clip the top edge only.
+        seasons.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            v.clipBounds = android.graphics.Rect(-v.width, 0, v.width * 2, v.height * 2)
+        }
 
         // LEFT out of the episode list returns to the season being browsed (geometrically the Play
         // button is often nearer, which lost the viewer's place); single-season shows fall through
@@ -133,7 +139,9 @@ class SeriesDetailTvScreen(
         }
         year.show(d?.releaseDate?.take(4)?.takeIf { it.length == 4 && it.all(Char::isDigit) })
         genre.show(d?.genre?.split(",", "/")?.firstOrNull()?.trim())
-        rating.show(d?.rating5based?.takeIf { it > 0 }?.let { "★ %.1f".format(it) })
+        // Out of 10, as on the Series and Home screens (the 5-based field read as a different score).
+        val outOf10 = d?.rating?.toDoubleOrNull()?.takeIf { it > 0 } ?: d?.rating5based?.takeIf { it > 0 }?.times(2)
+        rating.show(outOf10?.let { "★ %.1f".format(it) })
         plot.show(d?.plot)
     }
 
@@ -154,8 +162,27 @@ class SeriesDetailTvScreen(
         episodeAdapter.submitList(list) {
             // Synchronously in-bounds, never via post{} — see project_vod_grid_position_minus1.
             if (list.isNotEmpty()) episodes.selectedPosition = 0
+            applyFocusEpisode()
         }
         updateHeading(list.size)
+    }
+
+    /** Focus [episodeId] (in the season now shown) instead of the Play button; [done] clears the request. */
+    fun bindFocusEpisode(episodeId: String, done: () -> Unit) {
+        pendingFocusEpisode = episodeId to done
+        initialFocusDone = true // keep bindResumeTarget from pulling focus to Play
+        applyFocusEpisode()
+    }
+
+    private fun applyFocusEpisode() {
+        val (id, done) = pendingFocusEpisode ?: return
+        val idx = episodeAdapter.currentList.indexOfFirst { it.id == id }
+        if (idx < 0) return
+        pendingFocusEpisode = null
+        episodes.selectedPosition = idx
+        tabs.indexOfFirst { it.key == seasonAdapter.selectedKey }.takeIf { it >= 0 }?.let { seasons.selectedPosition = it }
+        episodes.requestFocus()
+        done()
     }
 
     fun bindProgress(map: Map<String, WatchProgressEntity>) {

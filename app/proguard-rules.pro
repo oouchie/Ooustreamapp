@@ -51,3 +51,8 @@
 # Hilt
 -keep class dagger.hilt.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+
+# In-app trailer player: the YouTube IFrame page calls back into YouTubePlayerBridge via
+# @JavascriptInterface (reflection from the WebView). The library ships no consumer rules.
+-keep class com.pierfrancescosoffritti.androidyoutubeplayer.** { *; }
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }

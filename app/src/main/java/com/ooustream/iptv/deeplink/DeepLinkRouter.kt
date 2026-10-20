@@ -10,6 +10,10 @@ sealed class DeepLinkTarget {
     object Home : DeepLinkTarget()
     object LiveTv : DeepLinkTarget()
     object Favorites : DeepLinkTarget()
+    object Movies : DeepLinkTarget()
+    /** Trial only: the Leanback Home, to compare against the Hub. */
+    object OldHome : DeepLinkTarget()
+    object OldLive : DeepLinkTarget()
     object Guide : DeepLinkTarget()
     object CatchUp : DeepLinkTarget()
 }
@@ -64,6 +68,9 @@ object DeepLinkRouter {
             "home" -> DeepLinkTarget.Home
             "livetv" -> DeepLinkTarget.LiveTv
             "favorites" -> DeepLinkTarget.Favorites
+            "movies" -> DeepLinkTarget.Movies
+            "oldhome" -> DeepLinkTarget.OldHome
+            "oldlive" -> DeepLinkTarget.OldLive
             "guide" -> DeepLinkTarget.Guide
             "catchup" -> DeepLinkTarget.CatchUp
             else -> null

@@ -40,12 +40,15 @@ class SeriesDetailFragment : Fragment() {
         private const val TAG = "SeriesDetail"
         private const val ARG_SERIES_ID = "series_id"
         private const val ARG_SERIES_NAME = "series_name"
+        private const val ARG_FOCUS_NEWEST = "focus_newest"
 
-        fun newInstance(seriesId: Int, seriesName: String): SeriesDetailFragment {
+        /** [focusNewest]: open on the newest episode (Pick Up & New) instead of the Play button. */
+        fun newInstance(seriesId: Int, seriesName: String, focusNewest: Boolean = false): SeriesDetailFragment {
             return SeriesDetailFragment().apply {
                 arguments = Bundle().apply {
                     putInt(ARG_SERIES_ID, seriesId)
                     putString(ARG_SERIES_NAME, seriesName)
+                    putBoolean(ARG_FOCUS_NEWEST, focusNewest)
                 }
             }
         }
@@ -110,7 +113,7 @@ class SeriesDetailFragment : Fragment() {
                 onSelectSeason = { key -> viewModel.selectSeason(key) }
             )
             observeTv(tvScreen!!)
-            viewModel.loadSeriesInfo(seriesId)
+            viewModel.loadSeriesInfo(seriesId, focusNewest = arguments?.getBoolean(ARG_FOCUS_NEWEST) == true)
             return
         }
         // v3.7.11: phone-only back-arrow toolbar overlay.
@@ -161,6 +164,11 @@ class SeriesDetailFragment : Fragment() {
                 launch { viewModel.episodeWatchProgress.collect { screen.bindProgress(it) } }
                 launch { viewModel.resumeTarget.collect { screen.bindResumeTarget(it) } }
                 launch { viewModel.episodeNames.collect { screen.bindEpisodeNames(it) } }
+                launch {
+                    viewModel.focusEpisodeId.collect { id ->
+                        if (id != null) screen.bindFocusEpisode(id) { viewModel.consumeFocusEpisode() }
+                    }
+                }
                 launch { collectErrors() }
             }
         }

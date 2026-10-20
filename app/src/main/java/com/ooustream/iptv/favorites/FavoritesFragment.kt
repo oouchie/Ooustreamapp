@@ -532,7 +532,7 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
     }
 
     private fun navigateToLiveTv() {
-        val fragment = LiveTvFragment()
+        val fragment = (activity as? com.ooustream.iptv.MainActivity)?.liveTvScreen() ?: LiveTvFragment()
         val tx = requireActivity().supportFragmentManager.beginTransaction()
         FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
         tx.replace(R.id.main_container, fragment)

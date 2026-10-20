@@ -11,6 +11,7 @@ import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
+import com.ooustream.iptv.data.repository.resumeStreamUrl
 import com.ooustream.iptv.data.repository.EpgCacheRepository
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.viewModelScope
+import com.ooustream.iptv.catalog.CatalogBrowse
 import javax.inject.Inject
 
 data class FeaturedItem(
@@ -279,6 +281,10 @@ class HomeViewModel @Inject constructor(
             cta = "App Settings \u2192", gradientStart = Color.parseColor("#37474F"), gradientEnd = Color.parseColor("#607D8B"))
     )
 
+    fun containerExtFrom(savedUrl: String?): String? = com.ooustream.iptv.data.repository.containerExtFrom(savedUrl)
+
+    fun resumeStreamUrl(item: WatchProgressEntity): String? = contentRepository.resumeStreamUrl(item)
+
     fun buildLiveStreamUrl(streamId: Int): String =
         contentRepository.buildLiveStreamUrl(streamId)
 
@@ -291,6 +297,23 @@ class HomeViewModel @Inject constructor(
     /** Look up watch progress for a stream ID (for Resume dialog). */
     suspend fun getWatchProgress(streamId: String) =
         watchProgressRepository.getProgress(streamId)
+
+    /**
+     * "Remove from list" on a watched card in Pick Up & New. Dismisses the show's latest finished
+     * episode row, which is the one getCompletedContent() picks; finishing a later episode brings
+     * the show back.
+     */
+    fun dismissContinueWatching(item: WatchProgressEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val series = item.seriesId
+            if (item.type == "series" && series != null) watchProgressRepository.dismissSeries(series)
+            else watchProgressRepository.dismiss(item.streamId)
+        }
+    }
+
+    fun dismissWatchAgain(streamId: String) {
+        viewModelScope.launch(Dispatchers.IO) { watchProgressRepository.dismiss(streamId) }
+    }
 
     /** Clear new episode badge for a series (user clicked it). */
     fun clearNewEpisodes(seriesId: Int) {
@@ -345,7 +368,8 @@ class HomeViewModel @Inject constructor(
             }
 
             // Trending Movies: rating × recency, boosted by user's watched categories
-            val trending = scoreTrendingVod(vodStreams)
+            // The panel lists many films twice ("4K Parasite" + "Parasite"); show each once.
+            val trending = scoreTrendingVod(vodStreams).distinctBy { CatalogBrowse.sameTitleKey(it.name) }
             _trendingContent.value = trending
 
             // Top 10: take the top 10 from trending
@@ -420,6 +444,7 @@ class HomeViewModel @Inject constructor(
                             val scored = catStreams
                                 .map { it to (it.rating?.toDoubleOrNull() ?: (it.rating5based?.times(2.0) ?: 0.0)) }
                                 .sortedByDescending { it.second }
+                                .distinctBy { CatalogBrowse.sameTitleKey(it.first.name) }
                                 .take(15)
                                 .map { it.first }
                             GenreRow(cat.categoryName, cat.categoryId, scored)

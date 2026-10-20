@@ -158,9 +158,8 @@ class ContentInfoOverlay @JvmOverloads constructor(
         if (!trailerId.isNullOrBlank()) {
             trailerBtn.visibility = VISIBLE
             trailerBtn.setOnClickListener {
-                val url = if (trailerId.startsWith("http")) trailerId
-                    else "https://www.youtube.com/watch?v=$trailerId"
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                dismiss()
+                com.ooustream.iptv.trailer.TrailerPlayerFragment.open(context, trailerId, data.title)
             }
         } else {
             trailerBtn.visibility = GONE

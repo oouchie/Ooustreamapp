@@ -8,6 +8,7 @@
     <color name="sd_text">#F4F5F7</color>
     <color name="sd_text_secondary">#A3A9B4</color>
     <color name="sd_hairline">#33FFFFFF</color>
-    <color name="sd_gold">#FFC107</color>
-    <color name="sd_gold_drain">#59FFC107</color>
+    <!-- Named "gold" from the first design; now the redesign's cyan accent (TvTheme.Accent). -->
+    <color name="sd_gold">#00D4FF</color>
+    <color name="sd_gold_drain">#5900D4FF</color>
 </resources>

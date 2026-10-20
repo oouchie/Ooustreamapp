@@ -25,6 +25,9 @@ class WatchProgressRepository @Inject constructor(
     suspend fun dismiss(streamId: String) =
         watchProgressDao.dismiss(streamId)
 
+    suspend fun dismissSeries(seriesId: Int) =
+        watchProgressDao.dismissSeries(seriesId)
+
     suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity> =
         watchProgressDao.getSeriesEpisodes(seriesId)
 

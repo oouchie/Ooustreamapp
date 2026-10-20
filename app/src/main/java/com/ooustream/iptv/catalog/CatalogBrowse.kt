@@ -76,6 +76,15 @@ object CatalogBrowse {
      * Year of a movie from its title. Prefers the provider's trailing `(YYYY)`; otherwise the
      * last plausible 4-digit year anywhere in the name.
      */
+    private val QUALITY_PREFIX = Regex("""^\s*(4k|uhd|fhd|hd)\b\s*[:|\-]?\s*""", RegexOption.IGNORE_CASE)
+
+    /** The same film is often listed twice ("4K Sisu" and "Sisu"); equal keys = same title. */
+    fun sameTitleKey(name: String): String =
+        name.replace(QUALITY_PREFIX, "").lowercase().filter { it.isLetterOrDigit() }
+
+    /** "The Weight (2026)" → "The Weight", for screens that show the year separately. */
+    fun withoutTrailingYear(name: String): String = name.replace(TRAILING_YEAR, "").trim().ifEmpty { name }
+
     fun titleYear(name: String): Int? {
         TRAILING_YEAR.find(name)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
         return ANY_YEAR.findAll(name).mapNotNull { it.groupValues[1].toIntOrNull() }.lastOrNull()

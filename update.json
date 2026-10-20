@@ -1,9 +1,9 @@
 {
-  "version_name": "5.1.1",
-  "version_code": 112,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.1.1/app-armeabi-v7a-release.apk",
-  "changelog": "v5.1.1 — Posters back on Continue Watching and Pick Up & New\n\n• Some shows and movies in Continue Watching and Pick Up & New showed an empty card instead of their poster. They now always show the current poster for that title.\n\n• Fixed a long black screen (up to about half a minute) before some movies with surround sound started playing on certain Fire TV sticks.\n\n• The trailer on the Home screen no longer cuts off a few seconds after it starts.\n\nIncludes everything from v5.1.0: browse Movies and Series by decade and genre.",
+  "version_name": "5.2.0",
+  "version_code": 113,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-armeabi-v7a-release.apk",
+  "changelog": "v5.2.0 — A new look for Home, Movies, Series and Live TV\n\n• New Home screen: big shortcuts to Live TV, TV Guide, Movies, Series, Catch Up and Favorites, with \"Pick up where you left off\" right at the top.\n\n• Movies and Series now open on a large preview of the title you're on, with rows like Recently Added, Top Rated and New on your favorite services underneath. On Series, Keep Watching shows the season and episode.\n\n• Shows in Pick Up & New open straight to the newest episode.\n\n• New Live TV screen: the channel you're on plays full screen behind the list, with sound. Press OK to watch, hold OK to add or remove a favorite.\n\n• Trailers now play inside the app instead of opening YouTube. Left and Right skip 10 seconds, Back returns.\n\n• Series pages: ratings are now out of 10, and the season list no longer overlaps the Start over button on shows with many seasons.\n\n• Smoother scrolling: rows no longer jump up and down while you browse.",
   "mandatory": false
 }

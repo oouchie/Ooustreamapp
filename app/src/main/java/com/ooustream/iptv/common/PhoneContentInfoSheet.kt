@@ -160,11 +160,9 @@ class PhoneContentInfoSheet : BottomSheetDialogFragment() {
         if (!trailerId.isNullOrBlank()) {
             trailerBtn?.visibility = View.VISIBLE
             trailerBtn?.setOnClickListener {
-                val url = if (trailerId.startsWith("http")) trailerId
-                else "https://www.youtube.com/watch?v=$trailerId"
-                runCatching {
-                    requireContext().startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                }
+                val ctx = requireActivity()
+                dismissAllowingStateLoss()
+                com.ooustream.iptv.trailer.TrailerPlayerFragment.open(ctx, trailerId, data.title)
             }
         } else {
             trailerBtn?.visibility = View.GONE

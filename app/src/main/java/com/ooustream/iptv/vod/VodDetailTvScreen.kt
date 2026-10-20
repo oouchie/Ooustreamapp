@@ -120,8 +120,7 @@ class VodDetailTvScreen(
         trailer.visibility = if (trailerId.isNullOrBlank()) View.GONE else View.VISIBLE
         trailer.setOnClickListener {
             if (trailerId.isNullOrBlank()) return@setOnClickListener
-            val url = if (trailerId.startsWith("http")) trailerId else "https://www.youtube.com/watch?v=$trailerId"
-            runCatching { trailer.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            com.ooustream.iptv.trailer.TrailerPlayerFragment.open(trailer.context, trailerId, title.text.toString())
         }
         renderPrimary()
     }
