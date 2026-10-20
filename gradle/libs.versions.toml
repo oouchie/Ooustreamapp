@@ -1,9 +1,9 @@
 [versions]
 agp = "8.7.3"
-kotlin = "1.9.22"
-ksp = "1.9.22-1.0.17"
-hilt = "2.50"
-room = "2.6.1"
+kotlin = "2.2.21"
+ksp = "2.2.21-2.0.5"
+hilt = "2.57.2"
+room = "2.7.2"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
 media3 = "1.10.0"
