@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 1.9, Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.1.0 (versionCode 111)
+- **Current Version**: 5.1.1 (versionCode 112)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,26 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.1.1 (versionCode 112, released 2026-10-19) — Posters on Continue Watching / Pick Up & New.**
+  **Bug:** some history cards were blank (The Drop, The First 48, Def Comedy Jam on .82) while the
+  same show's series page rendered its art fine. History rows freeze their picture at play time —
+  `watch_progress.icon` (episode `movie_image`; the `?: cover` fallback only fires on null, not "")
+  and `series_tracking.posterUrl` (written once in `upsertSeriesTracking`, never updated) — so a
+  link that stopped resolving stayed blank forever. **Fix (`home/HomeViewModel.kt`):** `historyArt`
+  overrides the icon from the catalogue `loadFeaturedContent` already downloads (series → current
+  `cover`, movie → current `stream_icon`; saved URL only when the catalogue has none), limited to ids
+  in history, built on `Dispatchers.Default`, merged with `update{}` because the VOD and series loads
+  finish concurrently. Applied to `continueWatching`, `newEpisodes`, `watchItAgain`. Series cards now
+  show the show poster rather than an episode still (they are poster-shaped). **Not determined:**
+  whether the dead links were old-provider hosts or blank stills (release build — no `run-as`).
+  `common/PosterUrlResolver.kt` (TMDB fallback) is still referenced by nothing. **Device-verified on
+  .82** (release, installed over 5.1.0): every CW and Pick Up card has art; no crash/ANR in logcat.
+  Note: opening a show from a NEW card clears its NEW state (`clearNewEpisodes`), so it leaves Pick
+  Up — expected, not a regression. **Also ships `de70ac5`** (FFmpeg-preferred audio rebuild keeps
+  the FFmpeg video renderer, MODE_ON; hero-trailer timers check `heroPreviewPlayer === player`) —
+  build-verified only; Home/trailer behaved normally on .82 but its playback path wasn't exercised.
+  NOT walked on an Ooustick or phone.
 
 - **v5.1.0 (versionCode 111, released 2026-10-09) — "Browse by" sidebar on Movies & Series + one
   shared catalog cache.** Plan + API survey: `tasks/catalog-layout-options-2026-10-09.md`,

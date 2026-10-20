@@ -39,7 +39,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.viewModelScope
 import javax.inject.Inject
 
@@ -152,17 +155,66 @@ class HomeViewModel @Inject constructor(
     // History rows wait for the adult ids (filterNotNull) rather than showing unfiltered first.
     private val adultIds = adultContentGuard.ids.filterNotNull()
 
+    /**
+     * Current catalog art for the titles in watch history. History rows saved their picture URL at
+     * play time and never refresh it, so a link that later died (provider image host moved, or the
+     * episode's `movie_image` was blank) left the card blank forever. Filled by [loadFeaturedContent]
+     * from the catalogue it already downloads; until then the saved URL is used.
+     */
+    private val historyArt = MutableStateFlow(HistoryArt())
+
     val continueWatching: Flow<List<WatchProgressEntity>> =
         watchProgressRepository.getContinueWatching()
             .combine(adultIds) { rows, adult -> rows.filterNot { isAdultHistory(it, adult) } }
+            .combine(historyArt) { rows, art -> rows.map { art.apply(it) } }
 
     val newEpisodes: Flow<List<SeriesTrackingEntity>> =
         seriesTrackingDao.getSeriesWithNewEpisodes()
             .combine(adultIds) { rows, adult -> rows.filterNot { adult.isAdultItem("series", it.seriesId) } }
+            .combine(historyArt) { rows, art -> rows.map { art.apply(it) } }
 
     val watchItAgain: Flow<List<WatchProgressEntity>> =
         watchProgressRepository.getCompletedContent()
             .combine(adultIds) { rows, adult -> rows.filterNot { isAdultHistory(it, adult) } }
+            .combine(historyArt) { rows, art -> rows.map { art.apply(it) } }
+
+    /** Movie id → poster and series id → cover, only for titles that are in watch history. */
+    private class HistoryArt(
+        val vodIcons: Map<Int, String> = emptyMap(),
+        val seriesCovers: Map<Int, String> = emptyMap()
+    ) {
+        // A series card is a poster-shaped card, so the show's cover beats the saved episode still.
+        fun apply(row: WatchProgressEntity): WatchProgressEntity {
+            val fresh = when (row.type) {
+                "series" -> row.seriesId?.let { seriesCovers[it] }
+                else -> row.streamId.toIntOrNull()?.let { vodIcons[it] }
+            }
+            return if (fresh == null || fresh == row.icon) row else row.copy(icon = fresh)
+        }
+
+        fun apply(row: SeriesTrackingEntity): SeriesTrackingEntity {
+            val fresh = seriesCovers[row.seriesId]
+            return if (fresh == null || fresh == row.posterUrl) row else row.copy(posterUrl = fresh)
+        }
+    }
+
+    /** Pass only the list(s) just loaded; the other half of [historyArt] is kept. */
+    private suspend fun refreshHistoryArt(vod: List<VodStream>?, series: List<Series>?) {
+        val history = watchProgressRepository.getContinueWatching().first() +
+            watchProgressRepository.getCompletedContent().first()
+        val trackedSeries = seriesTrackingDao.getSeriesWithNewEpisodes().first()
+        // Off main: the movie list is ~29k entries (see the genre-row ANR note below).
+        val (vodIcons, seriesCovers) = withContext(Dispatchers.Default) {
+            val vodIds = history.filter { it.type != "series" }.mapNotNull { it.streamId.toIntOrNull() }.toSet()
+            val seriesIds = history.mapNotNull { it.seriesId }.toSet() + trackedSeries.map { it.seriesId }
+            vod?.filter { it.streamId in vodIds && !it.streamIcon.isNullOrBlank() }
+                ?.associate { it.streamId to it.streamIcon!! } to
+                series?.filter { it.seriesId in seriesIds && !it.cover.isNullOrBlank() }
+                    ?.associate { it.seriesId to it.cover!! }
+        }
+        // The movie and series loads finish concurrently — update{} so neither overwrites the other.
+        historyArt.update { cur -> HistoryArt(vodIcons ?: cur.vodIcons, seriesCovers ?: cur.seriesCovers) }
+    }
 
     /** A series row's streamId is the EPISODE id; the series is what the adult set holds. */
     private fun isAdultHistory(row: WatchProgressEntity, adult: AdultContentGuard.AdultIds): Boolean =
@@ -309,6 +361,7 @@ class HomeViewModel @Inject constructor(
                 // away from Home still tears this down cleanly.
                 launch {
                     try {
+                        refreshHistoryArt(vod = rawVodStreams, series = null)
                         watchHistoryPruner.pruneVod(vodIdsForPrune)
                     } catch (c: CancellationException) {
                         throw c
@@ -323,6 +376,7 @@ class HomeViewModel @Inject constructor(
                         val seriesList = contentFilterManager.filterContent("series", rawSeries) { it.categoryId }
                             .filterNot { adult.isAdultCategory("series", it.categoryId) || adult.isAdultItem("series", it.seriesId) }
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
+                        refreshHistoryArt(vod = null, series = rawSeries)
                         // Prune AFTER the row is published so it doesn't delay first paint.
                         watchHistoryPruner.pruneSeries(rawSeries.map { it.seriesId })
                     } catch (c: CancellationException) {
