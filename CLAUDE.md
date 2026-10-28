@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.0 (versionCode 113)
+- **Current Version**: 5.2.1 (versionCode 114)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,19 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.2.1 (versionCode 114, released 2026-10-28) — New opening intro + MultiView button on Home.**
+  **Intro:** `res/raw/intro.mp4` replaced with the new Claude Design animation (1920x1080, H.264,
+  trimmed from 9.5s to 5.6s because the source held a static logo for ~4s) muxed with the FULL
+  original 5.27s brand sound (AAC stereo) — the owner's call: "the full sound, that's the brand".
+  `IntroSplashFragment` safety cap 5s → 7s so the clip ends naturally; any key still skips. Old
+  intro was 5.2MB, new 1.6MB. **MultiView button:** `home/hub/HomeHubScreen.kt` header gets a
+  labelled "MultiView" button between Search and Settings, shown only when
+  `UserPlanManager.isDeviceCapable()`; `HomeHubFragment` routes `"multiview"` →
+  `MainActivity.navigateToMultiView()`. **Device-verified on .84 (AFTKRT, release build):** intro
+  first frame + stereo PCM AudioTrack within 0.5s of ExoPlayer init, played to its end (~6.7s
+  init→release); Home renders with the MultiView button. **NOT verified:** opening MultiView from
+  the new button; Ooustick; phone.
 
 - **v5.2.0 (versionCode 113, released 2026-10-20) — Kotlin 2.2 + Compose for TV screens + in-app
   trailers.** Merged from trial branch `try/kotlin-2.2` (plan/review: `tasks/todo.md`). **Toolchain:**

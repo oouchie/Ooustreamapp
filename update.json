@@ -1,9 +1,9 @@
 {
-  "version_name": "5.2.0",
-  "version_code": 113,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.0/app-armeabi-v7a-release.apk",
-  "changelog": "v5.2.0 — A new look for Home, Movies, Series and Live TV\n\n• New Home screen: big shortcuts to Live TV, TV Guide, Movies, Series, Catch Up and Favorites, with \"Pick up where you left off\" right at the top.\n\n• Movies and Series now open on a large preview of the title you're on, with rows like Recently Added, Top Rated and New on your favorite services underneath. On Series, Keep Watching shows the season and episode.\n\n• Shows in Pick Up & New open straight to the newest episode.\n\n• New Live TV screen: the channel you're on plays full screen behind the list, with sound. Press OK to watch, hold OK to add or remove a favorite.\n\n• Trailers now play inside the app instead of opening YouTube. Left and Right skip 10 seconds, Back returns.\n\n• Series pages: ratings are now out of 10, and the season list no longer overlaps the Start over button on shows with many seasons.\n\n• Smoother scrolling: rows no longer jump up and down while you browse.",
+  "version_name": "5.2.1",
+  "version_code": 114,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-armeabi-v7a-release.apk",
+  "changelog": "v5.2.1 — New opening intro and a MultiView button on Home\n\n• A new OOUStream intro plays when the app opens, with the full OOUStream sound. Press any button to skip it.\n\n• Home now has a MultiView button at the top, next to Search, so you can watch up to four channels at once in one press. It only appears on devices that can run MultiView.",
   "mandatory": false
 }

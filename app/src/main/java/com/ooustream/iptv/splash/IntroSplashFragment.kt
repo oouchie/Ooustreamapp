@@ -64,9 +64,9 @@ class IntroSplashFragment : Fragment(), KeyEventHandler {
         }
         playerView?.player = player
 
-        // Max 5 seconds for intro video — skip if it takes too long
+        // Safety net: the intro is 5.6s (the full brand sound); skip if playback stalls
         viewLifecycleOwner.lifecycleScope.launch {
-            delay(5000)
+            delay(7000)
             skip()
         }
     }

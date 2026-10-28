@@ -141,6 +141,8 @@ private val TILES = listOf(
 fun HomeHubScreen(
     viewModel: HomeViewModel,
     username: String?,
+    /** Device passed UserPlanManager.isDeviceCapable(); the MultiView button is hidden otherwise. */
+    multiViewAvailable: Boolean,
     initialFocus: String,
     onFocusSaved: (String) -> Unit,
     onPlayFeatured: (FeaturedItem) -> Unit,
@@ -183,6 +185,7 @@ fun HomeHubScreen(
             rows.forEach { r -> r.cards.forEach { add(it.key) } }
             TILES.forEach { add(HubFocus.tile(it.id)) }
             add("search"); add("settings")
+            if (multiViewAvailable) add("multiview")
             if (hero != null) { add("play"); add("info") }
         }
     }
@@ -251,7 +254,10 @@ fun HomeHubScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Column(Modifier.padding(horizontal = 36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Header(username, Modifier.hub("search"), Modifier.hub("settings"), onTile)
+            Header(
+                username, Modifier.hub("search"), Modifier.hub("settings"),
+                Modifier.hub("multiview").takeIf { multiViewAvailable }, onTile
+            )
 
             Row(Modifier.fillMaxWidth().height(220.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 FeaturedCard(
@@ -423,6 +429,8 @@ private fun Header(
     username: String?,
     searchModifier: Modifier,
     settingsModifier: Modifier,
+    /** Null when the device can't run MultiView. */
+    multiViewModifier: Modifier?,
     onTile: (String) -> Unit
 ) {
     val clock by produceState(initialValue = now()) {
@@ -439,6 +447,7 @@ private fun Header(
         )
         Spacer(Modifier.weight(1f))
         IconButton(R.drawable.ic_search, "Search", searchModifier) { onTile("search") }
+        multiViewModifier?.let { LabeledButton(R.drawable.ic_multiview_grid, "MultiView", it) { onTile("multiview") } }
         IconButton(R.drawable.ic_settings, "Settings", settingsModifier) { onTile("settings") }
         Text(clock, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(start = 4.dp))
     }
@@ -475,6 +484,37 @@ private fun IconButton(icon: Int, label: String, modifier: Modifier, onClick: ()
                 colorFilter = ColorFilter.tint(Color.White),
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+/** [IconButton] with its label beside the icon, for an entry that the bare icon doesn't explain. */
+@Composable
+private fun LabeledButton(icon: Int, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(38.dp),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Accent.copy(alpha = 0.18f)
+        ),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(BorderStroke(2.dp, Accent), shape = RoundedCornerShape(10.dp))
+        )
+    ) {
+        Row(
+            Modifier.fillMaxHeight().padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Image(
+                painter = painterResource(icon),
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(Color.White),
+                modifier = Modifier.size(18.dp)
+            )
+            Text(label, fontSize = 14.sp, color = Color.White)
         }
     }
 }

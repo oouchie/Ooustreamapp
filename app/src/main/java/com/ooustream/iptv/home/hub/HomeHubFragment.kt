@@ -18,6 +18,7 @@ import com.ooustream.iptv.common.TransitionDirection
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.ContentType
 import com.ooustream.iptv.data.repository.CredentialStore
+import com.ooustream.iptv.data.UserPlanManager
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.home.FeaturedItem
 import com.ooustream.iptv.home.ForYouChannel
@@ -41,6 +42,7 @@ class HomeHubFragment : Fragment(), com.ooustream.iptv.common.compose.SidebarGat
     private val viewModel: HomeViewModel by viewModels()
 
     @Inject lateinit var credentialStore: CredentialStore
+    @Inject lateinit var userPlanManager: UserPlanManager
 
     // Survives on the back stack while the view is destroyed: Back lands on what was opened.
     private var lastFocus = HubFocus.DEFAULT
@@ -52,6 +54,7 @@ class HomeHubFragment : Fragment(), com.ooustream.iptv.common.compose.SidebarGat
                 HomeHubScreen(
                     viewModel = viewModel,
                     username = loadUsername(),
+                    multiViewAvailable = userPlanManager.isDeviceCapable(),
                     initialFocus = lastFocus,
                     onFocusSaved = { key ->
                         // Only while on screen: focus moving inside the detaching view on the way
@@ -88,6 +91,7 @@ class HomeHubFragment : Fragment(), com.ooustream.iptv.common.compose.SidebarGat
         val main = activity as? MainActivity ?: return
         when (section) {
             "guide" -> main.navigateToEpgGuide(null, null)
+            "multiview" -> main.navigateToMultiView()
             "catchup" -> push(com.ooustream.iptv.catchup.CatchUpFragment(), TransitionDirection.FORWARD)
             else -> main.navigateFromSidebar(section)
         }

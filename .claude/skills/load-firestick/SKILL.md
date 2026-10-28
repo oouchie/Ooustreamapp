@@ -13,7 +13,7 @@ Install BOTH apps on a stick on the LAN, verified end to end: the current Ooustr
 > run from memory. Keep it in this folder layout.
 
 ## Inputs
-- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` (AFTKRT), `.66` / `.80` / `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a).
+- **Device IP** — a bare last octet like "147" means `192.168.1.147`. Known devices: `.82` / `.84` / `.93` (AFTKRT), `.66` / `.80` / `.147` / `.154` / `.155` / `.216` / `.244` / `.246` (AFTMA08C15), `.222` / `.245` (Ooustick), `.235` (AFTSSS — mt8695, armeabi-v7a), `.72` (onn 4K Streaming Device — Google TV, Android 14 / API 34, armeabi-v7a; loaded 2026-10-27). `.65` is an **AFTT (Fire TV Stick 2nd gen, Android 5.1.1 / API 22) — below minSdk 23, Ooustream CANNOT install** (`INSTALL_FAILED_OLDER_SDK`); check `ro.build.version.sdk` first on any unknown stick.
 - Nothing else is needed. **Both apps go on by default** — do not ask whether to include Smarters. Only skip it if the user explicitly says Ooustream only.
 
 ## Steps
