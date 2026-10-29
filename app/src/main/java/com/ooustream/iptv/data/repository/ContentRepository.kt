@@ -4,8 +4,8 @@ import com.ooustream.iptv.data.local.dao.VodCastDao
 import com.ooustream.iptv.data.local.entity.VodCastEntity
 import com.ooustream.iptv.data.model.*
 import com.ooustream.iptv.data.remote.XtreamApiService
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -82,64 +82,54 @@ class ContentRepository @Inject constructor(
         return getApi().getShortEpg(creds.username, creds.password, streamId = streamId, limit = limit)
     }
 
-    suspend fun search(query: String): SearchResults = coroutineScope {
-        val creds = getCreds()
-        val api = getApi()
-        val lowerQuery = query.lowercase()
-
+    /**
+     * Filters catalogue lists the caller already holds ([CatalogCache]) — it never downloads them.
+     * Until v5.2.2 this fetched all three full lists on every query; with Search's own index
+     * rebuild and Trending on top that was several ~10 MB parses at once and ran the heap out
+     * (keithahg, AFTKRT: ANR at 0% free of 163 MB). Runs on [Dispatchers.Default], and matching
+     * uses `ignoreCase` so no lowercase copy is made of every title per keystroke.
+     */
+    suspend fun search(
+        query: String,
+        allLive: List<LiveStream>,
+        allVod: List<VodStream>,
+        allSeries: List<Series>
+    ): SearchResults {
+        val q = query.trim()
         // Movies whose CACHED cast contains the query (the bulk VOD list has no cast, so this side
         // cache — filled by detail opens + the backfill worker — is the only actor source for VOD).
-        val castVodIdsDeferred = async {
-            try { vodCastDao.findStreamIdsByCast(query).toSet() } catch (_: Exception) { emptySet<Int>() }
-        }
+        val castIds = try { vodCastDao.findStreamIdsByCast(q).toSet() } catch (_: Exception) { emptySet() }
 
-        val liveDeferred = async {
-            try {
-                api.getLiveStreams(creds.username, creds.password)
-                    .filter { it.name.lowercase().contains(lowerQuery) }
-            } catch (e: Exception) { emptyList() }
-        }
-        val vodDeferred = async {
-            try {
-                val all = api.getVodStreams(creds.username, creds.password)
-                val castIds = castVodIdsDeferred.await()
-                all.filter { it.name.lowercase().contains(lowerQuery) || it.streamId in castIds }
-            } catch (e: Exception) { emptyList() }
-        }
-        val seriesDeferred = async {
-            try {
-                // Series bulk list already carries cast + director — match all three.
-                api.getSeries(creds.username, creds.password).filter {
-                    it.name.lowercase().contains(lowerQuery) ||
-                        it.cast?.lowercase()?.contains(lowerQuery) == true ||
-                        it.director?.lowercase()?.contains(lowerQuery) == true
-                }
-            } catch (e: Exception) { emptyList() }
-        }
+        return withContext(Dispatchers.Default) {
+            val live = allLive.filter { it.name.contains(q, ignoreCase = true) }
+            val vod = allVod.filter { it.name.contains(q, ignoreCase = true) || it.streamId in castIds }
+            // Series bulk list already carries cast + director — match all three.
+            val series = allSeries.filter {
+                it.name.contains(q, ignoreCase = true) ||
+                    it.cast?.contains(q, ignoreCase = true) == true ||
+                    it.director?.contains(q, ignoreCase = true) == true
+            }
 
-        val live = liveDeferred.await()
-        val vod = vodDeferred.await()
-        val series = seriesDeferred.await()
-
-        // "Starring {actor}" labels — only for results that matched on cast, NOT on the title.
-        val castMatches = mutableMapOf<String, String>()
-        val vodCastById = try {
-            if (vod.isEmpty()) emptyMap()
-            else vodCastDao.getForIds(vod.map { it.streamId }).associateBy { it.streamId }
-        } catch (_: Exception) { emptyMap() }
-        vod.forEach { v ->
-            if (!v.name.lowercase().contains(lowerQuery)) {
+            // "Starring {actor}" labels — only for results that matched on cast, NOT on the title.
+            val lowerQuery = q.lowercase()
+            val castMatches = mutableMapOf<String, String>()
+            val castOnlyVod = vod.filter { !it.name.contains(q, ignoreCase = true) }
+            val vodCastById = try {
+                if (castOnlyVod.isEmpty()) emptyMap()
+                else vodCastDao.getForIds(castOnlyVod.map { it.streamId }).associateBy { it.streamId }
+            } catch (_: Exception) { emptyMap() }
+            castOnlyVod.forEach { v ->
                 matchedActor(vodCastById[v.streamId]?.cast, lowerQuery)
                     ?.let { castMatches["vod_${v.streamId}"] = it }
             }
-        }
-        series.forEach { s ->
-            if (!s.name.lowercase().contains(lowerQuery)) {
-                matchedActor(s.cast, lowerQuery)?.let { castMatches["series_${s.seriesId}"] = it }
+            series.forEach { s ->
+                if (!s.name.contains(q, ignoreCase = true)) {
+                    matchedActor(s.cast, lowerQuery)?.let { castMatches["series_${s.seriesId}"] = it }
+                }
             }
-        }
 
-        SearchResults(live = live, vod = vod, series = series, castMatches = castMatches)
+            SearchResults(live = live, vod = vod, series = series, castMatches = castMatches)
+        }
     }
 
     /** Extract the specific cast member that contains the (already-lowercased) query, for labeling. */

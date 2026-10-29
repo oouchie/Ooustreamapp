@@ -124,6 +124,15 @@ class SearchFragment : Fragment(), KeyEventHandler {
         setupContentInfo(view)
         observeViewModel()
 
+        // Opened with a query (Fire TV / Android search request, or ooustream://search?q=):
+        // put it in the box, which runs the search through the text watcher. Used once, so
+        // coming Back to this screen doesn't re-run it over what the user typed since.
+        arguments?.getString(ARG_QUERY)?.takeIf { it.isNotBlank() }?.let { query ->
+            arguments?.remove(ARG_QUERY)
+            searchEditText.setText(query)
+            searchEditText.setSelection(query.length)
+        }
+
         // Focus search bar on open. On phone, also fire the soft keyboard up immediately
         // — Leanback's request-focus-only path leaves the IME closed, so the user has to
         // tap the field a second time before they can type.
@@ -513,7 +522,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
         val showLive = (filter == "All" || filter == "Live TV") && results.live.isNotEmpty()
         liveAdapter.clear()
         if (showLive) {
-            results.live.forEach { liveAdapter.add(it) }
+            liveAdapter.addAll(0, results.live.take(MAX_RESULTS_PER_ROW))
         }
         liveSectionHeader?.visibility = if (showLive) View.VISIBLE else View.GONE
         liveSectionRow?.visibility = if (showLive) View.VISIBLE else View.GONE
@@ -526,8 +535,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
         val showVod = (filter == "All" || filter == "Movies") && results.vod.isNotEmpty()
         vodAdapter.clear()
         if (showVod) {
-            results.vod.forEach { vod ->
-                vodAdapter.add(
+            vodAdapter.addAll(0, results.vod.take(MAX_RESULTS_PER_ROW).map { vod ->
                     PosterItem(
                         id = vod.streamId,
                         title = vod.name,
@@ -537,8 +545,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
                         type = "vod",
                         castMatch = results.castMatches["vod_${vod.streamId}"]
                     )
-                )
-            }
+            })
         }
         vodSectionHeader?.visibility = if (showVod) View.VISIBLE else View.GONE
         vodSectionRow?.visibility = if (showVod) View.VISIBLE else View.GONE
@@ -551,8 +558,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
         val showSeries = (filter == "All" || filter == "Series") && results.series.isNotEmpty()
         seriesAdapter.clear()
         if (showSeries) {
-            results.series.forEach { series ->
-                seriesAdapter.add(
+            seriesAdapter.addAll(0, results.series.take(MAX_RESULTS_PER_ROW).map { series ->
                     PosterItem(
                         id = series.seriesId,
                         title = series.name,
@@ -562,8 +568,7 @@ class SearchFragment : Fragment(), KeyEventHandler {
                         type = "series",
                         castMatch = results.castMatches["series_${series.seriesId}"]
                     )
-                )
-            }
+            })
         }
         seriesSectionHeader?.visibility = if (showSeries) View.VISIBLE else View.GONE
         seriesSectionRow?.visibility = if (showSeries) View.VISIBLE else View.GONE
@@ -671,5 +676,20 @@ class SearchFragment : Fragment(), KeyEventHandler {
         contentInfoHelper?.cleanup()
         contentInfoHelper = null
         super.onDestroyView()
+    }
+
+    companion object {
+        private const val ARG_QUERY = "query"
+
+        /**
+         * A short query ("the", "a") matches thousands of titles; a row only ever shows the
+         * first few dozen, and adding them all built thousands of cards on the main thread.
+         * The section header still shows the full count.
+         */
+        private const val MAX_RESULTS_PER_ROW = 60
+
+        fun newInstance(query: String?): SearchFragment = SearchFragment().apply {
+            if (!query.isNullOrBlank()) arguments = Bundle().apply { putString(ARG_QUERY, query) }
+        }
     }
 }

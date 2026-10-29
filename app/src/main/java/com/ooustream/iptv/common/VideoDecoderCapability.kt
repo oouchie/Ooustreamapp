@@ -8,7 +8,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
  * guessing from chipset allow/deny lists.
  *
  * Why this exists: a 4K stream on a stick with no 4K decoder used to burn ~2.5 minutes in the frame
- * watchdog before failing. The obvious guard — [DeviceTierDetector.maxVideoSize] + `setMaxVideoSize`
+ * watchdog before failing. The obvious guard — a tier `setMaxVideoSize` cap (removed in v5.2.2)
  * — does NOT block it: Media3's `exceedVideoConstraintsIfNecessary` defaults to `true`
  * (DefaultTrackSelector.java:1790), so when a single-bitrate IPTV stream offers only a 2160p track,
  * the selector deliberately exceeds the cap and selects it anyway. IPTV has no smaller rung to fall

@@ -242,10 +242,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // Set once the upfront "no decoder handles this resolution" refusal has fired for the current
     // content, so a later onTracksChanged can't stack a second error dialog on top of it.
     //
-    // Deliberately NOT cleared by the error dialog's Retry button. Retry is the escape hatch if the
-    // capability probe was wrong about this device: leaving the flag set lets a second attempt run
-    // the normal decoder path (and, if it really is undecodable, the v4.2.3 watchdog give-up still
-    // ends it). Clearing it here would instead re-show the same modal the instant Retry is pressed.
+    // v5.2.2: the refusal dialog has NO Retry button. It used to, and Retry deliberately left this
+    // flag set as an "escape hatch" in case the probe was wrong — but on a 1080p mt8695 stick that
+    // hatch ran the 4K title through the FFmpeg software decoder at ~2fps until the 128MB heap ran
+    // out and the app died (jwetransp, AFTSSS, 2026-10-27). The probe asks the real MediaCodec
+    // decoders, and a stick whose hardware can do it (Ooustick) never reaches this dialog.
     private var oversizedVideoRefused: Boolean = false
     // Name of the video decoder that ExoPlayer most recently initialised (e.g.
     // "ffmpegLavc60.3.100-hevc", "OMX.allwinner.video.decoder.hevc", "c2.android.hevc.decoder").
@@ -354,22 +355,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         streamDiagnosticLogger.logAppEvent("PREBUFFER_GATE",
             "enabled=$preBufferEnabled, tier=$deviceTier, maxConnections=$maxConnections")
 
-        PlaybackInitTrace.step("resolution-pref")
-        // Apply the tier-appropriate video resolution PREFERENCE. ULTRA_LOW/LOW prefer 1080p.
-        // This does NOT block 4K: exceedVideoConstraintsIfNecessary defaults to true, so a
-        // single-track 2160p IPTV stream is still selected (see DeviceTierDetector.maxVideoSize).
-        // Oversized video is actually refused upfront in onTracksChanged, by asking the device's
-        // real MediaCodec decoders via VideoDecoderCapability.
-        val maxSize = DeviceTierDetector.maxVideoSize(requireContext())
-        if (maxSize != null) {
-            trackSelector!!.setParameters(
-                trackSelector!!.buildUponParameters()
-                    .setMaxVideoSize(maxSize.first, maxSize.second)
-            )
-            AudioLogger.log("$deviceTier tier: capped video to ${maxSize.first}x${maxSize.second}")
-            streamDiagnosticLogger.logAppEvent("RESOLUTION_CAP",
-                "maxRes=${maxSize.first}x${maxSize.second}, ${DeviceTierDetector.describe(requireContext())}")
-        }
+        // v5.2.2: no tier resolution cap. ULTRA_LOW/LOW used to prefer 1080p, but that was only a
+        // preference (exceedVideoConstraintsIfNecessary = true still selects a single 2160p track)
+        // and the catalogue's series are now FHD, so it never changed what played. Oversized video
+        // is refused upfront in onTracksChanged by asking the real decoders (VideoDecoderCapability).
 
         // HIGH/MID tier devices (Shield, AFTKRT, good Android TVs) get the highest
         // HLS variant the server publishes. Without this, DefaultTrackSelector picks
@@ -1526,8 +1515,17 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         if (!oversizedVideoRefused &&
                             videoFormat.width > 0 && videoFormat.height > 0
                         ) {
+                            // Dolby Vision is decoded as its HEVC base layer (or by FFmpeg as
+                            // HEVC), and a 1080p stick lists no DV decoder at all — so asking about
+                            // "video/dolby-vision" returned null (unknown) and a 4K DV episode went
+                            // straight to software decode (shanewi, AFTSS: Marshals S2E3 at 1.9fps,
+                            // 0MB heap free). Ask the question that matters: can HEVC do this size?
+                            val probeMime =
+                                if (cachedVideoMime == androidx.media3.common.MimeTypes.VIDEO_DOLBY_VISION)
+                                    androidx.media3.common.MimeTypes.VIDEO_H265
+                                else cachedVideoMime
                             val decodable = VideoDecoderCapability.canDecode(
-                                cachedVideoMime, videoFormat.width, videoFormat.height,
+                                probeMime, videoFormat.width, videoFormat.height,
                                 videoFormat.frameRate
                             )
                             if (decodable == false) {
@@ -1553,7 +1551,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                         is4k && isMain10 -> "This is a 4K HDR (10-bit) title — this device can't decode it. Try a 1080p or HD version."
                                         is4k -> "This is a 4K title — this device can't decode it. Try a 1080p or HD version."
                                         else -> "This video is too high-resolution for this device. Try an HD version."
-                                    }
+                                    },
+                                    allowRetry = false
                                 )
                                 return
                             }
@@ -3328,7 +3327,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     /** Show a user-friendly error dialog with Retry and Exit options.
      *  Posts to main thread via Handler to ensure dialog shows even when called from
      *  watchdog coroutine after Leanback glue has suppressed focus events. */
-    private fun showFriendlyError(message: String) {
+    private fun showFriendlyError(message: String, allowRetry: Boolean = true) {
         val act = activity ?: return
         // Cancel watchdogs first so they don't keep running while dialog is up
         frameWatchdogJob?.cancel()
@@ -3341,7 +3340,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                 val builder = AlertDialog.Builder(act)
                     .setTitle(R.string.error_stream)
                     .setMessage(message)
-                    .setPositiveButton(R.string.retry) { _, _ ->
+                if (allowRetry) builder.setPositiveButton(R.string.retry) { _, _ ->
                         retryCount = 0
                         audioFallbackAttempted = false
                         audioDisabledByFallback = false
@@ -3357,7 +3356,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         player?.prepare()
                         player?.play()
                     }
-                    .setNegativeButton(R.string.cancel) { _, _ ->
+                builder.setNegativeButton(R.string.cancel) { _, _ ->
                         act.onBackPressedDispatcher.onBackPressed()
                     }
                 // VOD/Series escape hatch: some providers deliver a title in a container/transport
@@ -3376,7 +3375,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                     }
                 }
                 builder.setCancelable(false).show()
-                streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_SHOWN", "msg=$message")
+                streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_SHOWN", "msg=$message, retry=$allowRetry")
             } catch (e: Exception) {
                 streamDiagnosticLogger.logAppEvent("ERROR_DIALOG_FAILED", "err=${e.message}")
                 Toast.makeText(act, message, Toast.LENGTH_LONG).show()

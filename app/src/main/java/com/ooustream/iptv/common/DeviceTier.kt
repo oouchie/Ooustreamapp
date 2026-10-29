@@ -162,35 +162,6 @@ object DeviceTierDetector {
     }
 
     /**
-     * Max video (width, height) to allow in the track selector, or `null`
-     * if no cap is needed. Applied at player init via
-     * `DefaultTrackSelector.Parameters.setMaxVideoSize`.
-     *
-     * Intentionally lenient:
-     *   - ULTRA_LOW / LOW: prefer 1080p or smaller. 1080p AVC hardware decode
-     *     often works on these devices even when HEVC Main 10 doesn't.
-     *   - MID / HIGH: no cap (null).
-     *
-     * IMPORTANT — this is a PREFERENCE, not a filter. It does NOT block 4K.
-     * Media3's `exceedVideoConstraintsIfNecessary` defaults to `true`
-     * (DefaultTrackSelector.java:1790), so when a single-bitrate IPTV stream
-     * offers only a 2160p track the selector deliberately exceeds this cap and
-     * selects it anyway. The cap only bites when a smaller variant exists —
-     * which, on IPTV, it usually doesn't. Actually refusing oversized video is
-     * done upfront in `onTracksChanged` via `VideoDecoderCapability`, which asks
-     * the device's real MediaCodec decoders instead of guessing from tier.
-     *
-     * This is a resolution preference, not a codec filter. Codec-level checks
-     * (e.g. HEVC Main 10) live in `canDecodeHevcMain10()`.
-     */
-    fun maxVideoSize(context: Context): Pair<Int, Int>? {
-        return when (tier(context)) {
-            DeviceTier.ULTRA_LOW, DeviceTier.LOW -> 1920 to 1080
-            DeviceTier.MID, DeviceTier.HIGH -> null
-        }
-    }
-
-    /**
      * One-line human-readable description for diagnostic logs.
      * Example: `tier=ULTRA_LOW, hw=mt8695, model=AFTSS, memoryClass=160MB, badMtk=true`
      */

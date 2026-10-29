@@ -1,9 +1,9 @@
 {
-  "version_name": "5.2.1",
-  "version_code": 114,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.1/app-armeabi-v7a-release.apk",
-  "changelog": "v5.2.1 — New opening intro and a MultiView button on Home\n\n• A new OOUStream intro plays when the app opens, with the full OOUStream sound. Press any button to skip it.\n\n• Home now has a MultiView button at the top, next to Search, so you can watch up to four channels at once in one press. It only appears on devices that can run MultiView.",
+  "version_name": "5.2.2",
+  "version_code": 115,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-armeabi-v7a-release.apk",
+  "changelog": "v5.2.2 — 4K fixes and faster search\n\n• 4K shows and movies no longer close the app a few seconds in on boxes with less memory, like the Ooustick.\n\n• On devices that can't play 4K, a 4K title now tells you right away and suggests an HD version, instead of trying to play it slowly until the app closes.\n\n• Search is faster and no longer freezes the app on smaller devices.\n\n• Voice search from your Fire TV or Android TV remote now opens your results in OOUStream.",
   "mandatory": false
 }

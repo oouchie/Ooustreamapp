@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.1 (versionCode 114)
+- **Current Version**: 5.2.2 (versionCode 115)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,27 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.2.2 (versionCode 115, released 2026-10-29) — 4K memory cap, DV refusal fix, search off the
+  heap, voice search wired.** **(1) Ooustick 4K LMK kill:** Marshals 4K died ~9s in on the 1GB
+  Ooustick. `BufferConfigs.forLowMemory` VOD/SERIES now has a 20MB `setTargetBufferBytes` with
+  `setPrioritizeTimeOverSizeThresholds(false)` (IPTV Smarters' IJK default `max-buffer-size`); 30s of
+  a 4K remux was ~100MB of Java heap. **Device-verified on .129 (Ooustick, release build):** Marshals
+  S1E1 3840x1920 on the Allwinner HW decoder, same pid for 90s, RSS flat 203-221MB, MemAvailable
+  108-122MB; user confirmed it plays. Smarters on the same title measured ~168MB RSS. **(2) DV 4K on
+  1080p sticks (shanewi, AFTSS, Marshals S2E3 at 1.9fps):** the upfront refusal probed
+  `video/dolby-vision`, which a 1080p stick lists no decoder for → null (unknown) → software decode.
+  It now probes HEVC for DV. The refusal dialog has no Retry (jwetransp, AFTSSS: Retry ran 4K
+  through FFmpeg SW until the 128MB heap died). NOT verified on an AFTSS. **(3) Search:**
+  `ContentRepository.search` filters lists from `CatalogCache` (now also caches live) instead of
+  downloading all three per query; index rebuild + Trending share the cache; rows capped at 60
+  cards (keithahg ANR at 0% of 163MB heap). **(4) Voice/system search:** `ACTION_SEARCH` +
+  `SearchManager.QUERY` → `SearchFragment.newInstance(query)`; manifest gets `DEFAULT` category and
+  `singleTop`. Verified on .129 via `am start -a android.intent.action.SEARCH` (results in ~50s
+  cold on the Ooustick — slow). **(5) Tier resolution cap removed** (`DeviceTierDetector.maxVideoSize`
+  deleted): it was a 1080p *preference* on LOW/ULTRA_LOW that never changed what played (series are
+  FHD; single 4K tracks exceeded it anyway). Compiled only. **NOT verified:** Fire TV walk, AFTSS DV
+  refusal, audio format on .129 — owner released for field checks.
 
 - **v5.2.1 (versionCode 114, released 2026-10-28) — New opening intro + MultiView button on Home.**
   **Intro:** `res/raw/intro.mp4` replaced with the new Claude Design animation (1920x1080, H.264,

@@ -66,9 +66,18 @@ object BufferConfigs {
             .setBufferDurationsMs(6_000, 8_000, 500, 1_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        // Byte cap, not just a time window. ExoPlayer's buffer lives on the Java heap, and 30s of
+        // a 4K remux is ~100MB on top of the decoder's ~19 4K output buffers — on the 1GB Ooustick
+        // that ran the box out of memory and the low-memory killer took the app ~9s into
+        // Marshals 4K. IPTV Smarters plays the same file on the same decoder with a 20MB demux
+        // cap (its default `max-buffer-size`). With time no longer prioritized, the cap only
+        // bites high bitrates: 30s of a ~5Mbps HD title is under 20MB anyway.
         ContentType.VOD, ContentType.SERIES -> DefaultLoadControl.Builder()
             .setBufferDurationsMs(10_000, 30_000, 1_500, 2_000)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(LOW_MEMORY_TARGET_BUFFER_BYTES)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
     }
+
+    private const val LOW_MEMORY_TARGET_BUFFER_BYTES = 20 * 1024 * 1024
 }

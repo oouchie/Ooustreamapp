@@ -55,6 +55,7 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var credentialStore: CredentialStore
     @Inject lateinit var contentRepository: ContentRepository
     @Inject lateinit var userPlanManager: UserPlanManager
+    @Inject lateinit var streamDiagnosticLogger: com.ooustream.iptv.common.StreamDiagnosticLogger
 
     private var sidebar: QuickSidebar? = null
     private var bottomNav: BottomNavigationView? = null
@@ -371,7 +372,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleDeepLink(intent: Intent, deferToStartupFlow: Boolean = false) {
-        val target = DeepLinkRouter.parse(intent.data) ?: return
+        val target = searchRequestTarget(intent) ?: DeepLinkRouter.parse(intent.data) ?: return
 
         // Defer when not authenticated (consumed after login) OR when the splash/auto-login
         // startup flow is about to run (it replaces main_container and would wipe an
@@ -383,6 +384,19 @@ class MainActivity : FragmentActivity() {
         }
 
         navigateToDeepLink(target)
+    }
+
+    /**
+     * A system search request (ACTION_SEARCH — Fire TV / Android TV voice or global search
+     * handing us a query). The manifest has registered for it since v1, but nothing read the
+     * query until v5.2.2, so it opened nothing.
+     */
+    private fun searchRequestTarget(intent: Intent): DeepLinkTarget? {
+        if (intent.action != Intent.ACTION_SEARCH) return null
+        val query = intent.getStringExtra(android.app.SearchManager.QUERY)?.trim()?.take(200)
+        if (query.isNullOrBlank()) return null
+        streamDiagnosticLogger.logAppEvent("VOICE_SEARCH_REQUEST", "len=${query.length}")
+        return DeepLinkTarget.Search(query)
     }
 
     private fun navigateToDeepLink(target: DeepLinkTarget) {
@@ -478,7 +492,7 @@ class MainActivity : FragmentActivity() {
                     androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
                 val tx = supportFragmentManager.beginTransaction()
                 FragmentTransitions.apply(tx, TransitionDirection.FORWARD)
-                tx.replace(R.id.main_container, SearchFragment())
+                tx.replace(R.id.main_container, SearchFragment.newInstance(target.query))
                     .addToBackStack(null)
                     .commit()
             }

@@ -5,6 +5,7 @@ import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.local.dao.SearchHistoryDao
 import com.ooustream.iptv.data.local.entity.SearchHistoryEntity
 import com.ooustream.iptv.data.local.entity.SearchIndexEntity
+import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.SearchIndexRepository
 import com.ooustream.iptv.data.repository.FavoriteRepository
@@ -13,7 +14,10 @@ import com.ooustream.iptv.parental.ContentFilterManager
 import com.ooustream.iptv.data.local.entity.FavoriteEntity
 import com.ooustream.iptv.common.PosterItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,12 +25,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.ooustream.iptv.data.model.VodStream
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
+    private val catalogCache: CatalogCache,
     private val searchHistoryDao: SearchHistoryDao,
     private val searchIndexRepository: SearchIndexRepository,
     private val favoriteRepository: FavoriteRepository,
@@ -51,14 +57,14 @@ class SearchViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
-        // Trigger index rebuild on ViewModel creation (background)
+        // Trending first: it loads the shared movie list, which the index rebuild then reuses
+        // instead of downloading its own copy alongside it.
+        loadTrending()
         viewModelScope.launch {
             try {
-                searchIndexRepository.rebuildIndex()
+                withContext(Dispatchers.Default) { searchIndexRepository.rebuildIndex() }
             } catch (_: Exception) { }
         }
-        // Load trending content
-        loadTrending()
     }
 
     fun setActiveFilter(filter: String) {
@@ -68,10 +74,12 @@ class SearchViewModel @Inject constructor(
     private fun loadTrending() {
         viewModelScope.launch {
             try {
-                val vod = contentRepository.getVodStreams()
-                val filtered = contentFilterManager.filterContent("vod", vod) { it.categoryId }
-                val sorted = filtered.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
-                _trendingContent.value = sorted.take(15)
+                val vod = catalogCache.vod()
+                _trendingContent.value = withContext(Dispatchers.Default) {
+                    contentFilterManager.filterContent("vod", vod) { it.categoryId }
+                        .sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                        .take(15)
+                }
             } catch (_: Exception) { }
         }
     }
@@ -89,8 +97,13 @@ class SearchViewModel @Inject constructor(
             delay(300L)
             _isSearching.value = true
             try {
-                // Try API search first (returns full objects with images)
-                val results = contentRepository.search(query)
+                // The shared catalogue (downloaded once, held 10 min) — not a fresh download per query.
+                val results = coroutineScope {
+                    val live = async { catalogCache.live() }
+                    val vod = async { catalogCache.vod() }
+                    val series = async { catalogCache.series() }
+                    contentRepository.search(query, live.await(), vod.await(), series.await())
+                }
                 _searchResults.value = filterSearchResults(results)
                 searchHistoryDao.insert(SearchHistoryEntity(query = query.trim()))
             } catch (_: Exception) {
@@ -175,8 +188,8 @@ class SearchViewModel @Inject constructor(
         return SearchResults(live = live, vod = vod, series = series)
     }
 
-    private fun filterSearchResults(results: SearchResults): SearchResults {
-        return SearchResults(
+    private suspend fun filterSearchResults(results: SearchResults): SearchResults = withContext(Dispatchers.Default) {
+        SearchResults(
             live = contentFilterManager.filterContent("live", results.live) { it.categoryId },
             vod = contentFilterManager.filterContent("vod", results.vod) { it.categoryId },
             series = contentFilterManager.filterContent("series", results.series) { it.categoryId },

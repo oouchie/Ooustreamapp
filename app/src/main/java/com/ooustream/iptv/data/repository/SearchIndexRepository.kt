@@ -11,7 +11,9 @@ import javax.inject.Singleton
 class SearchIndexRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val searchIndexDao: SearchIndexDao,
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    /** Shared full lists — the rebuild used to download its own copy of each (v5.2.2). */
+    private val catalogCache: CatalogCache
 ) {
     private val prefs = context.getSharedPreferences("search_index_prefs", Context.MODE_PRIVATE)
 
@@ -55,7 +57,7 @@ class SearchIndexRepository @Inject constructor(
         try {
             val liveCategories = contentRepository.getLiveCategories()
             val categoryMap = liveCategories.associateBy { it.categoryId }
-            val liveStreams = contentRepository.getLiveStreams(null)
+            val liveStreams = catalogCache.live()
             liveStreams.forEach { stream ->
                 entries.add(
                     SearchIndexEntity(
@@ -74,7 +76,7 @@ class SearchIndexRepository @Inject constructor(
         try {
             val vodCategories = contentRepository.getVodCategories()
             val categoryMap = vodCategories.associateBy { it.categoryId }
-            val vodStreams = contentRepository.getVodStreams(null)
+            val vodStreams = catalogCache.vod()
             vodStreams.forEach { stream ->
                 entries.add(
                     SearchIndexEntity(
@@ -93,7 +95,7 @@ class SearchIndexRepository @Inject constructor(
         try {
             val seriesCategories = contentRepository.getSeriesCategories()
             val categoryMap = seriesCategories.associateBy { it.categoryId }
-            val series = contentRepository.getSeries(null)
+            val series = catalogCache.series()
             series.forEach { s ->
                 entries.add(
                     SearchIndexEntity(
