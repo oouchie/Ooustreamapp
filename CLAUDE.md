@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.2 (versionCode 115)
+- **Current Version**: 5.2.3 (versionCode 116)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -551,6 +551,44 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.2.3 (versionCode 116, released 2026-10-29) — Hardware-first 4K on mt8695 + "title Mbps" on
+  Stream Info.** **(1) 4K on HD Fire TV sticks** (shanewi, AFTSS, Marshals S2E2 `hvc1.1.6.L150.90`
+  3840x1920, refused by v5.2.2): the mt8695 HEVC decoder only DECLARES 1080p, so Media3 marked a 4K
+  track EXCEEDS and the FFmpeg software renderer won it (~2fps, then the 128MB heap dies). IJKPlayer
+  apps (IPTV Smarters) just configure the hardware decoder. New `common/HardwareFirst4k.kt`:
+  `decision()` is TRIAL only on mt8695 + `video/hevc` + above 1080p and within 4096x2304 + no
+  MediaCodec decoder declares the size (`VideoDecoderCapability` definite false) + a hardware HEVC
+  decoder exists + fewer than 2 failed trials on this versionCode. A process death mid-trial counts as
+  one failure (in-flight SharedPreferences mark; it stays set after a pass until the title ends
+  cleanly, and is cleared while backgrounded). `HardwareFirst4kVideoRenderer` reports a TRIAL track as
+  HANDLED + hardware and offers only hardware decoders; at HANDLED vs FFmpeg's HANDLED the earlier
+  renderer (MediaCodec) wins. `AudioPipelineFactory` swaps it in for the stock MediaCodec video
+  renderer ONLY on mt8695 and only where the caller passes `hardwareFirst4k = true`: the main player's
+  initial build and the FFmpeg-preferred audio rebuild (the mt8695 Dolby rebuild fires on most 4K
+  titles). Software-video and FFmpeg-video rebuilds, preview, MultiView and the hero trailer are
+  unchanged. The swapped renderer is built like Media3's own — checked against the 1.10.0 source:
+  DefaultRenderersFactory's extra settings (AV1 sample dependencies `true`, late-input drop threshold
+  15ms, duration-to-progress `false`) equal the Builder's defaults. New `player/HardwareTrialJudge.kt`
+  (pure JVM): fails after ~5s of time the DECODER owes frames (NO_FIRST_FRAME / FROZEN), or after 3
+  consecutive (4 total) 1.5s windows below max(12, 0.75×fps) (TOO_SLOW); passes after 6 good windows;
+  starvation, pauses, seeks and a frozen clock are not held against it. The fragment polls it every
+  500ms, the frame watchdog stands down while it runs, a video renderer error during the trial = fail,
+  and a fail shows the v5.2.2 refusal (no Retry). Events `HW_4K_TRIAL` / `HW_4K_TRIAL_PASSED` /
+  `HW_4K_TRIAL_FAILED`; `VIDEO_SIZE_UNSUPPORTED` gains `hwTrial=` / `onHardware=`. Dolby Vision stays
+  refused (its mime is dolby-vision, not hevc). **(2) "title X Mbps" on Stream Info** = network bytes
+  ÷ the media time they added to the buffer, 5s windows from READY, restarted on seek / item change /
+  IDLE; in a gapless binge, bytes stop counting once the episode is fully loaded
+  (`StreamThroughputMeter.totalBytes()`). Read it next to "net": net below title while loading = the
+  connection can't keep up. **Device-verified on .84 (AFTKRT mt8696, release build — the trial cannot
+  fire there):** no 4K regression (FNAF 4K `dvhe.08.06` on `OMX.MTK.VIDEO.DECODER.HEVC`, Stomp the
+  Yard AVC, PCM 2ch); the title readout matched Fire OS's `MediaCodecLogger` (FNAF 92.6-95.6 vs decoder
+  90.8-95.3 Mbps). Finding: FNAF 4K is a ~95 Mbps remux that .84's connection doesn't sustain — that is
+  .84's "buffer keeps dropping". Judge JVM run 19/19. **NOT verified:** anything on an mt8695 stick —
+  the renderer swap (it is in place for EVERY title on mt8695: AFTSS, AFTSSS, AFTMM), the trial, and
+  whether that decoder can decode 3840x1920 at all; the judge counts frames, not picture correctness;
+  Ooustick. Owner released for field checks. Provider ticket #1626: "1080p versions will be added".
+  Plan + review: `tasks/todo.md`.
 
 - **v5.2.2 (versionCode 115, released 2026-10-29) — 4K memory cap, DV refusal fix, search off the
   heap, voice search wired.** **(1) Ooustick 4K LMK kill:** Marshals 4K died ~9s in on the 1GB

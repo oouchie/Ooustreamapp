@@ -1,9 +1,9 @@
 {
-  "version_name": "5.2.2",
-  "version_code": 115,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.2/app-armeabi-v7a-release.apk",
-  "changelog": "v5.2.2 — 4K fixes and faster search\n\n• 4K shows and movies no longer close the app a few seconds in on boxes with less memory, like the Ooustick.\n\n• On devices that can't play 4K, a 4K title now tells you right away and suggests an HD version, instead of trying to play it slowly until the app closes.\n\n• Search is faster and no longer freezes the app on smaller devices.\n\n• Voice search from your Fire TV or Android TV remote now opens your results in OOUStream.",
+  "version_name": "5.2.3",
+  "version_code": 116,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.3/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.3/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.3/app-armeabi-v7a-release.apk",
+  "changelog": "v5.2.3 — 4K on HD Fire TV Sticks\n\n• On some HD Fire TV Sticks, like the Fire TV Stick Lite, 4K shows and movies now try to play on the stick's own video chip instead of being turned away. If the stick can't keep up, you'll see the same message as before after a few seconds, suggesting an HD version. After two failed tries, that stick goes back to showing the message right away. Dolby Vision titles still need a 4K device.\n\n• The Stream Info panel now shows how much data the title you're watching needs, next to your connection speed, so it's easier to tell when a title needs a faster connection.",
   "mandatory": false
 }

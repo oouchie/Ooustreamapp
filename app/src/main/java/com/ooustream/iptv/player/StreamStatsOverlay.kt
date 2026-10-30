@@ -6,7 +6,9 @@ import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.ooustream.iptv.R
@@ -40,6 +42,37 @@ class StreamStatsOverlay @JvmOverloads constructor(
     private var stallCount = 0
     private var wasBuffering = false
 
+    // Title bitrate: network bytes divided by the media time they added to the buffer. The declared
+    // rate is missing for MKV, and "net" falls to 0 whenever the buffer is full, so neither says what
+    // the title needs. Next to net it does: net below title while loading = the connection can't keep
+    // up. The window starts at READY even while the overlay is hidden, so the first open has a
+    // reading; seeks, item changes and restarts start it again.
+    private var titleBps = -1L
+    private var titleMarkBytes = -1L
+    private var titleMarkMediaMs = -1L
+
+    private val titleWindowListener = object : Player.Listener {
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            restartTitleWindow()
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            titleBps = -1L
+            restartTitleWindow()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_IDLE -> restartTitleWindow()
+                Player.STATE_READY -> if (titleMarkMediaMs < 0) markTitleWindow()
+            }
+        }
+    }
+
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_stream_stats, this, true)
         container = findViewById(R.id.stats_container)
@@ -60,9 +93,13 @@ class StreamStatsOverlay @JvmOverloads constructor(
      * reads as a broken stream rather than a broken readout.
      */
     fun attachPlayer(exoPlayer: ExoPlayer) {
+        detachTitleWindowListener()
         player = exoPlayer
+        exoPlayer.addListener(titleWindowListener)
         stallCount = 0
         wasBuffering = false
+        titleBps = -1L
+        restartTitleWindow()
         StreamThroughputMeter.reset()
     }
 
@@ -80,6 +117,7 @@ class StreamStatsOverlay @JvmOverloads constructor(
     /** Release references and stop the polling loop. */
     fun cleanup() {
         stopUpdating()
+        detachTitleWindowListener()
         player = null
     }
 
@@ -162,8 +200,10 @@ class StreamStatsOverlay @JvmOverloads constructor(
         // normal (LoadControl stopped reading on purpose), 0 Mbps with an empty buffer is the bug.
         val declared = videoFormat?.bitrate ?: Format.NO_VALUE
         val measuredBps = StreamThroughputMeter.bitsPerSecond()
+        updateTitleBitrate(p)
         val rateParts = mutableListOf<String>()
         if (declared > 0) rateParts.add("%.1f Mbps".format(declared / 1_000_000f))
+        rateParts.add(if (titleBps > 0) "title %.1f Mbps".format(titleBps / 1_000_000f) else "title --")
         // Always show the measured rate, including 0 — "net 0.0 Mbps" beside an empty buffer IS the
         // diagnosis, so suppressing the zero would hide the failure this readout exists to reveal.
         rateParts.add("net %.1f Mbps".format(measuredBps / 1_000_000f))
@@ -209,8 +249,61 @@ class StreamStatsOverlay @JvmOverloads constructor(
         bufferText.text = "Buffer: %.1fs%s%s".format(bufferSec, state, stallSuffix)
     }
 
+    /**
+     * Closes a window once [TITLE_WINDOW_MEDIA_MS] of media has been loaded since the mark. It only
+     * moves while the loader runs: with a full buffer both bytes and buffered position stand still,
+     * and the last reading stays up.
+     */
+    private fun updateTitleBitrate(p: ExoPlayer) {
+        if (titleMarkMediaMs < 0) {
+            // Not from BUFFERING: a fresh open re-reads container headers and the MKV index, which
+            // add bytes but no media.
+            if (p.playbackState == Player.STATE_READY) markTitleWindow()
+            return
+        }
+        val bytes = StreamThroughputMeter.totalBytes()
+        val bufferedMs = p.bufferedPosition
+        if (p.hasNextMediaItem() && p.duration != C.TIME_UNSET && bufferedMs >= p.duration) {
+            // Gapless binge: this episode is fully loaded, so the bytes now arriving are the next one's.
+            restartTitleWindow()
+            return
+        }
+        val mediaMs = bufferedMs - titleMarkMediaMs
+        if (bytes < titleMarkBytes || mediaMs < 0) {
+            // The meter was reset or the buffer was dropped.
+            restartTitleWindow()
+            return
+        }
+        if (mediaMs < TITLE_WINDOW_MEDIA_MS) return
+        titleBps = (bytes - titleMarkBytes) * 8L * 1000L / mediaMs
+        titleMarkBytes = bytes
+        titleMarkMediaMs = bufferedMs
+    }
+
+    private fun markTitleWindow() {
+        val p = player ?: return
+        titleMarkBytes = StreamThroughputMeter.totalBytes()
+        titleMarkMediaMs = p.bufferedPosition
+    }
+
+    private fun restartTitleWindow() {
+        titleMarkBytes = -1L
+        titleMarkMediaMs = -1L
+    }
+
+    private fun detachTitleWindowListener() {
+        // The player may already be released here (rebuilds release before re-attaching).
+        try {
+            player?.removeListener(titleWindowListener)
+        } catch (_: Throwable) {
+        }
+    }
+
     companion object {
         private const val ANIM_DURATION = 200L
+        // 5s of media: bytes are counted on arrival but a frame only enters the buffer once it is
+        // complete, so each end of a window can be off by one frame (1-2MB for a 4K keyframe).
+        private const val TITLE_WINDOW_MEDIA_MS = 5_000L
         // 1s: a buffer sawtooth swings several seconds between polls at 2s, which reads as noise.
         private const val UPDATE_INTERVAL_MS = 1000L
     }

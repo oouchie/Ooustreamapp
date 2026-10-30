@@ -37,6 +37,9 @@ object StreamThroughputMeter : TransferListener {
     private val slotBytes = LongArray(WINDOW_SLOTS)
     private val slotStamp = LongArray(WINDOW_SLOTS)
 
+    /** Every network byte since the last [reset], not windowed. */
+    private var totalBytes = 0L
+
     override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
 
     override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
@@ -57,6 +60,7 @@ object StreamThroughputMeter : TransferListener {
                 slotBytes[slot] = 0L
             }
             slotBytes[slot] += bytesTransferred.toLong()
+            totalBytes += bytesTransferred.toLong()
         }
     }
 
@@ -80,11 +84,18 @@ object StreamThroughputMeter : TransferListener {
         return total * 8L * 1000L / (WINDOW_SLOTS * SLOT_MS)
     }
 
+    /**
+     * Network bytes received since the last [reset]. The stats overlay divides a stretch of this by
+     * the media time the same stretch added to the buffer, which is the title's own bitrate.
+     */
+    fun totalBytes(): Long = synchronized(lock) { totalBytes }
+
     /** Drop all history. Call when a new title starts so its readout isn't seeded by the last one. */
     fun reset() {
         synchronized(lock) {
             slotBytes.fill(0L)
             slotStamp.fill(0L)
+            totalBytes = 0L
         }
     }
 }

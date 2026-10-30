@@ -1,3 +1,57 @@
+# Hardware-first 4K on mt8695 + title bitrate readout — 2026-10-29
+
+Why: shanewi (AFTSS, mt8695, 5.2.2) gets the 4K refusal on Marshals S2E2 (`hvc1.1.6.L150.90`,
+3840x1920). The stick's HEVC decoder only DECLARES 1080p, so Media3 marks the track EXCEEDS and the
+FFmpeg software renderer wins (~2fps → LMK). IPTV Smarters ignores declared limits and configures
+the hardware decoder. Whether this chip can really do 4K is NOT verified — so the app tries and watches.
+
+- [x] `common/HardwareFirst4k.kt` — one predicate shared by the renderer and the fragment
+      (mt8695 only, video/hevc only, above 1080p, no MediaCodec decoder declares the size, a hardware
+      HEVC decoder exists, < 2 failed trials on this app version; a process death mid-trial = 1 failure)
+      + `HardwareFirst4kVideoRenderer` (reports HANDLED + offers hardware decoders only for that case)
+- [x] `AudioPipelineFactory` — opt-in `hardwareFirst4k` on createRenderersFactory /
+      createMtkAwareRenderersFactory / createFfmpegPreferredRenderersFactory; swaps the stock MediaCodec
+      video renderer only on mt8695. Software-video, FFmpeg-video, preview, MultiView, hero: unchanged.
+- [x] `player/HardwareTrialJudge.kt` — pure verdict logic (JVM-testable): no first frame after 5s of
+      data-ready time → fail; 3 windows of 1.5s below max(12, 0.75×fps) → fail; 6 good windows → pass.
+      Starvation, pauses, seeks and a frozen clock are not held against the decoder.
+- [x] Fragment: trial instead of refusal when the decision is TRIAL; frame watchdog stands down while
+      it runs; a video-renderer error during the trial = fail; fail → the same v5.2.2 refusal message.
+      Both player builds that can run 4K on mt8695 opt in (initial + FFmpeg-preferred audio rebuild).
+- [x] Stats overlay: "title X Mbps" = bytes per second of media loaded, next to "net".
+- [x] JVM-run the judge; compileReleaseKotlin; assembleRelease; install on .84 (no 4K regression,
+      readout works). Do NOT release without asking.
+
+## Review (2026-10-29, .84 AFTKRT mt8696, release build installed over 5.2.2 — NOT committed)
+- Build: `assembleRelease` clean, both ABIs. `HardwareTrialJudge` JVM run: 19/19 scenarios as expected.
+- .84 regression (the trial can't fire on mt8696): "4K: Five Nights at Freddy's" (`dvhe.08.06`
+  3840x2160, TrueHD 7.1) on `OMX.MTK.VIDEO.DECODER.HEVC`; "Stomp the Yard" (`avc1.640029`, DTS-HD 5.1)
+  on `OMX.MTK.VIDEO.DECODER.AVC`; audio PCM 2ch both (`AUDIOINFO format: 2`). Dropbox: no new
+  ANR/crash (only ooustream entry is a 5.2.0 ANR from 10-27; retention back to 10-26).
+- Title readout, checked against Fire OS's own `MediaCodecLogger ... bitrateInKbps` (video only):
+  FNAF title 92.6 / 95.6 Mbps vs decoder 90.8-95.3 Mbps; Stomp the Yard title 32.9 / 33.9 Mbps vs
+  decoder 28.5-31.2 Mbps (+ DTS-HD audio). Reading is there on the first open (window starts at READY).
+- Finding: FNAF 4K is a ~95 Mbps remux. Net read 58-110 Mbps, buffer stayed under 7s, and the decoder
+  logged two starvation gaps (6.5s, 8.0s) in the first ~50s. That is the .84 "buffer keeps dropping":
+  the title needs more than the connection sustains. Stomp the Yard (33 Mbps) built a 30s buffer.
+- Added after the first device pass: during a gapless binge, once the episode is fully loaded the next
+  one's bytes no longer count against it (`hasNextMediaItem` + buffered >= duration).
+- NOT verified: the trial on a 1080p mt8695 stick (none here); whether that hardware decodes
+  3840x1920; IPTV Smarters on AFTSS; DV P7 4K stays refused; the judge counts frames, not picture
+  correctness. Side effect: FNAF and Stomp the Yard resume points on .84 moved ~1 min.
+- Provider ticket **#1626** opened 2026-10-29 (panel API, read back byte-identical): Marshals S2E2
+  (episode 390204) / S1E1 / S2E3 are 4K; asks them to move 4K copies into their existing 4K section,
+  put 1080p (H.264 or 8-bit HEVC) in the regular series listings, and send a list of 4K-only series.
+  No customer names. Not included: the ~95 Mbps 4K-movie buffering (server-side limit unverified).
+  - Provider replied 2026-10-29 19:20 UTC (28 min later): "hello, 1080p versions will be added".
+    No date, no list of 4K-only series, nothing on moving the 4K copies. Status `answered`, still open.
+  - Follow-up sent 2026-10-29 21:20 UTC (message 4580, read back exact): "Thanks! We have customers who
+    can't watch their shows right now. Roughly when will the 1080p versions be up?" Dropped the 4K-list ask
+    (owner: we have the 4K category list). Gap: that list won't show 4K episodes inside regular series.
+- **Released as v5.2.3 (versionCode 116), 2026-10-29**, at the owner's "lets release update": full OTA
+  (update.json), both ABIs on GitHub release v5.2.3. Field check needed on an AFTSS/AFTSSS: a debug export
+  should show `HW_4K_TRIAL` then `HW_4K_TRIAL_PASSED` or `HW_4K_TRIAL_FAILED reason=...`.
+
 # Trial (branch try/kotlin-2.2): Movies direction B in Compose for TV — 2026-10-19
 
 Design: canvas https://claude.ai/artifact/KrpBfRTj1LbBvsN3vBhGox, board "B — Spotlight + Rows".

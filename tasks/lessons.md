@@ -61,3 +61,12 @@ advance with cached series info) attributes the write to the WRONG content.
 - **Rule:** When the user names a skill that isn't in the available-skills list, look for it on disk
   (`.claude/skills/`, `~/.claude/skills/`) before improvising. Keep project skills in the
   `<name>/SKILL.md` layout. `ooustream-dev.md` is still flat and therefore still invisible.
+
+## 2026-10-29 — "Remove the block" meant the dialog the customer sees, not a line of code
+- **What happened:** the user said "remove the block since most of the series are fhd". I offered
+  code-level candidates and removed the device-tier resolution cap. The block they meant was the 4K
+  refusal DIALOG ("This is a 4K title — this device can't decode it"), shown in a customer photo and
+  debug log they sent afterwards. The cap removal was harmless but answered the wrong question.
+- **Rule:** when a user names a behaviour loosely ("the block", "the error", "that screen"), ask what
+  the customer sees on screen (or for the photo/log) before offering code-level options. Pick the
+  options from the symptom, not from the code I happen to have open.

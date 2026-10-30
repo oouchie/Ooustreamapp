@@ -60,6 +60,7 @@ import com.ooustream.iptv.common.AdaptiveImageLoader
 import com.ooustream.iptv.common.DeviceTier
 import com.ooustream.iptv.common.DeviceTierDetector
 import com.ooustream.iptv.common.VideoDecoderCapability
+import com.ooustream.iptv.common.HardwareFirst4k
 import com.ooustream.iptv.common.AudioLogger
 import com.ooustream.iptv.common.AudioPipelineFactory
 import com.ooustream.iptv.common.DeviceUtils
@@ -248,6 +249,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // out and the app died (jwetransp, AFTSSS, 2026-10-27). The probe asks the real MediaCodec
     // decoders, and a stick whose hardware can do it (Ooustick) never reaches this dialog.
     private var oversizedVideoRefused: Boolean = false
+    // v5.2.3 hardware-first 4K on mt8695 (HardwareFirst4k), per title: NONE → RUNNING (the judge is
+    // watching the hardware decoder) → PASSED (it kept up) or DONE (refused). While RUNNING or PASSED
+    // in the foreground, HardwareFirst4k's in-flight mark is set, so a process death during the
+    // title counts as a failed trial.
+    private enum class Hardware4kTrial { NONE, RUNNING, PASSED, DONE }
+    private var hardware4kTrial = Hardware4kTrial.NONE
+    private var hardware4kTrialJob: Job? = null
     // Name of the video decoder that ExoPlayer most recently initialised (e.g.
     // "ffmpegLavc60.3.100-hevc", "OMX.allwinner.video.decoder.hevc", "c2.android.hevc.decoder").
     // Captured from onVideoDecoderInitialized so the watchdog knows whether it's running on a
@@ -376,7 +384,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         PlaybackInitTrace.step("renderers-factory")
         // Shared audio pipeline: stereo downmix (1-8ch), FFmpeg fallback, decoder fallback
         // MTK devices: deprioritize OMX.MTK video decoders + async mode (black screen bug)
-        val renderersFactory = AudioPipelineFactory.createMtkAwareRenderersFactory(requireContext())
+        // hardwareFirst4k: on mt8695 the hardware decoder gets to try a 4K it doesn't declare, under
+        // startHardware4kTrial's supervision (v5.2.3, HardwareFirst4k).
+        val renderersFactory = AudioPipelineFactory.createMtkAwareRenderersFactory(
+            requireContext(), hardwareFirst4k = true
+        )
         if (AudioPipelineFactory.isMtkDevice()) {
             AudioLogger.log("MTK device detected (${android.os.Build.HARDWARE}): using MTK-aware codec selector + async mode")
             streamDiagnosticLogger.logAppEvent("MTK_DEVICE", "hw=${android.os.Build.HARDWARE}")
@@ -1192,6 +1204,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         corePlayerListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 AudioLogger.logAudioError(error)
+                // A video decoder error on a hardware-first 4K trial title (v5.2.3) means the hardware
+                // can't take this size: refuse now. The retry ladder would only re-open the same codec.
+                hardware4kTrialErrorFormat(error)?.let { format ->
+                    finishHardware4kTrial(
+                        passed = false, reason = "decoder_error", format = format,
+                        detail = "error=${error.errorCodeName}, msg=${error.message}"
+                    )
+                    return
+                }
                 // v3.7.0: repeated MediaCodecVideoRenderer errors used to trigger a
                 // libVLC swap after 3 failures in 30s. With FFmpeg video extension
                 // in EXTENSION_RENDERER_MODE_ON, the player already tries the
@@ -1528,16 +1549,26 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                 probeMime, videoFormat.width, videoFormat.height,
                                 videoFormat.frameRate
                             )
-                            if (decodable == false) {
+                            // v5.2.3: on mt8695 the hardware decoder gets to try first — no decoder
+                            // DECLARES this size, but HardwareFirst4kVideoRenderer took the track off
+                            // FFmpeg and startHardware4kTrial refuses it if the picture doesn't keep up.
+                            val hardware4k = if (decodable == false)
+                                HardwareFirst4k.decision(requireContext(), videoFormat)
+                            else HardwareFirst4k.Decision.NOT_APPLICABLE
+                            // The trial only makes sense if the track really went to the hardware
+                            // renderer; if FFmpeg has it, this is the v5.2.2 case and is refused.
+                            val onHardware = hardware4k == HardwareFirst4k.Decision.TRIAL &&
+                                isOnHardwareVideoRenderer(group.mediaTrackGroup)
+                            if (onHardware && hardware4kTrial != Hardware4kTrial.DONE) {
+                                startHardware4kTrial(videoFormat)
+                            } else if (decodable == false) {
                                 oversizedVideoRefused = true
-                                val isMain10 = cachedVideoCodecs.startsWith("hvc1.2") ||
-                                    cachedVideoCodecs.startsWith("hev1.2")
-                                val is4k = videoFormat.height >= 1440 || videoFormat.width >= 2560
                                 streamDiagnosticLogger.logAppEvent(
                                     "VIDEO_SIZE_UNSUPPORTED",
                                     "res=${videoFormat.width}x${videoFormat.height}, " +
                                         "mime=$cachedVideoMime, codecs=$cachedVideoCodecs, " +
-                                        "fps=${videoFormat.frameRate}, " +
+                                        "fps=${videoFormat.frameRate}, hwTrial=$hardware4k, " +
+                                        "onHardware=$onHardware, " +
                                         "${DeviceTierDetector.describe(requireContext())}, " +
                                         "channel=${healthMonitor?.channelName ?: "unknown"}"
                                 )
@@ -1547,11 +1578,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                                         "$cachedVideoMime — refusing upfront"
                                 )
                                 showFriendlyError(
-                                    when {
-                                        is4k && isMain10 -> "This is a 4K HDR (10-bit) title — this device can't decode it. Try a 1080p or HD version."
-                                        is4k -> "This is a 4K title — this device can't decode it. Try a 1080p or HD version."
-                                        else -> "This video is too high-resolution for this device. Try an HD version."
-                                    },
+                                    oversizedVideoMessage(videoFormat.width, videoFormat.height, cachedVideoCodecs),
                                     allowRetry = false
                                 )
                                 return
@@ -1978,6 +2005,145 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         return false
     }
 
+    /** The upfront refusal for a title bigger than any decoder on this device handles. */
+    private fun oversizedVideoMessage(width: Int, height: Int, codecs: String): String {
+        val isMain10 = codecs.startsWith("hvc1.2") || codecs.startsWith("hev1.2")
+        val is4k = height >= 1440 || width >= 2560
+        return when {
+            is4k && isMain10 -> "This is a 4K HDR (10-bit) title — this device can't decode it. Try a 1080p or HD version."
+            is4k -> "This is a 4K title — this device can't decode it. Try a 1080p or HD version."
+            else -> "This video is too high-resolution for this device. Try an HD version."
+        }
+    }
+
+    /** Whether the track selector gave [trackGroup] to a hardware-accelerated video renderer. */
+    private fun isOnHardwareVideoRenderer(trackGroup: androidx.media3.common.TrackGroup): Boolean {
+        val mapped = trackSelector?.currentMappedTrackInfo ?: return false
+        for (r in 0 until mapped.rendererCount) {
+            if (mapped.getRendererType(r) != C.TRACK_TYPE_VIDEO) continue
+            val g = mapped.getTrackGroups(r).indexOf(trackGroup)
+            if (g < 0) continue
+            return androidx.media3.exoplayer.RendererCapabilities.getHardwareAccelerationSupport(
+                mapped.getCapabilities(r, g, 0)
+            ) == androidx.media3.exoplayer.RendererCapabilities.HARDWARE_ACCELERATION_SUPPORTED
+        }
+        return false
+    }
+
+    /**
+     * v5.2.3: supervise the hardware decoder on a 4K title it doesn't declare (mt8695,
+     * [HardwareFirst4k]). The renderer already took the track off FFmpeg; this decides whether the
+     * picture keeps up and refuses the title if it doesn't. One trial per title: a rebuild (the
+     * Dolby-audio one fires on most 4K titles) or a retry re-reports the tracks, and the running or
+     * passed trial carries on.
+     */
+    private fun startHardware4kTrial(videoFormat: Format) {
+        if (hardware4kTrial != Hardware4kTrial.NONE) return
+        val ctx = context ?: return
+        hardware4kTrial = Hardware4kTrial.RUNNING
+        HardwareFirst4k.trialStarted(ctx)
+        streamDiagnosticLogger.logAppEvent(
+            "HW_4K_TRIAL",
+            "res=${videoFormat.width}x${videoFormat.height}@${videoFormat.frameRate}, " +
+                "codecs=${videoFormat.codecs}, earlierFailures=${HardwareFirst4k.failures(ctx)}, " +
+                "channel=${healthMonitor?.channelName ?: "unknown"}"
+        )
+        AudioLogger.log("4K trial: hardware decoder trying ${videoFormat.width}x${videoFormat.height}")
+        hardware4kTrialJob = viewLifecycleOwner.lifecycleScope.launch {
+            var judge = HardwareTrialJudge(videoFormat.frameRate)
+            var judged: ExoPlayer? = null
+            while (isActive) {
+                delay(HW_4K_TRIAL_POLL_MS)
+                val p = player ?: continue
+                // A rebuilt player has a new decoder: judge it from scratch.
+                if (p !== judged) {
+                    judged = p
+                    judge = HardwareTrialJudge(videoFormat.frameRate)
+                }
+                val verdict = judge.onSample(
+                    HardwareTrialJudge.Sample(
+                        nowMs = android.os.SystemClock.elapsedRealtime(),
+                        renderedFrames = p.videoDecoderCounters?.renderedOutputBufferCount ?: 0,
+                        positionMs = p.currentPosition,
+                        isReady = p.playbackState == Player.STATE_READY,
+                        isBuffering = p.playbackState == Player.STATE_BUFFERING,
+                        isPlaying = p.isPlaying,
+                        playWhenReady = p.playWhenReady,
+                        isLoading = p.isLoading,
+                        bufferedAheadMs = (p.bufferedPosition - p.currentPosition).coerceAtLeast(0L),
+                    )
+                ) ?: continue
+                finishHardware4kTrial(
+                    passed = verdict == HardwareTrialJudge.Verdict.PASSED,
+                    reason = verdict.name.lowercase(),
+                    detail = judge.summary(),
+                    format = videoFormat,
+                )
+                return@launch
+            }
+        }
+    }
+
+    /** A verdict on the hardware 4K trial: from the judge, or a decoder error on the trial title. */
+    private fun finishHardware4kTrial(passed: Boolean, reason: String, detail: String, format: Format) {
+        hardware4kTrialJob?.cancel()
+        hardware4kTrialJob = null
+        if (hardware4kTrial == Hardware4kTrial.PASSED || hardware4kTrial == Hardware4kTrial.DONE) return
+        val ctx = context ?: return
+        val decoder = activeVideoDecoderName.ifEmpty { "unknown" }
+        if (passed) {
+            // The in-flight mark stays set until the title ends cleanly (see HardwareFirst4k).
+            hardware4kTrial = Hardware4kTrial.PASSED
+            streamDiagnosticLogger.logAppEvent("HW_4K_TRIAL_PASSED", "decoder=$decoder, $detail")
+            AudioLogger.log("4K trial passed on $decoder")
+            return
+        }
+        hardware4kTrial = Hardware4kTrial.DONE
+        HardwareFirst4k.trialEnded(ctx, passed = false)
+        oversizedVideoRefused = true
+        streamDiagnosticLogger.logAppEvent(
+            "HW_4K_TRIAL_FAILED",
+            "reason=$reason, decoder=$decoder, $detail, failures=${HardwareFirst4k.failures(ctx)}"
+        )
+        AudioLogger.log("4K trial failed ($reason) on $decoder — refusing")
+        showFriendlyError(
+            oversizedVideoMessage(format.width, format.height, format.codecs ?: ""),
+            allowRetry = false
+        )
+    }
+
+    /**
+     * Ends a RUNNING or PASSED hardware 4K trial without a new verdict: the title changed, the
+     * player is closing, or another error ended playback (a Retry then starts a fresh trial).
+     * [cleanExit]: the title is ending normally, so a passed trial clears the device's failures.
+     */
+    private fun stopHardware4kTrial(cleanExit: Boolean) {
+        hardware4kTrialJob?.cancel()
+        hardware4kTrialJob = null
+        val state = hardware4kTrial
+        if (state != Hardware4kTrial.RUNNING && state != Hardware4kTrial.PASSED) return
+        hardware4kTrial = Hardware4kTrial.NONE
+        context?.let {
+            HardwareFirst4k.trialEnded(it, passed = if (cleanExit && state == Hardware4kTrial.PASSED) true else null)
+        }
+    }
+
+    /**
+     * The format of a video renderer error that belongs to the hardware 4K trial — the hardware
+     * decoder failed on a title it was trying — or null. Checks the title itself too, in case the
+     * error is reported before the tracks. Once the trial has passed, errors take the normal path.
+     */
+    private fun hardware4kTrialErrorFormat(error: PlaybackException): Format? {
+        if (hardware4kTrial == Hardware4kTrial.PASSED || hardware4kTrial == Hardware4kTrial.DONE) return null
+        val e = error as? androidx.media3.exoplayer.ExoPlaybackException ?: return null
+        if (e.type != androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER) return null
+        val format = e.rendererFormat ?: return null
+        if (!MimeTypes.isVideo(format.sampleMimeType)) return null
+        if (hardware4kTrial == Hardware4kTrial.RUNNING) return format
+        val ctx = context ?: return null
+        return format.takeIf { HardwareFirst4k.decision(ctx, it) == HardwareFirst4k.Decision.TRIAL }
+    }
+
     /**
      * Detects "no extractor recognizes these bytes" — UnrecognizedInputFormatException /
      * ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED. Deterministic per URL: the server is sending
@@ -2255,6 +2421,13 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             while (isActive) {
                 delay(FRAME_WATCHDOG_INTERVAL_MS)
                 val p = player ?: continue
+                // The hardware 4K trial is judging this decoder (v5.2.3); the ladder's resets and
+                // decoder swaps wait for its verdict.
+                if (hardware4kTrial == Hardware4kTrial.RUNNING) {
+                    noNewFramesSinceMs = 0L
+                    lastRenderedFrameCount = -1
+                    continue
+                }
                 if (p.playbackState != Player.STATE_READY || !p.playWhenReady) {
                     noNewFramesSinceMs = 0L
                     continue
@@ -2934,8 +3107,11 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         mediaSession = null
         safeReleasePlayer(p)
 
-        // Rebuild with FFmpeg-preferred audio pipeline
-        val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(requireContext())
+        // Rebuild with FFmpeg-preferred audio pipeline. Keeps the hardware-first 4K renderer: on mt8695
+        // the Dolby-audio rebuild fires on most 4K titles, right as the 4K trial starts.
+        val ffmpegRenderersFactory = AudioPipelineFactory.createFfmpegPreferredRenderersFactory(
+            requireContext(), hardwareFirst4k = true
+        )
         ffmpegAudioPreferred = true
         val dataSourceFactory = StreamingDataFactories.buildDataSourceFactory(okHttpClient)
         val bandwidthMeter = DefaultBandwidthMeter.Builder(requireContext()).build()
@@ -3332,6 +3508,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Cancel watchdogs first so they don't keep running while dialog is up
         frameWatchdogJob?.cancel()
         stallDetectorJob?.cancel()
+        stopHardware4kTrial(cleanExit = false)
         player?.stop()
         try { glue?.host?.hideControlsOverlay(false) } catch (_: Exception) {}
         android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -3408,6 +3585,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         cachedVideoWidth = 0
         cachedVideoHeight = 0
         oversizedVideoRefused = false
+        stopHardware4kTrial(cleanExit = true)
+        hardware4kTrial = Hardware4kTrial.NONE
         player?.trackSelectionParameters = player?.trackSelectionParameters
             ?.buildUpon()
             ?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)            // undo Stage-2 audio disable
@@ -3854,6 +4033,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         cachedVideoHeight = 0
         cachedVideoMime = ""
         cachedVideoCodecs = ""
+        stopHardware4kTrial(cleanExit = true)
+        hardware4kTrial = Hardware4kTrial.NONE
         // Force-restart watchdog so the new channel gets a fresh escalation ladder
         frameWatchdogJob?.cancel()
         frameWatchdogJob = null
@@ -4199,6 +4380,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     // [Fix 2.3] Restart live TV after returning from background
     override fun onResume() {
         super.onResume()
+        // Back in the foreground on a hardware 4K trial title: a death from here on counts again.
+        if (hardware4kTrial == Hardware4kTrial.RUNNING || hardware4kTrial == Hardware4kTrial.PASSED) {
+            HardwareFirst4k.trialStarted(requireContext())
+        }
         if (viewModel.contentType == ContentType.LIVE) {
             player?.let { p ->
                 if (!p.isPlaying) {
@@ -4246,6 +4431,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // ExoPlayer progress save on exit (gated — see checkpointProgress)
         checkpointProgress()
         player?.pause()
+        // Paused in the background, a kill is ordinary memory reclaim, not the 4K trial failing.
+        if (hardware4kTrial == Hardware4kTrial.RUNNING || hardware4kTrial == Hardware4kTrial.PASSED) {
+            HardwareFirst4k.trialEnded(requireContext(), passed = null)
+        }
     }
 
     // ─── Suppress Leanback default controls ────────────────────────────
@@ -4395,6 +4584,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // Cancel async jobs
         retryJob?.cancel()
         channelSwitchJob?.cancel()
+        stopHardware4kTrial(cleanExit = true)
         pendingSeekJob?.cancel()
         pendingSeekJob = null
         pendingSeekTargetMs = -1L
@@ -4698,6 +4888,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // isn't mistaken for a stall.
         private const val WATCHDOG_STARVATION_BUFFER_MS = 2_500L
         private const val MAX_WATCHDOG_RESETS = 4
+        // Poll for the hardware 4K trial's judge (HardwareTrialJudge windows are 1.5s).
+        private const val HW_4K_TRIAL_POLL_MS = 500L
 
         // ── Source-stall gating (v4.2.9) ──────────────────────────────────────────────────────
         // startStallDetector() escalates only when bufferedPosition is COMPLETELY static for the

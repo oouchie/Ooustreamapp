@@ -8,9 +8,11 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import android.os.Handler
 
@@ -122,12 +124,39 @@ object AudioPipelineFactory {
     }
 
     /**
-     * Creates a [DefaultRenderersFactory] with:
-     * - Custom [DefaultAudioSink] containing [ChannelMixingAudioProcessor] for stereo downmix
-     * - EXTENSION_RENDERER_MODE_ON (hardware first, FFmpeg fallback for AC3/DTS/EAC3)
-     * - Decoder fallback enabled (tries next decoder if first fails)
-     * - AudioTrack playback params enabled (supports speed adjustment)
+     * Hardware-first 4K on mt8695 (v5.2.3, see [HardwareFirst4k]). Call right after
+     * `super.buildVideoRenderers(...)`: swaps the stock MediaCodec video renderer it just added for a
+     * [HardwareFirst4kVideoRenderer] built with the same settings DefaultRenderersFactory uses. Only the
+     * main playback fragment opts in, because it supervises the attempt. Does nothing on other chips.
      */
+    private fun useHardwareFirst4kRenderer(
+        out: ArrayList<Renderer>,
+        from: Int,
+        context: Context,
+        codecAdapterFactory: MediaCodecAdapter.Factory,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        eventHandler: Handler,
+        eventListener: VideoRendererEventListener,
+        allowedVideoJoiningTimeMs: Long
+    ) {
+        if (!HardwareFirst4k.isTrialDevice()) return
+        val index = (from until out.size)
+            .firstOrNull { out[it].javaClass == MediaCodecVideoRenderer::class.java } ?: return
+        out[index] = HardwareFirst4kVideoRenderer(
+            context,
+            MediaCodecVideoRenderer.Builder(context)
+                .setCodecAdapterFactory(codecAdapterFactory)
+                .setMediaCodecSelector(mediaCodecSelector)
+                .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
+                .setEnableDecoderFallback(enableDecoderFallback)
+                .setEventHandler(eventHandler)
+                .setEventListener(eventListener)
+                .setMaxDroppedFramesToNotify(DefaultRenderersFactory.MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY)
+        )
+        AudioLogger.log("HardwareFirst4kVideoRenderer in place of the stock MediaCodec video renderer")
+    }
+
     /**
      * Reports whether the bundled FFmpeg JNI exposes a software h264 decoder.
      * Returns false on devices where the AAR's native libs failed to load
@@ -297,7 +326,12 @@ object AudioPipelineFactory {
      *  - v3.3.3 reactive AC3/EAC3 audio error recovery (rebuildPlayerWithFfmpegPreferred)
      *  - v3.7.3 proactive MTK 5.1 audio preemptive rebuild (mtkMultichannelFfmpegApplied)
      */
-    fun createFfmpegPreferredRenderersFactory(context: Context): DefaultRenderersFactory {
+    fun createFfmpegPreferredRenderersFactory(
+        context: Context,
+        /** Main playback fragment only — see [useHardwareFirst4kRenderer]. The mt8695 Dolby-audio
+         *  rebuild lands here on most 4K titles, so it must keep the hardware-first renderer. */
+        hardwareFirst4k: Boolean = false
+    ): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
             override fun buildVideoRenderers(
                 context: Context,
@@ -309,6 +343,7 @@ object AudioPipelineFactory {
                 allowedVideoJoiningTimeMs: Long,
                 out: ArrayList<Renderer>
             ) {
+                val from = out.size
                 // MODE_ON for video — FFmpeg must never outrank MediaCodec here, but it must
                 // still be PRESENT: MODE_ON appends it after MediaCodec, so it only wins when
                 // no hardware decoder handles the format. MODE_OFF dropped it entirely, so a
@@ -325,6 +360,10 @@ object AudioPipelineFactory {
                     eventListener,
                     allowedVideoJoiningTimeMs,
                     out
+                )
+                if (hardwareFirst4k) useHardwareFirst4kRenderer(
+                    out, from, context, getCodecAdapterFactory(), mediaCodecSelector,
+                    enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs
                 )
             }
 
@@ -379,8 +418,12 @@ object AudioPipelineFactory {
      * software HEVC — 4K content ran at ~9fps as a slideshow. The black-screen
      * bug the deprioritization targets is mt8695-specific.
      */
-    fun createMtkAwareRenderersFactory(context: Context): DefaultRenderersFactory {
-        if (!isMtkDevice()) return createRenderersFactory(context)
+    fun createMtkAwareRenderersFactory(
+        context: Context,
+        /** Main playback fragment only — see [useHardwareFirst4kRenderer]. */
+        hardwareFirst4k: Boolean = false
+    ): DefaultRenderersFactory {
+        if (!isMtkDevice()) return createRenderersFactory(context, hardwareFirst4k)
 
         val hardware = Build.HARDWARE.lowercase()
         // Only the truly bad MTK chipsets need the HEVC deprioritization. Good
@@ -388,9 +431,9 @@ object AudioPipelineFactory {
         // get normal decoder priority.
         val needsHevcWorkaround = hardware.contains("mt8695") ||
             hardware.contains("mt8167")
-        if (!needsHevcWorkaround) return createRenderersFactory(context)
+        if (!needsHevcWorkaround) return createRenderersFactory(context, hardwareFirst4k)
 
-        return createRenderersFactory(context).apply {
+        return createRenderersFactory(context, hardwareFirst4k).apply {
             setMediaCodecSelector(MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
                 val allDecoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
                 if (mimeType == "video/hevc") {
@@ -410,8 +453,40 @@ object AudioPipelineFactory {
         }
     }
 
-    fun createRenderersFactory(context: Context): DefaultRenderersFactory {
+    /**
+     * Creates a [DefaultRenderersFactory] with:
+     * - Custom [DefaultAudioSink] containing [ChannelMixingAudioProcessor] for stereo downmix
+     * - EXTENSION_RENDERER_MODE_ON (hardware first, FFmpeg fallback for AC3/DTS/EAC3)
+     * - Decoder fallback enabled (tries next decoder if first fails)
+     * - AudioTrack playback params enabled (supports speed adjustment)
+     */
+    fun createRenderersFactory(
+        context: Context,
+        /** Main playback fragment only — see [useHardwareFirst4kRenderer]. */
+        hardwareFirst4k: Boolean = false
+    ): DefaultRenderersFactory {
         return object : DefaultRenderersFactory(context) {
+            override fun buildVideoRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                eventHandler: Handler,
+                eventListener: VideoRendererEventListener,
+                allowedVideoJoiningTimeMs: Long,
+                out: ArrayList<Renderer>
+            ) {
+                val from = out.size
+                super.buildVideoRenderers(
+                    context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback,
+                    eventHandler, eventListener, allowedVideoJoiningTimeMs, out
+                )
+                if (hardwareFirst4k) useHardwareFirst4kRenderer(
+                    out, from, context, getCodecAdapterFactory(), mediaCodecSelector,
+                    enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs
+                )
+            }
+
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
