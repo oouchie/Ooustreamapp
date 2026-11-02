@@ -1,9 +1,6 @@
 package com.ooustream.iptv.player
 
 import android.content.Context
-import android.hardware.display.DisplayManager
-import android.os.Build
-import android.view.Display
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -15,6 +12,7 @@ import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.TrackOutput
 import com.ooustream.iptv.common.AudioLogger
+import com.ooustream.iptv.common.DisplayHdr
 import android.media.MediaCodecInfo.CodecProfileLevel
 
 /**
@@ -209,18 +207,8 @@ object DolbyVisionBaseLayer {
     }
 
     /** True only if the connected display advertises Dolby Vision (HDR type 1). */
-    private fun displaySupportsDolbyVision(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
-        return try {
-            val dm = context.getSystemService(DisplayManager::class.java) ?: return false
-            val display = dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return false
-            @Suppress("DEPRECATION")
-            val hdr = display.hdrCapabilities ?: return false
-            hdr.supportedHdrTypes.any { it == Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION }
-        } catch (_: Throwable) {
-            false
-        }
-    }
+    private fun displaySupportsDolbyVision(context: Context): Boolean =
+        DisplayHdr.supportsDolbyVision(context)
 
     /**
      * True if a real VENDOR hardware HEVC decoder (not the c2.android/OMX.google software ones)

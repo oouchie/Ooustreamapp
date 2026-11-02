@@ -147,7 +147,7 @@ class SettingsFragment : PhoneGuidedStepFragment() {
             GuidedAction.Builder(requireContext())
                 .id(ACTION_CLEAR_CACHE)
                 .title("Clear Cache")
-                .description("Clear all cached data")
+                .description("Clear saved pictures and lists")
                 .build()
         )
 
@@ -462,7 +462,7 @@ class SettingsFragment : PhoneGuidedStepFragment() {
             parentFragmentManager,
             SettingsConfirmFragment.newInstance(
                 title = "Clear Cache?",
-                message = "This will clear all cached content data. Your favorites, watch history, and EPG cache will be removed. Continue?",
+                message = "This clears saved pictures and the downloaded channel, movie and series lists. They download again when you open them. Your favorites, watch history and parental controls are kept.",
                 confirmLabel = "Clear",
                 onConfirm = { viewModel.clearCache() }
             )

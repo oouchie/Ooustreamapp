@@ -34,6 +34,11 @@
     <string name="retry">Retry</string>
     <string name="reconnecting">Reconnecting…</string>
     <string name="waiting_for_network">Waiting for network…</string>
+    <!-- Slow-connection tip over the player (v5.2.4). Plain language, no provider names. -->
+    <string name="audio_only_mode">Audio Only Mode</string>
+    <string name="audio_only_channel">Audio-only channel</string>
+    <string name="slow_connection_title">Slow connection</string>
+    <string name="slow_connection_steps">The video is arriving slower than it plays. If it keeps happening:\n1. Unplug your stick from power for 10 seconds, then plug it back in.\n2. Restart your router, and your VPN if you use one.\n3. In this app, open Settings → Clear Cache.</string>
     <string name="open_in_external_player">Open in External Player</string>
     <string name="empty_category_title">Nothing here yet</string>
     <string name="empty_category_hint">This category has no titles. Try another category.</string>

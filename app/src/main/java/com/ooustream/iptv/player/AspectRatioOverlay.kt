@@ -47,17 +47,21 @@ class AspectRatioOverlay @JvmOverloads constructor(
         animate().cancel()
         visibility = VISIBLE
         alpha = 1f
-        handler?.removeCallbacksAndMessages(null)
-        postDelayed({
-            animate().alpha(0f).setDuration(250).withEndAction {
-                visibility = GONE
-            }.start()
-        }, 1500)
+        removeCallbacks(fadeOut)
+        postDelayed(fadeOut, 1500)
+    }
+
+    // Its own runnable, removed by reference. View.handler is the whole window's queue, so
+    // handler.removeCallbacksAndMessages(null) wiped every other view's timers too (v5.2.4).
+    private val fadeOut = Runnable {
+        animate().alpha(0f).setDuration(250).withEndAction {
+            visibility = GONE
+        }.start()
     }
 
     fun dismiss() {
         animate().cancel()
-        handler?.removeCallbacksAndMessages(null)
+        removeCallbacks(fadeOut)
         visibility = GONE
     }
 }

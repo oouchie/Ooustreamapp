@@ -15,8 +15,11 @@ import com.ooustream.iptv.parental.ContentFilterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -62,7 +65,27 @@ class LiveTvViewModel @Inject constructor(
     private val _emptyState = MutableStateFlow<String?>(null)
     val emptyState: StateFlow<String?> = _emptyState.asStateFlow()
 
+    /**
+     * The category whose result [channels] and [emptyState] hold right now. It trails
+     * [selectedCategoryId] while a list loads, so Live TV knows when a LEFT/RIGHT step has landed
+     * (v5.2.4).
+     */
+    private val _shownCategoryId = MutableStateFlow<String?>(null)
+    val shownCategoryId: StateFlow<String?> = _shownCategoryId.asStateFlow()
+
     val favorites = favoriteRepository.getAllFavorites()
+
+    /** Whether "Recent" has any channels, so LEFT/RIGHT can skip it while it's empty. */
+    val hasRecent: StateFlow<Boolean> = recentChannelsRepository.observeRecentLiveChannels()
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    // Single-flight guards: re-entry (onViewCreated after back-stack) or rapid category
+    // switching must not leave overlapping collectors writing _categories/_channels.
+    // Declared above init: an initializer below it would run after init's selectCategory() and
+    // reset the job to null, so the first Favorites load could never be cancelled.
+    private var loadCategoriesJob: Job? = null
+    private var selectCategoryJob: Job? = null
 
     init {
         selectCategory(FAVORITES_ID)
@@ -76,11 +99,6 @@ class LiveTvViewModel @Inject constructor(
     /** Saved positions for focus restoration on back navigation */
     var savedChannelPosition: Int = -1
     var savedCategoryPosition: Int = -1
-
-    // Single-flight guards: re-entry (onViewCreated after back-stack) or rapid category
-    // switching must not leave overlapping collectors writing _categories/_channels.
-    private var loadCategoriesJob: Job? = null
-    private var selectCategoryJob: Job? = null
 
     fun loadCategories() {
         loadCategoriesJob?.cancel()
@@ -139,6 +157,7 @@ class LiveTvViewModel @Inject constructor(
                         _emptyState.value = if (_channels.value.isEmpty()) {
                             "No favourite channels yet\nPress and hold OK on a channel to add one"
                         } else null
+                        _shownCategoryId.value = categoryId
                     }
                     RECENT_ID -> {
                         // A Flow, not a one-shot read. WatchSessionLogger's insert is
@@ -155,6 +174,7 @@ class LiveTvViewModel @Inject constructor(
                             _emptyState.value = if (list.isEmpty()) {
                                 "Nothing watched yet\nChannels you watch for 30 seconds or more show up here"
                             } else null
+                            _shownCategoryId.value = categoryId
                         }
                     }
                     else -> {
@@ -164,6 +184,7 @@ class LiveTvViewModel @Inject constructor(
                         _emptyState.value = if (_channels.value.isEmpty()) {
                             "No channels in this category"
                         } else null
+                        _shownCategoryId.value = categoryId
                     }
                 }
             } catch (e: Exception) {

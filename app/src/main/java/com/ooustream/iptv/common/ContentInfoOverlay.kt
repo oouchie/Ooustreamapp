@@ -40,6 +40,8 @@ class ContentInfoOverlay @JvmOverloads constructor(
 
     var onPlay: (() -> Unit)? = null
     var onFavorite: (() -> Unit)? = null
+    /** Called as the overlay starts closing (Back, Play, Favorites, Trailer). */
+    var onDismiss: (() -> Unit)? = null
 
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_content_info, this, true)
@@ -179,6 +181,7 @@ class ContentInfoOverlay @JvmOverloads constructor(
     }
 
     fun dismiss() {
+        if (isShowing) onDismiss?.invoke()
         panel.animate()
             .translationY(panel.height.toFloat())
             .setDuration(250)

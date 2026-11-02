@@ -2,6 +2,7 @@ package com.ooustream.iptv.livetv.bleed
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,19 +22,29 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +78,14 @@ private val Shade = Color(0xFF080808)
 
 private data class Chip(val id: String, val label: String)
 
+/** Where the cursor goes when a channel list arrives. */
+private enum class Landing {
+    /** The channel we came back to, else the top of the list. */
+    Restore,
+    /** The top of the category a LEFT/RIGHT step moved to. */
+    Step
+}
+
 @Composable
 fun LiveFullBleedScreen(
     viewModel: LiveTvViewModel,
@@ -74,6 +93,8 @@ fun LiveFullBleedScreen(
     initialFocus: Int?,
     inferNow: (LiveStream, String?) -> String,
     onChannelFocused: (LiveStream?) -> Unit,
+    /** True while no category to the left of the selected one has channels. */
+    onFirstCategory: (Boolean) -> Unit,
     onTune: (LiveStream) -> Unit,
     onOpen: (LiveStream, List<LiveStream>) -> Unit,
     onFavorite: (LiveStream) -> Unit
@@ -81,9 +102,11 @@ fun LiveFullBleedScreen(
     val categories by viewModel.categories.collectAsState()
     val channels by viewModel.channels.collectAsState()
     val selectedId by viewModel.selectedCategoryId.collectAsState()
+    val shownId by viewModel.shownCategoryId.collectAsState()
     val emptyState by viewModel.emptyState.collectAsState()
     val epg by viewModel.epgState.collectAsState()
     val favorites by viewModel.favorites.collectAsState(initial = emptyList())
+    val hasRecent by viewModel.hasRecent.collectAsState()
     val tune by tuneFlow.collectAsState()
 
     val chips = remember(categories) {
@@ -103,29 +126,126 @@ fun LiveFullBleedScreen(
         onTune(ch)
     }
 
-    // First focus: the channel we came back to, else the top of the list.
+    // LEFT/RIGHT on a channel steps to the previous/next category (v5.2.4). Categories with no
+    // channels are skipped: Favorites and Recent are known up front, the rest once they've loaded
+    // empty.
+    val emptyIds = remember { mutableStateSetOf<String>() }
+    fun hasNoChannels(id: String) = when (id) {
+        LiveTvViewModel.FAVORITES_ID -> favorites.none { it.type == "live" }
+        LiveTvViewModel.RECENT_ID -> !hasRecent
+        else -> id in emptyIds
+    }
+    fun neighbour(from: Int, dir: Int): Int? {
+        var i = from + dir
+        while (i in chips.indices) {
+            if (!hasNoChannels(chips[i].id)) return i
+            i += dir
+        }
+        return null
+    }
+    val selectedIdx = chips.indexOfFirst { it.id == selectedId }
+    // Nothing to the left has channels: LEFT stays put here, and LEFT-LEFT opens the menu.
+    val firstCategory = selectedIdx < 0 || neighbour(selectedIdx, -1) == null
+    SideEffect { onFirstCategory(firstCategory) }
+
     val listState = rememberLazyListState()
-    val channelRequester = remember { FocusRequester() }
+    val chipState = rememberLazyListState()
+    val rowRequester = remember { FocusRequester() }
     val chipRequester = remember { FocusRequester() }
-    var restored by remember { mutableStateOf(false) }
-    val targetIdx = channels.indexOfFirst { it.streamId == initialFocus }.coerceAtLeast(0)
-    LaunchedEffect(channels) {
-        if (restored || channels.isEmpty()) return@LaunchedEffect
-        listState.scrollToItem((targetIdx - 3).coerceAtLeast(0))
-        awaitFrame()
-        repeat(10) {
-            if (runCatching { channelRequester.requestFocus() }.isSuccess) {
-                restored = true
+    // Holds the cursor on the list itself while a step loads the next category (see step()).
+    val parkRequester = remember { FocusRequester() }
+    // Null once the cursor has landed. A step remembers its direction (to skip on past an empty
+    // category) and the category it started from (to go back to if nothing that way has channels).
+    var landing by remember { mutableStateOf<Landing?>(Landing.Restore) }
+    var stepDir by remember { mutableIntStateOf(0) }
+    var stepOrigin by remember { mutableStateOf<String?>(null) }
+    val landingIdx = when (landing) {
+        Landing.Restore -> channels.indexOfFirst { it.streamId == initialFocus }.coerceAtLeast(0)
+        Landing.Step -> 0
+        null -> -1
+    }
+
+    fun step(dir: Int): Boolean {
+        val from = chips.indexOfFirst { it.id == viewModel.selectedCategoryId.value }
+        if (from < 0) return false
+        // At either end: RIGHT does nothing, and LEFT goes on to MainActivity's double-LEFT menu.
+        val to = neighbour(from, dir) ?: return dir > 0
+        if (landing != Landing.Step) stepOrigin = chips[from].id
+        stepDir = dir
+        landing = Landing.Step
+        // Park the cursor on the list until the new rows arrive. Left on a row, it would go with the
+        // old list, and Compose would put it on the first chip: the chip row jumped back to the
+        // start, and a held key moved along the chips instead of stepping.
+        parkRequester.requestFocus()
+        // The old list stays up until the new one arrives; a further press steps on from the newly
+        // selected category. The background channel changes only after the cursor rests on the new
+        // list.
+        viewModel.selectCategory(chips[to].id)
+        return true
+    }
+
+    LaunchedEffect(channels, emptyState, shownId, selectedId, landing) {
+        when (landing ?: return@LaunchedEffect) {
+            Landing.Restore -> {
+                if (channels.isEmpty()) {
+                    // Nothing in the list to land on: put the cursor on the category chips instead.
+                    if (emptyState != null) {
+                        awaitFrame()
+                        if (chipRequester.requestFocus(FocusDirection.Enter)) landing = null
+                    }
+                    return@LaunchedEffect
+                }
+                val idx = channels.indexOfFirst { it.streamId == initialFocus }.coerceAtLeast(0)
+                listState.scrollToItem((idx - 3).coerceAtLeast(0))
+            }
+            Landing.Step -> {
+                val sel = selectedId ?: return@LaunchedEffect
+                // Still the previous category's list on screen.
+                if (shownId != sel) return@LaunchedEffect
+                if (channels.isEmpty()) {
+                    // Landed on an empty category: keep going the same way, else go back.
+                    if (sel != LiveTvViewModel.FAVORITES_ID && sel != LiveTvViewModel.RECENT_ID) emptyIds.add(sel)
+                    val from = chips.indexOfFirst { it.id == sel }
+                    val next = if (from >= 0 && stepDir != 0) neighbour(from, stepDir) else null
+                    val origin = stepOrigin
+                    when {
+                        next != null -> viewModel.selectCategory(chips[next].id)
+                        origin != null && origin != sel -> {
+                            stepDir = 0
+                            viewModel.selectCategory(origin)
+                        }
+                        else -> {
+                            // Focus first: clearing `landing` restarts this effect.
+                            awaitFrame()
+                            chipRequester.requestFocus(FocusDirection.Enter)
+                            landing = null
+                        }
+                    }
+                    return@LaunchedEffect
+                }
+                listState.scrollToItem(0)
+            }
+        }
+        // The row to land on is composed a frame or two after the list arrives.
+        repeat(30) {
+            if (rowRequester.requestFocus(FocusDirection.Enter)) {
+                landing = null
                 return@LaunchedEffect
             }
-            delay(50)
-        }
-    }
-    LaunchedEffect(emptyState) {
-        // Nothing in the list to land on: put the cursor on the category chips instead.
-        if (!restored && emptyState != null && channels.isEmpty()) {
             awaitFrame()
-            if (runCatching { chipRequester.requestFocus() }.isSuccess) restored = true
+        }
+        landing = null // give up rather than pull the cursor over later
+    }
+
+    // Keep the selected category's chip on screen: there are about 200 of them.
+    LaunchedEffect(selectedIdx) {
+        if (selectedIdx < 0) return@LaunchedEffect
+        val info = chipState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == selectedIdx }
+        if (item == null || item.offset < info.viewportStartOffset ||
+            item.offset + item.size > info.viewportEndOffset
+        ) {
+            chipState.animateScrollToItem((selectedIdx - 1).coerceAtLeast(0))
         }
     }
 
@@ -144,6 +264,7 @@ fun LiveFullBleedScreen(
         )
 
         LazyRow(
+            state = chipState,
             modifier = Modifier.padding(top = 22.dp).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 30.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -154,12 +275,31 @@ fun LiveFullBleedScreen(
                     label = chip.label,
                     selected = selected,
                     modifier = if (selected) Modifier.focusRequester(chipRequester) else Modifier,
-                    onClick = { viewModel.selectCategory(chip.id) }
+                    onClick = {
+                        // Picked by hand: the cursor stays on the chips, as before.
+                        landing = null
+                        viewModel.selectCategory(chip.id)
+                    }
                 )
             }
         }
 
-        Box(Modifier.padding(start = 30.dp, top = 70.dp, bottom = 120.dp).width(330.dp).fillMaxHeight()) {
+        Box(
+            Modifier.padding(start = 30.dp, top = 70.dp, bottom = 120.dp).width(330.dp).fillMaxHeight()
+                // Reached while a channel row has focus, or the list itself during a step.
+                .onPreviewKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key) {
+                        Key.DirectionLeft -> step(-1)
+                        Key.DirectionRight -> step(1)
+                        else -> false
+                    }
+                }
+                // Focusable only while a step is loading the next category: it parks the cursor.
+                .focusRequester(parkRequester)
+                .focusProperties { canFocus = landing == Landing.Step }
+                .focusable()
+        ) {
             if (channels.isEmpty()) {
                 Text(
                     emptyState ?: "Loading channels…", fontSize = 14.sp, color = Muted,
@@ -174,7 +314,7 @@ fun LiveFullBleedScreen(
                         nowTitle = now,
                         guess = remember(ch.streamId, categoryName) { inferNow(ch, categoryName) },
                         favorite = ch.streamId in favoriteIds,
-                        modifier = (if (i == targetIdx && !restored) Modifier.focusRequester(channelRequester) else Modifier)
+                        modifier = (if (i == landingIdx) Modifier.focusRequester(rowRequester) else Modifier)
                             .onFocusChanged { state ->
                                 if (state.isFocused) {
                                     focused = ch
@@ -335,7 +475,7 @@ private fun InfoLine(channel: LiveStream, programs: List<EpgProgram>?, guess: St
                     fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.width(300.dp), textAlign = TextAlign.End)
             }
-            Text("OK Full screen · Hold OK Favorite", fontSize = 12.sp, color = Muted)
+            Text("◀ ▶ Category · OK Full screen · Hold OK Favorite", fontSize = 12.sp, color = Muted)
         }
     }
 }

@@ -328,6 +328,8 @@ class MultiViewSlotView @JvmOverloads constructor(
         emptyIcon.visibility = VISIBLE
         emptyText.visibility = VISIBLE
         stopLivePulse()
+        // An empty slot has nothing loading, and a radio slot's logo stays up until now.
+        hideRecoveryMask(0)
     }
 
     fun setAudioActive(active: Boolean) {
@@ -464,6 +466,24 @@ class MultiViewSlotView @JvmOverloads constructor(
                 recoveryFadeMask.visibility = GONE
             }
             .start()
+    }
+
+    /**
+     * A radio channel has no picture, so no first frame ever arrives to clear the loading mask.
+     * Drop the spinner and the mask, and leave the channel logo up as the slot's picture (v5.2.4).
+     */
+    fun showAudioOnly() {
+        recoverySpinner.visibility = GONE
+        recoveryFadeMask.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction { recoveryFadeMask.visibility = GONE }
+            .start()
+        // Not loaded yet: Coil's onSuccess fades it in. Hidden by an earlier recovery: bring it back.
+        if (channelLogoImage.drawable != null) {
+            channelLogoImage.visibility = VISIBLE
+            channelLogoImage.animate().alpha(1f).setDuration(200).start()
+        }
     }
 
     private fun updateSlotNumber() {

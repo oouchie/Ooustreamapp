@@ -31,6 +31,10 @@ import javax.inject.Singleton
  * the separate `seriesId` column — so series are validated by `seriesId` against `get_series`, never
  * by `streamId`. A row with no `seriesId` and a non-"vod" type is left alone; we only delete what we
  * can positively prove is missing.
+ *
+ * And a third, from 2026-10-29: when the provider re-keys a whole section, most of the history goes
+ * "missing" at once even though the shows are still there under new ids. A wholesale vanish
+ * ([isMassVanish]) is treated as a re-key, not a deletion, and nothing is pruned.
  */
 @Singleton
 class WatchHistoryPruner @Inject constructor(
@@ -51,12 +55,13 @@ class WatchHistoryPruner @Inject constructor(
 
         try {
             val live = liveVodIds.mapTo(HashSet()) { it.toString() }
-            val dead = watchProgressDao.getAllOnce()
+            val history = watchProgressDao.getAllOnce()
                 .filter { it.seriesId == null && it.type.equals("vod", ignoreCase = true) }
                 .map { it.streamId }
-                .filter { it !in live }
+            val dead = history.filter { it !in live }
 
             if (dead.isEmpty()) return@withContext
+            if (skipMassVanish("vod", dead.toSet().size, history.toSet().size, live.size)) return@withContext
             dead.chunked(DELETE_CHUNK).forEach { watchProgressDao.deleteByStreamIds(it) }
             diagnosticLogger.logAppEvent(
                 "WATCH_HISTORY_PRUNED",
@@ -87,13 +92,18 @@ class WatchHistoryPruner @Inject constructor(
             // Only the SERIES id is validated. If the provider also renumbered episodes within a
             // surviving series, those rows stay — proving that would need a get_series_info call per
             // series, and the URL rebuild at launch time already points them at the current server.
-            val deadEpisodes = watchProgressDao.getAllOnce()
+            val rows = watchProgressDao.getAllOnce()
+            val tracked = seriesTrackingDao.getAllTrackedSeries().map { it.seriesId }
+            val historySeries = rows.mapNotNullTo(HashSet()) { it.seriesId }.apply { addAll(tracked) }
+            val deadSeries = historySeries.count { it !in live }
+            if (deadSeries == 0) return@withContext
+            if (skipMassVanish("series", deadSeries, historySeries.size, live.size)) return@withContext
+
+            val deadEpisodes = rows
                 .mapNotNull { row -> row.seriesId?.let { id -> row.streamId.takeIf { id !in live } } }
             deadEpisodes.chunked(DELETE_CHUNK).forEach { watchProgressDao.deleteByStreamIds(it) }
 
-            val deadTracking = seriesTrackingDao.getAllTrackedSeries()
-                .map { it.seriesId }
-                .filter { it !in live }
+            val deadTracking = tracked.filter { it !in live }
             deadTracking.chunked(DELETE_CHUNK).forEach { seriesTrackingDao.deleteBySeriesIds(it) }
 
             if (deadEpisodes.isEmpty() && deadTracking.isEmpty()) return@withContext
@@ -110,8 +120,26 @@ class WatchHistoryPruner @Inject constructor(
         }
     }
 
-    private companion object {
+    /** Logs and returns true when [dead] of [total] history titles vanishing looks like a re-key. */
+    private fun skipMassVanish(type: String, dead: Int, total: Int, catalog: Int): Boolean {
+        if (!isMassVanish(dead, total)) return false
+        diagnosticLogger.logAppEvent(
+            "WATCH_HISTORY_PRUNE_SKIPPED",
+            "type=$type dead=$dead of=$total catalog=$catalog"
+        )
+        return true
+    }
+
+    companion object {
         /** Well under SQLite's 999-host-parameter ceiling on API 23. */
-        const val DELETE_CHUNK = 400
+        private const val DELETE_CHUNK = 400
+        private const val MASS_VANISH_MIN = 3
+
+        /**
+         * At least [MASS_VANISH_MIN] titles AND at least half of the history gone at once: the
+         * provider re-keyed, it didn't delete. One or two dead titles still prune normally.
+         */
+        fun isMassVanish(dead: Int, total: Int): Boolean =
+            dead >= MASS_VANISH_MIN && dead * 2 >= total
     }
 }

@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.3 (versionCode 116)
+- **Current Version**: 5.2.4 (versionCode 117)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -379,6 +379,20 @@ Conventions for interpreting the exported debug report so customer reports aren'
   30.0s, that is `startStallDetector()` discarding partial buffering on a slow-but-working load.
   Fixed in v4.2.9 (progress-gated). On v4.2.9+ the same symptom logs `SOURCE_STALL` instead, which
   only fires when `bufferedPosition` is genuinely static.
+- **An app update is not a crash.** Before v5.2.4 an update that landed while the app was on screen
+  was logged as `UNCLEAN_SHUTDOWN` and copied into the crash log: the giveaway is an entry whose
+  `version=` (the dead session's) differs from the version in its own header. v5.2.4+ logs
+  `APP_UPDATED from= to=` in the diagnostic log only.
+- **Pre-v5.2.4, one death could appear many times.** Identical `UNCLEAN_SHUTDOWN` entries (same
+  `screen=` and `sessionLasted=`) about 16 minutes apart are ONE dead session re-reported by every
+  background (WorkManager) wake. Count distinct sessions, not entries. Fixed in v5.2.4.
+- **`WATCH_HISTORY_PRUNED` runs once per process.** A stick whose process stayed alive across a
+  provider id change prunes on its first launch after the next update, so it reads as "the update
+  wiped my history" when the cause was the id change (the pruner is identical 5.2.0–5.2.3). v5.2.4
+  logs `WATCH_HISTORY_PRUNE_SKIPPED` instead when ≥3 and ≥50% of the history ids vanish at once.
+- **Radio channels have no video track.** A live channel with only an audio track (the "Radio:"
+  categories, AAC ~172 kbps) never logs `DECODER_INIT` video or a first frame. Before v5.2.4 the
+  frame watchdog read that as a frozen picture and ended in a false "format not supported".
 
 ### Hotfixes (v3.3.x)
 - **Software video decoder fallback** (v3.3.2) — Frame watchdog auto-switches to software AVC decoder (`c2.android.*`/`OMX.google.*`) when hardware decoder fails to render frames. `rebuildPlayerWithSoftwareDecoder()` preserves position, listeners, glue. `AudioPipelineFactory.createSoftwareVideoRenderersFactory()` uses custom `MediaCodecSelector` that filters to software-only for video, keeps all decoders for audio.
@@ -440,24 +454,24 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `account/` | 3 | AccountDashboardFragment, AccountViewModel, ConnectionGaugeView |
 | `auth/` | 2 | AuthViewModel, LoginFragment |
 | `backup/` | 5 | BackupFragment, BackupService, BackupViewModel, BackupData, ClearConfirmFragment |
-| `common/` | 40 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, SessionIntegrityTracker, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper, PhoneGuidedStepFragment, DeviceUtils, PhoneToolbarHelper, PhoneFeedback, ResumePlaybackHelper |
+| `common/` | 40 | NetworkMonitor, QualityPolicy, DpadSoundManager, AudioLogger, AudioPipelineFactory, CrashLogger, SessionIntegrityTracker, StreamDiagnosticLogger, SendDebugLogManager, ContentInfoHelper, ContentInfoOverlay, Presenters (Channel, Poster, Category, Skeleton), FocusBracketDrawable, GoldGlowFocusDrawable, AuroraBackgroundView, ProgressiveImageLoader, QuickSidebar, RemoteHintOverlay, ScreenPreWarmer, Extensions, BrowseCardFocusHelper, ChannelDisplayHelper, PhoneGuidedStepFragment, DeviceUtils, PhoneToolbarHelper, PhoneFeedback, ResumePlaybackHelper, DisplayHdr (v5.2.4) |
 | `data/local/dao/` | 14 | FavoriteDao, WatchProgressDao, EpgCacheDao, SearchHistoryDao, CrashRecoveryDao, ContentCacheDao, WatchAnalyticsDao, SearchIndexDao, ChannelWatchLogDao, ChannelScoreDao, EpgPatternDao, SeriesTrackingDao, BlockedCategoryDao, VodCastDao |
 | `data/local/entity/` | 16 | FavoriteEntity, WatchProgressEntity, EpgCacheEntity, SearchHistoryEntity, CrashRecoveryEntity, CachedCategoryEntity, CachedStreamEntity, WatchAnalyticsEntity, SearchIndexEntity, SearchIndexFts, ChannelWatchLogEntity, ChannelScoreEntity, EpgPatternEntity, SeriesTrackingEntity, BlockedCategoryEntity, VodCastEntity |
 | `data/local/` | 1 | OoustreamDatabase (Room v10) |
 | `data/` | 1 | UserPlanManager |
 | `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
 | `data/remote/` | 3 | AuthInterceptor, SafeSeriesInfoDeserializer, XtreamApiService |
-| `data/repository/` | 9 | AuthRepository, ContentRepository, ContentCacheRepository, CredentialStore, EpgCacheRepository, FavoriteRepository, PredictivePreFetcher, SearchIndexRepository, WatchAnalyticsRepository |
+| `data/repository/` | 9 | AuthRepository, ContentRepository, ContentCacheRepository, CredentialStore, EpgCacheRepository, FavoriteRepository, PredictivePreFetcher, SearchIndexRepository, WatchAnalyticsRepository, FavoriteRemapper + FavoriteNameMatch (v5.2.4) |
 | `di/` | 3 | AppModule, DatabaseModule, NetworkModule |
 | `epg/` | 2 | ChannelNameParser, SmartEpgFiller |
 | `epg/guide/` | 7 | EpgGridFragment, EpgGridViewModel, GuideModels (GuideProgram/GuideRowData/GuideEpgNormalizer), GuideTimelineController, GuideProgramLaneView, GuideTimeHeaderView, GuideRowAdapter |
 | `favorites/` | 2 | FavoritesFragment, FavoritesViewModel |
 | `home/` | 10 | HomeFragment, HomeViewModel, ContinueWatchingPresenter, ForYouPresenter, ForYouLivePresenter, MultiViewHeroPresenter, PaletteExtractor, SectionCardPresenter, NewEpisodesPresenter, WatchItAgainPresenter |
-| `livetv/` | 2 | LiveTvFragment, LiveTvViewModel |
+| `livetv/` | 2 | LiveTvFragment (phone + `ooustream://oldlive`), LiveTvViewModel; `livetv/bleed/` LiveFullBleedFragment + LiveFullBleedScreen (the TV Live TV screen since v5.2.0; LEFT/RIGHT on a channel steps category since v5.2.4) |
 | `multiview/` | 14 | MultiViewFragment, MultiViewViewModel, MultiViewPlayerManager, MultiViewSlotView, MultiViewStallDetector, PlaybackHealth, SlotActionPopup, MultiViewAutoFillUseCase, MultiViewTopBarController, MultiViewBottomBarController, MultiViewLockedPopup, ChannelPickerDialogFragment, QrUpgradeDialogFragment, QrCodeGenerator |
 | `onboarding/` | 1 | OnboardingOverlay |
 | `parental/` | 7 | ParentalControlManager, ParentalPinFragment, ParentalViewModel, ContentFilterManager, AdultCategoryDetector, ParentalSettingsFragment, ParentalSettingsViewModel, CategoryToggleAdapter |
-| `player/` | 20 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor (TrackSelectionHelper deleted in v4.0.0 — dead code) |
+| `player/` | 20 | OoustreamPlaybackFragment, OoustreamPlaybackGlue, PlayerViewModel, PlayerControlsBar, PlayerControlsManager, TrackPickerOverlay, ChannelBannerOverlay, ChannelZapOverlay, ChannelListHolder, WatchNextOverlay, SeriesCompleteOverlay, SeekFeedbackOverlay, AudioStatusOverlay, AudioOnlyOverlay, SlowConnectionTipOverlay (v5.2.4), StreamStatsOverlay, ExternalPlayerLauncher, LivePreviewManager, BufferConfigs, SleepTimerManager, ExoPlayerDiagnosticListener, PlaybackHealthMonitor (TrackSelectionHelper deleted in v4.0.0 — dead code) |
 | `recommendation/` | 7 | ChannelRecommendationEngine, RecommendationEngine, ScoreRefreshWorker, WatchSessionLogger, NewEpisodeDetector, NewEpisodeSyncWorker, VodCastBackfillWorker |
 | `search/` | 5 | SearchFragment, SearchViewModel, SearchBarFocusAnimator, SearchChipPresenter, TrendingRankPresenter |
 | `series/` | 7 | SeriesFragment, SeriesViewModel, SeriesDetailFragment, SeriesDetailViewModel, EpisodeCardPresenter, EpisodeRecyclerAdapter, SeasonTabPresenter |
@@ -552,8 +566,91 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 
 ## Version Release History
 
+- **v5.2.4 (versionCode 117, released 2026-11-02; built 2026-11-01) — Favorites after the provider's id change, 4K
+  trial out, remote-friendly Favorites, Live TV categories, radio channels.** Driven by the
+  2026-10-29 customer exports and the provider re-keying its series ids that day (a renumbered
+  title looks exactly like a deleted one to the app). Plan + review: `tasks/todo.md`.
+  **(1) Favorites re-matched by name** — new `data/repository/FavoriteRemapper.kt` (+ pure
+  `FavoriteNameMatch.kt`), run once per process per type from the two `HomeViewModel` prune
+  launches with the same raw catalog lists. A vod/series favorite whose id is gone from the catalog
+  moves to the ONE catalog title with the same `EpisodeNameResolver.normalize(name)` key (full name
+  kept, so a 4K favorite only matches the 4K copy; ambiguous names are skipped; a new id that is
+  already a favorite just drops the dead row). Insert-then-delete, no transaction: a death in between
+  leaves the dead row, which the next run dedupes. Live favorites untouched. `FAVORITES_REMAP`.
+  JVM run of the real matcher: 17/17. **(2) History guard** — `WatchHistoryPruner` deletes nothing
+  when ≥3 AND ≥50% of the distinct history ids vanish at once (`WATCH_HISTORY_PRUNE_SKIPPED dead=N
+  of=M`); small prunes unchanged. Kept rows still point at old ids, so those Continue Watching cards
+  open to the "not available" message (re-matching history is not in this release). History already
+  pruned on 5.2.0–5.2.3 is gone from the stick. **(3) The v5.2.3 4K trial is removed** —
+  `HardwareFirst4k.kt` + `HardwareTrialJudge.kt` deleted, `AudioPipelineFactory` restored to
+  `f0a9ba4` (byte-identical), every trial reference out of the playback fragment; the v5.2.2 refusal
+  and the "title Mbps" readout stay. **(4) Favorites with a remote** — in edit mode OK on a card
+  removes it (the in-card X is no longer focusable, so the D-pad lands on the card; footer reads
+  "OK Remove"; TV-only toast hint); the Undo bar stays up while UNDO has focus; the info card's
+  Favorites button is wired on the Favorites screen; `ContentInfoHelper` dismisses the card after a
+  favorite toggle (Series, Movies, Search, Favorites — a second OK used to silently re-add); the
+  Series/Movies "Favorites" list re-selects after a toggle so a removed title leaves at once.
+  **(5) Crash log honesty** — `SessionIntegrityTracker`: a session recorded under another version is
+  `APP_UPDATED` (diagnostic only, never the crash log); exit reasons `PACKAGE_STATE_CHANGE` /
+  `PACKAGE_UPDATED` named; the open-session marker is consumed in `install()`, so a headless
+  WorkManager wake no longer re-reports the same death (jwetransp's export: 8 copies ~16 min apart).
+  **(6) `common/DisplayHdr.kt`** — the TV's HDR types ("DV, HDR10, HLG" / "none" / "unknown") in
+  the export header ("Display HDR:") and on `DEVICE_TIER`; `DolbyVisionBaseLayer` delegates to it
+  (no behavior change). **(7) Fresh player after a failed same-player retry** (cameron20's TCL TV:
+  after a stall, 16 retries on the same player failed with `CodecException 0x80001000` while Back +
+  Play worked in <1s every time). In `onPlayerError`, before the retry ladder: VOD/SERIES/catch-up
+  only, a video renderer error 4001/4003/4006, a same-player retry already failed (`retryCount >= 1`
+  or a 2nd video decoder error), a frame already rendered, not on a software decoder, no rebuild in
+  flight, fewer than 2 fresh restarts, and not a player opened from Watch Next (`allowFreshRestart =
+  false`: the screen under it is the previous movie's player). It stops the player (frees the
+  connection), pops the back stack and replaces with a new `OoustreamPlaybackFragment` built from
+  the ViewModel's CURRENT identity (`arguments` are stale after a gapless advance), passing
+  `startPositionMs` + `freshRestarts`. Event `FRESH_RESTART`. LIVE excluded: popping back re-tunes
+  Live TV's background player, which would take a 1-connection account's only slot. **(8) Live TV
+  (TV full-bleed screen): LEFT/RIGHT on a channel steps the category** (Favorites, Recent, then the
+  provider categories), skipping empty ones, no wrap. While the next list loads, the cursor is parked
+  on a focusable list container (left on a row it went to the first chip and a held key moved along
+  the chips); the chip row has its own `LazyListState` and follows the selection. The double-LEFT
+  menu (`allowsSidebar() = listFocused && atFirstCategory`) works only where nothing to the left has
+  channels. Background tune still waits for the 700ms dwell. **(9) Settings → Clear Cache keeps user
+  data** — it ran `database.clearAllTables()`, wiping favorites, history AND parental category blocks
+  for every customer told to clear the cache. Now: content cache, `CatalogCache`, EPG cache, memory +
+  disk of both Coil loaders. **(10) Slow-connection tip** — new `player/SlowConnectionTipOverlay.kt`
+  (TV only, top-center, never focusable, 14s): after 3 rebuffers within 5 min (not counting the pause
+  after a seek or a decoder rebuild) or one 10s wait (first load included), at most once per stream
+  and once per 10 min; the owner's three support steps (unplug the stick, restart router/VPN, Clear
+  Cache). Event `SLOW_CONNECTION_TIP`. **(11) Radio / audio-only channels** ("Radio: 70s on 7",
+  AAC-only): the frame watchdog counted zero video frames as a freeze → flush at ~9s, software
+  rebuild, false "format not supported" at ~35s. It now stands down when the stream has no video
+  track or Audio only mode is on; audio-only channels get `AudioOnlyOverlay` (channel name), placed
+  directly above the video. Five overlays (AudioStatus, AudioOnly, AspectRatio, SeekFeedback,
+  VolumeBrightness) and the new tip cancel only their OWN fade Runnable — `handler.
+  removeCallbacksAndMessages(null)` is the whole window's queue, and it left the tip stuck on screen.
+  **MultiView:** `MultiViewStallDetector` read the null decoder counters of a radio slot as 0 frames →
+  FROZEN → reset every 4–8s; now no video track = no frame check, and `onNoVideoTrack` clears the
+  slot's spinner/mask and keeps the logo up (`MultiViewSlotView.showAudioOnly`). A swap re-points
+  the detector to the new slot numbers; `clearChannel()` drops the mask/logo. **Still open
+  (pre-existing):** after a swap the manager's own `onPlayerError` listener reports the OLD slot
+  number, so an error can reset the other tile.
+  **Device-verified on .84 (AFTKRT, release builds, 2026-10-30):** installed over 5.2.3 while on
+  screen → came back signed in, About "v5.2.4", and the crash log got NO entry for that install
+  (5.2.3's own 5.2.2→5.2.3 install had added one); Favorites edit mode → focus on the card, OK
+  removed it ("5 items"), focus stayed in the grid; Live TV RIGHT ×7 one press at a time with the chip
+  row following (before the park change); radio on the main player: 70s on 7 played 67s with no
+  flush/buffering/rebuild, the audio-only screen followed zaps (90s on 9), a video channel zapped
+  through drew its first frame in 1.5s. **NOT verified:** LEFT and LEFT-LEFT (menu gate) on the final
+  build; Undo with the remote after the fix; Clear Cache keeping data; the tip on screen; the fresh
+  restart (needs the Realtek decoder failure); the trial removal on an mt8695 stick; the remapper and
+  the pruner guard against real dead ids; the "Display HDR" line; MultiView with a radio slot; a VOD
+  or episode played on the final build; Ooustick (.222/.129 not answering); phone. Released at the
+  owner's direction ("ship 5.2.4").
+
 - **v5.2.3 (versionCode 116, released 2026-10-29) — Hardware-first 4K on mt8695 + "title Mbps" on
-  Stream Info.** **(1) 4K on HD Fire TV sticks** (shanewi, AFTSS, Marshals S2E2 `hvc1.1.6.L150.90`
+  Stream Info.** ⚠️ **The 4K trial below was REMOVED in v5.2.4** (it failed in the field: cysnell's
+  AFTSS ran it twice and the decoder refused 3840x2160 both times). `HardwareFirst4k.kt` and
+  `HardwareTrialJudge.kt` are deleted, `AudioPipelineFactory` is byte-identical to v5.2.2, and 4K on
+  HD sticks gets the v5.2.2 refusal again. The "title Mbps" readout is kept. Original entry:
+  **(1) 4K on HD Fire TV sticks** (shanewi, AFTSS, Marshals S2E2 `hvc1.1.6.L150.90`
   3840x1920, refused by v5.2.2): the mt8695 HEVC decoder only DECLARES 1080p, so Media3 marked a 4K
   track EXCEEDS and the FFmpeg software renderer won it (~2fps, then the 128MB heap dies). IJKPlayer
   apps (IPTV Smarters) just configure the hardware decoder. New `common/HardwareFirst4k.kt`:

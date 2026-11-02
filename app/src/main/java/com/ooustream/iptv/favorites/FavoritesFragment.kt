@@ -34,6 +34,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** How long a removed card takes to shrink and fade before its row is deleted. */
+private const val REMOVE_ANIM_MS = 400L
+
+/** How long the Undo bar stays after a removal, unless the cursor is on UNDO. */
+private const val UNDO_SHOW_MS = 5000L
+
 @AndroidEntryPoint
 class FavoritesFragment : Fragment(), KeyEventHandler {
 
@@ -57,6 +63,7 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
     private lateinit var undoText: TextView
     private lateinit var undoButton: TextView
     private lateinit var remoteHints: View
+    private lateinit var okHintLabel: TextView
 
     // Adapters
     private lateinit var favoritesAdapter: FavoritesAdapter
@@ -70,6 +77,7 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
 
     // Undo timer
     private var undoTimer: CountDownTimer? = null
+    private var undoShowing = false
 
     // Content info helper for long-press on VOD/series
     private var contentInfoHelper: ContentInfoHelper? = null
@@ -107,6 +115,7 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
         undoText = view.findViewById(R.id.undo_text)
         undoButton = view.findViewById(R.id.undo_button)
         remoteHints = view.findViewById(R.id.remote_hints)
+        okHintLabel = view.findViewById(R.id.remote_hint_ok_label)
     }
 
     private fun setupRecyclerView() {
@@ -229,6 +238,10 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
         }
         undoButton.setOnFocusChangeListener { v, hasFocus ->
             v.alpha = if (hasFocus) 1f else 0.7f
+            v.setBackgroundResource(if (hasFocus) R.drawable.bg_score_card_focused else 0)
+            // The bar stays while the cursor is on UNDO (a remote takes a few presses to get there);
+            // the countdown starts again when the cursor leaves it.
+            if (hasFocus) undoTimer?.cancel() else if (undoShowing) startUndoTimer()
         }
     }
 
@@ -245,6 +258,13 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
             navigateToContent(item)
         }
         infoHelper.attach(root)
+        // Everything on this screen is a favorite, so the card's Favorites button removes it, with
+        // the same animation and Undo bar as Edit mode.
+        infoHelper.setOnFavorite { item ->
+            val favoriteId = "${item.type}_${item.id}"
+            val shown = favoritesAdapter.currentList.find { it.id == favoriteId }
+            if (shown != null) onRemoveItem(shown) else viewModel.removeFavorite(favoriteId)
+        }
         contentInfoHelper = infoHelper
     }
 
@@ -311,10 +331,16 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
 
                 // Edit mode
                 launch {
+                    var wasEditing = viewModel.isEditMode.value
                     viewModel.isEditMode.collect { editing ->
+                        if (editing && !wasEditing && DeviceUtils.isTV(requireContext())) {
+                            Toast.makeText(requireContext(), "Press OK on a card to remove it", Toast.LENGTH_SHORT).show()
+                        }
+                        wasEditing = editing
                         favoritesAdapter.isEditMode = editing
                         editBtn.text = if (editing) "Done" else "Edit"
                         editBtn.setTextColor(if (editing) 0xFFFFC107.toInt() else 0xFF9CA3AF.toInt())
+                        okHintLabel.text = if (editing) "Remove" else "Watch"
                     }
                 }
 
@@ -391,12 +417,16 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
 
     private fun showUndoBar(message: String) {
         undoText.text = message
+        undoShowing = true
         undoBar.visibility = View.VISIBLE
         undoBar.alpha = 0f
         undoBar.animate().alpha(1f).setDuration(200).start()
+        if (!undoButton.hasFocus()) startUndoTimer()
+    }
 
+    private fun startUndoTimer() {
         undoTimer?.cancel()
-        undoTimer = object : CountDownTimer(5000, 5000) {
+        undoTimer = object : CountDownTimer(UNDO_SHOW_MS, UNDO_SHOW_MS) {
             override fun onTick(millisUntilFinished: Long) {}
             override fun onFinish() { hideUndoBar() }
         }.start()
@@ -404,6 +434,13 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
 
     private fun hideUndoBar() {
         undoTimer?.cancel()
+        undoShowing = false
+        // Hand the cursor back to the cards first: going with the bar, it would land on the Grid
+        // button at the top of the screen.
+        if (undoBar.hasFocus()) {
+            val above = undoButton.focusSearch(View.FOCUS_UP)
+            if (above?.requestFocus() != true && !favoritesGrid.requestFocus()) editBtn.requestFocus()
+        }
         undoBar.animate().alpha(0f).setDuration(200).withEndAction {
             undoBar.visibility = View.GONE
         }.start()
@@ -412,6 +449,11 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
     // --- Click handlers ---
 
     private fun onItemClick(item: FavoriteDisplayItem) {
+        // Edit mode: OK removes the card. The card's X button is touch-only (not focusable).
+        if (viewModel.isEditMode.value) {
+            onRemoveItem(item)
+            return
+        }
         when (item.type) {
             "live" -> {
                 val url = viewModel.buildLiveUrl(item.streamId)
@@ -446,21 +488,37 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
     }
 
     private fun onRemoveItem(item: FavoriteDisplayItem) {
-        // Animate out then remove
         val pos = favoritesAdapter.currentList.indexOfFirst { it.id == item.id }
-        if (pos >= 0) {
-            val vh = favoritesGrid.findViewHolderForAdapterPosition(pos)
-            vh?.itemView?.let { view ->
-                view.animate()
-                    .scaleX(0.8f).scaleY(0.8f).alpha(0f)
-                    .setDuration(400)
-                    .withEndAction {
-                        viewModel.removeFavorite(item.id)
-                    }
-                    .start()
-            } ?: viewModel.removeFavorite(item.id)
-        } else {
+        val card = if (pos >= 0) favoritesGrid.findViewHolderForAdapterPosition(pos)?.itemView else null
+        if (card == null) {
             viewModel.removeFavorite(item.id)
+            return
+        }
+        // Animate out, then remove. The removal runs on a timer, not as the animation's end action:
+        // recycling the card (a scroll, a filter switch) cancels its animation
+        // (FavoritesAdapter.onViewRecycled), and the favorite still has to go.
+        card.animate().scaleX(0.8f).scaleY(0.8f).alpha(0f).setDuration(REMOVE_ANIM_MS).start()
+        favoritesGrid.postDelayed({
+            val now = favoritesAdapter.currentList.indexOfFirst { it.id == item.id }
+            val stillFocused = now >= 0 &&
+                favoritesGrid.findViewHolderForAdapterPosition(now)?.itemView?.hasFocus() == true
+            if (stillFocused) focusNeighbour(now)
+            viewModel.removeFavorite(item.id)
+        }, REMOVE_ANIM_MS)
+    }
+
+    /**
+     * Moves the cursor off a card that is about to be removed: to the next card (it slides into this
+     * slot) or, at the end of the list, the previous one. Detaching a focused card otherwise drops
+     * focus onto the first view in the window (the Grid button), so a remote user removing several
+     * favorites was sent back to the top after each one.
+     */
+    private fun focusNeighbour(pos: Int) {
+        val size = favoritesAdapter.currentList.size
+        for (n in intArrayOf(pos + 1, pos - 1)) {
+            if (n !in 0 until size) continue
+            val neighbour = favoritesGrid.findViewHolderForAdapterPosition(n)?.itemView ?: continue
+            if (neighbour.requestFocus()) return
         }
     }
 
@@ -542,6 +600,7 @@ class FavoritesFragment : Fragment(), KeyEventHandler {
 
     override fun onDestroyView() {
         undoTimer?.cancel()
+        undoShowing = false
         sortDropdown?.dismiss()
         super.onDestroyView()
     }

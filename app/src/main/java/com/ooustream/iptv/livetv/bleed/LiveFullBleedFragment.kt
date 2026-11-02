@@ -65,6 +65,7 @@ class LiveFullBleedFragment : Fragment(), SidebarGate {
     // Survive on the back stack while the view is destroyed.
     private var lastFocus: Int? = null
     private var listFocused = false
+    private var atFirstCategory = true
     private var viewFresh = false
 
     /** 1GB sticks: no background video (same gate as the old screen's auto-preview). */
@@ -72,7 +73,9 @@ class LiveFullBleedFragment : Fragment(), SidebarGate {
         (requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).memoryClass <= 128
     }
 
-    override fun allowsSidebar(): Boolean = listFocused
+    // LEFT on a channel steps to the previous category (v5.2.4), so the double-LEFT menu opens only
+    // from the first category that has channels (Favorites, unless it's empty).
+    override fun allowsSidebar(): Boolean = listFocused && atFirstCategory
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val ctx = requireContext()
@@ -108,6 +111,7 @@ class LiveFullBleedFragment : Fragment(), SidebarGate {
                         }
                         listFocused = ch != null
                     },
+                    onFirstCategory = { atFirstCategory = it },
                     onTune = ::tuneTo,
                     onOpen = ::goFullscreen,
                     onFavorite = { viewModel.toggleFavorite(it) }

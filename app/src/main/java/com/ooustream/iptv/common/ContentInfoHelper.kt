@@ -1,5 +1,6 @@
 package com.ooustream.iptv.common
 
+import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -22,6 +23,9 @@ class ContentInfoHelper(
     private var activePhoneSheet: PhoneContentInfoSheet? = null
     private var currentItem: PosterItem? = null
     private var favoriteCallback: ((PosterItem) -> Unit)? = null
+    // The poster that was long-pressed: focus goes back to it when the TV overlay closes, instead of
+    // to whatever the window picks once the overlay's buttons are hidden.
+    private var returnFocusTo: View? = null
 
     private val isPhone: Boolean
         get() = !DeviceUtils.isTV(fragment.requireContext())
@@ -44,12 +48,14 @@ class ContentInfoHelper(
         infoOverlay.onPlay = {
             currentItem?.let { onPlay(it) }
         }
+        infoOverlay.onDismiss = { returnFocus() }
         overlay = infoOverlay
     }
 
     /** Use as PosterPresenter's onLongPress callback. */
     val onLongPress: (PosterItem) -> Unit = { item ->
         currentItem = item
+        returnFocusTo = fragment.view?.findFocus()
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             val data = fetchContentData(item)
             if (isPhone) {
@@ -66,6 +72,7 @@ class ContentInfoHelper(
             .setOnPlay { onPlay(item) }
             .setOnFavorite {
                 favoriteCallback?.invoke(item)
+                dismiss()
             }
         activePhoneSheet = sheet
         sheet.show(fragment.parentFragmentManager, "content_info_sheet")
@@ -93,6 +100,7 @@ class ContentInfoHelper(
                 else overlay?.isShowing == true
 
     fun cleanup() {
+        returnFocusTo = null
         if (isPhone) {
             activePhoneSheet?.dismissAllowingStateLoss()
             activePhoneSheet = null
@@ -102,13 +110,23 @@ class ContentInfoHelper(
         }
     }
 
-    /** Set the favorite button callback. */
+    /**
+     * Set the favorite button callback. The card closes after it runs (v5.2.4): left open, a second
+     * OK on the same button quietly undid the change, which read as "Favorites doesn't work".
+     */
     fun setOnFavorite(callback: (PosterItem) -> Unit) {
         favoriteCallback = callback
         // TV overlay path needs the callback wired through the existing field.
         overlay?.onFavorite = {
             currentItem?.let { callback(it) }
+            overlay?.dismiss()
         }
+    }
+
+    private fun returnFocus() {
+        val target = returnFocusTo ?: return
+        returnFocusTo = null
+        if (target.isAttachedToWindow && target.isShown) target.requestFocus()
     }
 
     private suspend fun fetchContentData(item: PosterItem): ContentInfoOverlay.ContentData {

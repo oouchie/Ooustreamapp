@@ -43,6 +43,14 @@ class AudioStatusOverlay @JvmOverloads constructor(
         isClickable = false
     }
 
+    // Its own runnable, removed by reference. View.handler is the whole window's queue, so
+    // handler.removeCallbacksAndMessages(null) wiped every other view's timers too (v5.2.4).
+    private val fadeOut = Runnable {
+        animate().alpha(0f).setDuration(400).withEndAction {
+            visibility = GONE
+        }.start()
+    }
+
     fun showNoAudio() {
         show("No audio track", persistent = true)
     }
@@ -56,7 +64,8 @@ class AudioStatusOverlay @JvmOverloads constructor(
     }
 
     fun dismiss() {
-        handler?.removeCallbacksAndMessages(null)
+        removeCallbacks(fadeOut)
+        animate().cancel()
         persistent = false
         visibility = GONE
     }
@@ -64,16 +73,11 @@ class AudioStatusOverlay @JvmOverloads constructor(
     private fun show(text: String, persistent: Boolean) {
         this.persistent = persistent
         label.text = text
+        removeCallbacks(fadeOut)
+        animate().cancel()
         visibility = VISIBLE
         alpha = 1f
-        handler?.removeCallbacksAndMessages(null)
-        if (!persistent) {
-            postDelayed({
-                animate().alpha(0f).setDuration(400).withEndAction {
-                    visibility = GONE
-                }.start()
-            }, 8_000)
-        }
+        if (!persistent) postDelayed(fadeOut, 8_000)
     }
 
     private fun dp(value: Float): Float {

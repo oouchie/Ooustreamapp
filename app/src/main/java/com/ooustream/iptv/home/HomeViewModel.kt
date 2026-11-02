@@ -13,6 +13,7 @@ import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.resumeStreamUrl
 import com.ooustream.iptv.data.repository.EpgCacheRepository
+import com.ooustream.iptv.data.repository.FavoriteRemapper
 import com.ooustream.iptv.data.repository.PredictivePreFetcher
 import com.ooustream.iptv.data.repository.WatchAnalyticsRepository
 import com.ooustream.iptv.data.repository.WatchHistoryPruner
@@ -82,6 +83,7 @@ class HomeViewModel @Inject constructor(
     private val favoriteDao: FavoriteDao,
     private val contentFilterManager: ContentFilterManager,
     private val watchHistoryPruner: WatchHistoryPruner,
+    private val favoriteRemapper: FavoriteRemapper,
     private val adultContentGuard: AdultContentGuard,
     private val catalogCache: CatalogCache
 ) : BaseViewModel() {
@@ -386,6 +388,8 @@ class HomeViewModel @Inject constructor(
                 launch {
                     try {
                         refreshHistoryArt(vod = rawVodStreams, series = null)
+                        // Favorites first: they move to the new ids by name (v5.2.4).
+                        favoriteRemapper.remapVod(rawVodStreams)
                         watchHistoryPruner.pruneVod(vodIdsForPrune)
                     } catch (c: CancellationException) {
                         throw c
@@ -402,6 +406,7 @@ class HomeViewModel @Inject constructor(
                         _trendingSeries.value = scoreTrendingSeries(seriesList)
                         refreshHistoryArt(vod = null, series = rawSeries)
                         // Prune AFTER the row is published so it doesn't delay first paint.
+                        favoriteRemapper.remapSeries(rawSeries)
                         watchHistoryPruner.pruneSeries(rawSeries.map { it.seriesId })
                     } catch (c: CancellationException) {
                         throw c

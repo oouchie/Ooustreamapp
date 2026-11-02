@@ -370,6 +370,7 @@ class StreamDiagnosticLogger @Inject constructor(
             appendLine("║ RAM Free: ${getAvailableRamMb()}MB available")
             appendLine("║ Storage Free: ${getAvailableStorageMb()}MB")
             appendLine("║ Is TV: ${isTV()}")
+            appendLine("║ Display HDR: ${DisplayHdr.describe(context)}")
             appendLine("║ User: ${getUsername()}")
             appendLine("║ Device ID: ${getDeviceId()}")
             appendLine("╚═══════════════════════════════════════════════╝")

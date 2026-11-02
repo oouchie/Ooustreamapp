@@ -273,6 +273,15 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
                     sv.hideRecoveryMask()
                 }
             }
+            onNoVideoTrack = { slotIndex ->
+                // Radio channel: no first frame will ever come to clear the mask, so clear it
+                // now and keep the logo up as the slot's picture.
+                slotViews[slotIndex]?.let { sv ->
+                    maskTimeouts[slotIndex]?.let { sv.removeCallbacks(it) }
+                    maskTimeouts[slotIndex] = null
+                    sv.showAudioOnly()
+                }
+            }
         }
     }
 
@@ -915,6 +924,14 @@ class MultiViewFragment : Fragment(), KeyEventHandler {
             } else {
                 slotViews[i]?.clearChannel()
             }
+        }
+
+        // Re-point the stall detector. Its listeners were registered under the old slot numbers,
+        // so a first frame cleared the other tile's mask and health was judged on the wrong
+        // tile; a radio tile's mask was never cleared at all (v5.2.4).
+        for (i in arrayOf(sourceSlot, targetSlot)) {
+            val player = playerManager?.getPlayer(i)
+            if (player != null) stallDetector?.startMonitoring(i, player) else stallDetector?.stopMonitoring(i)
         }
 
         // Swap EPG data and refresh ticker

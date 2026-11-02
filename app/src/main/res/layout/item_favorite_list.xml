@@ -129,7 +129,8 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
-    <!-- Remove button (edit mode) -->
+    <!-- Remove button (edit mode). Touch only: on a remote the CARD takes focus and OK removes it
+         (FavoritesFragment.onItemClick). A focusable X drew no cursor and stole focus from the card. -->
     <ImageView
         android:id="@+id/fav_remove_btn"
         android:layout_width="28dp"
@@ -140,7 +141,7 @@
         android:src="@drawable/ic_close_24"
         android:tint="#EF4444"
         android:contentDescription="Remove"
-        android:focusable="true"
+        android:focusable="false"
         android:visibility="gone"
         tools:ignore="UseAppTint"
         tools:visibility="visible" />

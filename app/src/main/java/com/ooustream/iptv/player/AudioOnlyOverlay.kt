@@ -13,12 +13,15 @@ import com.ooustream.iptv.R
 class AudioOnlyOverlay(context: Context) : FrameLayout(context) {
 
     private val streamNameText: TextView
+    private val modeLabel: TextView
     private val equalizerBars: LinearLayout
     private val barAnimators = mutableListOf<ValueAnimator>()
+    private var showing = false
 
     init {
         LayoutInflater.from(context).inflate(R.layout.overlay_audio_only, this, true)
         streamNameText = findViewById(R.id.audio_stream_name)
+        modeLabel = findViewById(R.id.audio_only_label)
         equalizerBars = findViewById(R.id.equalizer_bars)
         visibility = GONE
         setupEqualizerBars()
@@ -45,8 +48,16 @@ class AudioOnlyOverlay(context: Context) : FrameLayout(context) {
         }
     }
 
-    fun show(streamName: String) {
+    /**
+     * [label] says why there's no picture: Audio only mode or an audio-only channel. Calling it
+     * again while it's up only updates the text, since onTracksChanged fires repeatedly.
+     */
+    fun show(streamName: String, label: String = context.getString(R.string.audio_only_mode)) {
         streamNameText.text = streamName
+        modeLabel.text = label
+        if (showing) return
+        showing = true
+        animate().cancel()
         visibility = VISIBLE
         alpha = 0f
         animate().alpha(1f).setDuration(300).start()
@@ -54,7 +65,10 @@ class AudioOnlyOverlay(context: Context) : FrameLayout(context) {
     }
 
     fun dismiss() {
+        if (!showing) return
+        showing = false
         stopEqualizerAnimation()
+        animate().cancel()
         animate().alpha(0f).setDuration(300).withEndAction {
             visibility = GONE
         }.start()
@@ -94,5 +108,5 @@ class AudioOnlyOverlay(context: Context) : FrameLayout(context) {
         barAnimators.clear()
     }
 
-    val isShowing: Boolean get() = visibility == VISIBLE
+    val isShowing: Boolean get() = showing
 }

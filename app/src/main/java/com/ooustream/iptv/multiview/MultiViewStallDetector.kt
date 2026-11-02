@@ -1,8 +1,10 @@
 package com.ooustream.iptv.multiview
 
 import android.os.SystemClock
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.ooustream.iptv.common.AudioLogger
@@ -132,6 +134,9 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
     /** Triggered when first frame renders after recovery (for fade mask dismiss) */
     var onFirstFrameAfterRecovery: ((slotIndex: Int) -> Unit)? = null
 
+    /** Triggered when a slot's stream turns out to have no video track (a radio channel). */
+    var onNoVideoTrack: ((slotIndex: Int) -> Unit)? = null
+
     /**
      * Start monitoring a slot's player for chop/freeze.
      * Attaches AnalyticsListener for dropped frames and starts the polling coroutine.
@@ -200,9 +205,18 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
                 AudioLogger.log("MultiView slot $slotIndex: player error: ${error.errorCodeName}")
                 setHealth(slotIndex, PlaybackHealth.FROZEN)
             }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                // A radio channel never renders a first frame, so whatever waits for one
+                // (the slot's loading mask) has to hear about it here instead (v5.2.4).
+                if (tracks.isAudioOnly()) onNoVideoTrack?.invoke(slotIndex)
+            }
         }
         state.playerListener = playerListener
         player.addListener(playerListener)
+
+        // Re-pointed after a swap, the tracks are already known and no onTracksChanged follows.
+        if (player.currentTracks.isAudioOnly()) onNoVideoTrack?.invoke(slotIndex)
 
         // Start the per-slot health monitor coroutine
         state.monitorJob = scope.launch {
@@ -268,11 +282,19 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
             0 // Window too short, skip this check
         }
 
-        // Signal 2: Rendered frame stall
+        // Signal 2: Rendered frame stall.
+        // A radio channel has no video track, so it has no decoder counters. Reading that as
+        // "0 frames, still 0 frames" scored a playing radio slot FROZEN and reset it over and
+        // over (v5.2.4). No video track means there is no picture that can freeze.
+        val hasVideo = player.currentTracks.containsType(C.TRACK_TYPE_VIDEO)
         val counters = player.videoDecoderCounters
         val currentFrameCount = counters?.renderedOutputBufferCount ?: 0
 
-        if (state.lastRenderedFrameCount < 0) {
+        if (!hasVideo) {
+            // Nothing to watch: keep the baseline unset
+            state.lastRenderedFrameCount = -1
+            state.noNewFramesSinceMs = 0L
+        } else if (state.lastRenderedFrameCount < 0) {
             // First check — initialize baseline
             state.lastRenderedFrameCount = currentFrameCount
             state.noNewFramesSinceMs = 0L
@@ -571,3 +593,6 @@ class MultiViewStallDetector(private val scope: CoroutineScope) {
         onHealthChanged?.invoke(slotIndex, health)
     }
 }
+
+/** Tracks are known and none of them is video: a radio channel. */
+private fun Tracks.isAudioOnly(): Boolean = !isEmpty && !containsType(C.TRACK_TYPE_VIDEO)

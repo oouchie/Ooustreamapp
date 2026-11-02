@@ -71,6 +71,10 @@ object SessionIntegrityTracker {
     private const val EVENT_UNCLEAN = "UNCLEAN_SHUTDOWN"
     private const val EVENT_BACKGROUND = "BACKGROUND_EVICTION"
     private const val EVENT_REBOOT = "SESSION_ENDED_BY_REBOOT"
+    // The app was updated during a session (the installer kills the old process). Diagnostic
+    // only: before v5.2.4 an update that landed while the app was on screen read as an
+    // UNCLEAN_SHUTDOWN and was copied into the crash log.
+    private const val EVENT_UPDATED = "APP_UPDATED"
     private const val EVENT_EXIT = "PROCESS_EXIT"
 
     /**
@@ -131,6 +135,13 @@ object SessionIntegrityTracker {
             val previousVersion = p.getString(KEY_VERSION, null)
             val previousBoot = p.getLong(KEY_BOOT, 0L)
 
+            // Consume the marker so a death is reported once. A headless WorkManager wake never
+            // reaches onActivityStarted, so it neither re-arms nor clears it, and every wake used
+            // to report the same dead session again: 8 copies ~16 minutes apart in one export
+            // (jwetransp, 2026-10-27), crowding real entries out of the crash log. apply() is
+            // enough: it is ordered before the arm in onActivityStarted.
+            if (previousOpen) p.edit().putBoolean(KEY_OPEN, false).apply()
+
             // NOTE: the session is armed in onActivityStarted, NOT here. Arming per-process
             // would be wrong twice over: (1) a headless WorkManager wake (the 15-min cast
             // backfill) runs Application.onCreate with no Activity ever created, so it would
@@ -165,6 +176,9 @@ object SessionIntegrityTracker {
             }, "session-integrity").start()
         }
     }
+
+    /** "NAME (CODE)": what a session records, and what an update is detected against. */
+    private fun versionString(): String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
 
     /** Wall-clock time of the last boot; stable within a boot, jumps across one. */
     private fun bootEpoch(): Long = System.currentTimeMillis() - SystemClock.elapsedRealtime()
@@ -201,14 +215,18 @@ object SessionIntegrityTracker {
         // low-memory kill during playback, which would poison exactly the signal we came for.
         val rebooted = bootEpoch > 0 &&
             kotlin.math.abs(bootEpoch() - bootEpoch) > BOOT_EPOCH_TOLERANCE_MS
+        // A different version now than when the session started: the installer replaced the app
+        // under the open session. That's the OTA update, not a crash.
+        val updated = version != null && version != versionString()
         val event = when {
             rebooted -> EVENT_REBOOT
+            updated -> EVENT_UPDATED
             // A death while backgrounded is ordinary Android reclaim, not a defect — keep the
             // two apart so triage is not chasing normal behaviour.
             wasForeground -> EVENT_UNCLEAN
             else -> EVENT_BACKGROUND
         }
-        logger.logAppEvent(event, details)
+        logger.logAppEvent(event, if (updated) "$details, updatedTo=${versionString()}" else details)
         // Mirror the real deaths into the PERSISTENT crash log. logAppEvent alone was not enough:
         // it writes to the rotating diagnostic log, and this record is emitted at the start of
         // the session AFTER the death — so a customer who reopens the app and keeps watching
@@ -298,6 +316,9 @@ object SessionIntegrityTracker {
         ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "PERMISSION_CHANGE"
         ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF"
         ApplicationExitInfo.REASON_OTHER -> "OTHER"
+        ApplicationExitInfo.REASON_FREEZER -> "FREEZER"
+        ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE -> "PACKAGE_STATE_CHANGE"
+        ApplicationExitInfo.REASON_PACKAGE_UPDATED -> "PACKAGE_UPDATED"
         else -> "UNKNOWN($reason)"
     }
 
@@ -347,10 +368,7 @@ object SessionIntegrityTracker {
                     ?.putString(KEY_SCREEN, currentScreen)
                     ?.putLong(KEY_STARTED_AT, System.currentTimeMillis())
                     ?.putLong(KEY_BOOT, bootEpoch())
-                    ?.putString(
-                        KEY_VERSION,
-                        "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
-                    )
+                    ?.putString(KEY_VERSION, versionString())
                     ?.apply()
             }
         }

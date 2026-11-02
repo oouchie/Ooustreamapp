@@ -107,6 +107,16 @@ class FavoritesAdapter(
         isFirstLoad = false
     }
 
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        // FavoritesFragment.onRemoveItem shrinks and fades the card out before the row goes away;
+        // without this the recycled view comes back at alpha 0 for the next favorite it shows.
+        holder.itemView.animate().cancel()
+        holder.itemView.alpha = 1f
+        holder.itemView.scaleX = 1f
+        holder.itemView.scaleY = 1f
+    }
+
     // --- Grid ViewHolder ---
 
     inner class GridViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {

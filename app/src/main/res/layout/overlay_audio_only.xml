@@ -31,11 +31,12 @@
             android:gravity="center"
             android:layout_marginBottom="8dp"/>
 
-        <!-- Audio Only label -->
+        <!-- Why there's no picture: Audio only mode, or an audio-only (radio) channel -->
         <TextView
+            android:id="@+id/audio_only_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Audio Only Mode"
+            android:text="@string/audio_only_mode"
             android:textColor="@color/text_secondary"
             android:textSize="16sp"/>
 

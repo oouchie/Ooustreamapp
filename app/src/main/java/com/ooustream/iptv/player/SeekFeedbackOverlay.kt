@@ -75,13 +75,17 @@ class SeekFeedbackOverlay @JvmOverloads constructor(
         animate().cancel()
         visibility = VISIBLE
         alpha = 1f
-        handler?.removeCallbacksAndMessages(null)
-        postDelayed({
-            cumulativeDeltaMs = 0
-            animate().alpha(0f).setDuration(300).withEndAction {
-                visibility = GONE
-            }.start()
-        }, 800)
+        removeCallbacks(fadeOut)
+        postDelayed(fadeOut, 800)
+    }
+
+    // Its own runnable, removed by reference. View.handler is the whole window's queue, so
+    // handler.removeCallbacksAndMessages(null) wiped every other view's timers too (v5.2.4).
+    private val fadeOut = Runnable {
+        cumulativeDeltaMs = 0
+        animate().alpha(0f).setDuration(300).withEndAction {
+            visibility = GONE
+        }.start()
     }
 
     fun showForward() = showSeek(10_000)
@@ -89,7 +93,7 @@ class SeekFeedbackOverlay @JvmOverloads constructor(
 
     fun dismiss() {
         cumulativeDeltaMs = 0
-        handler?.removeCallbacksAndMessages(null)
+        removeCallbacks(fadeOut)
         visibility = GONE
     }
 

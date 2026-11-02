@@ -213,6 +213,8 @@ class VodViewModel @Inject constructor(
                 )
                 _toastEvent.emit("Added to Favorites")
             }
+            // The Favorites list is a one-time read: re-read it so the change shows right away.
+            if (_selectedCategoryId.value == FAVORITES_ID) selectCategory(FAVORITES_ID)
         }
     }
 

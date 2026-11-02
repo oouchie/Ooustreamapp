@@ -1,3 +1,67 @@
+# v5.2.4 (versionCode 117) — favorites after the id change, 4K trial out, remote-friendly Favorites, Live TV categories — 2026-10-29
+
+Why: the 2026-10-29 reports (cysnell, cameron20, keithahg, forevery, allinone) and the provider's
+series-id re-key that day. Plan: `~/.claude/plans/snug-tickling-star.md`. Released 2026-11-01 on the owner's go-ahead ("ship 5.2.4").
+
+- [x] 1. `data/repository/FavoriteRemapper.kt` — re-match dead vod/series favorites by unique exact normalized
+      name; called from the two HomeViewModel prune launches; `FAVORITES_REMAP`; pure `matchByName` JVM-tested
+- [x] 2. `WatchHistoryPruner` — skip the delete when >=3 AND >=50% of history ids vanish (`WATCH_HISTORY_PRUNE_SKIPPED`)
+- [x] 3. Remove the v5.2.3 4K hardware-first trial (2 files deleted, APF restored to f0a9ba4, ~60 refs out of the
+      playback fragment); keep the v5.2.2 refusal + the "title Mbps" readout
+- [x] 4. Favorites with a remote: edit-mode OK removes; info-card Favorites button removes on the Favorites screen;
+      ContentInfoHelper dismisses the card after a favorite toggle; Series/Movies Favorites list refreshes on toggle
+- [x] 5. SessionIntegrityTracker: version change → `APP_UPDATED` (diagnostic only, not the crash log);
+      PACKAGE_STATE_CHANGE / PACKAGE_UPDATED reason names
+- [x] 6. `common/DisplayHdr.kt` — TV HDR/DV types in the export header + DEVICE_TIER; DolbyVisionBaseLayer delegates
+- [x] 7. Fresh player screen after a failed same-player retry on a video decoder error (VOD/SERIES only, max 2)
+- [x] 8. Live TV (TV, full-bleed): LEFT/RIGHT on a channel steps category; skips empty ones; chip row follows;
+      menu only from Favorites
+- [x] 9. Settings → Clear Cache clears only caches (content, catalog, EPG, both Coil loaders); keeps favorites,
+      history, parental settings
+- [x] 10. Slow-connection tip in the player (`SlowConnectionTipOverlay`, owner's three support steps)
+- [x] 11. SessionIntegrityTracker consumes the open-session marker in `install()` (one death = one entry)
+- [x] 12. Favorites Undo bar keeps focus while UNDO is focused; Live TV category-step focus fixes
+- [x] 13. Radio channels (2026-10-30, "Radio: 70s on 7" on .84): frame watchdog stands down when there's no
+      picture (no video track, or Audio only mode); audio-only screen shown for audio-only channels, placed
+      directly above the video; the 5 player overlays cancel only their own fade timer (they wiped the whole
+      window's queue, which left the slow-connection card stuck on screen)
+      Verified on .84 (release build, 10:30-10:33): 70s on 7 played 67s with no flush, buffering or rebuild
+      (old build: flush at 9s, give-up at ~35s); radio screen shows the channel name and follows zaps (90s on 9);
+      `dumpsys activity top` shows it directly above the video, under the backdrop, zap list, banner and controls;
+      a video channel zapped through still drew its first frame in 1.5s. NOT verified: the stuck-card fix
+      (no repro attempted), the watchdog's normal ladder on a frozen video channel, Ooustick.
+      MultiView (owner OK 2026-10-30): `MultiViewStallDetector` had the same null-as-0 frame rule, so a radio
+      slot read FROZEN and got reset (8s on the audio slot, 4s elsewhere). Now: no video track = frame check
+      stands down; `onNoVideoTrack` (from onTracksChanged, or at attach when tracks are already known) clears
+      the slot's spinner/mask and keeps the channel logo up (`MultiViewSlotView.showAudioOnly`). Before this a
+      radio tile's mask was only ever cleared by the bogus reset. A swap now re-points the detector to the new
+      slot numbers (it judged health and cleared masks on the wrong tile); `clearChannel()` drops the mask/logo.
+      Built 10:50. NOT device-tested yet: .84 was in use. Still open (pre-existing): after a swap the manager's
+      own onPlayerError listener still reports the OLD slot number, so an error can reset the other tile.
+- [x] Release bookkeeping: versionCode 117 / 5.2.4, update.json, CLAUDE.md
+- [x] Verify: assembleRelease, static greps, JVM matchByName, device walk if a stick answers
+
+## Review (2026-11-01, released as v5.2.4 / 117)
+All 13 items are built and shipped; "[x]" means built, not device-verified. What was actually checked:
+- **Build:** assembleRelease clean for both ABIs (versionCode 117 / 5.2.4 read back from each APK).
+- **JVM:** the real `FavoriteNameMatch` matcher, 17/17 (exact, case/punctuation, 4K vs HD, duplicates, dedupe).
+- **Static:** no `HardwareFirst4k|HardwareTrialJudge|Hardware4kTrial|HW_4K` left; `AudioPipelineFactory`
+  identical to `f0a9ba4`.
+- **.84 (AFTKRT, release builds, 2026-10-30):** install over 5.2.3 while on screen → signed in, About
+  "v5.2.4", no crash-log entry for the install; Favorites edit mode → OK removed the focused card, focus
+  stayed in the grid; Live TV RIGHT ×7 with the chip row following (before the park change); radio
+  (70s on 7) 67s with no flush/rebuild, audio-only screen followed zaps, a video channel drew its first
+  frame in 1.5s.
+- **NOT verified:** LEFT / LEFT-LEFT menu gate on the final build; Undo with the remote; Clear Cache keeping
+  data; the slow tip on screen; the fresh restart (needs the Realtek decoder failure); the trial removal on
+  an mt8695 stick; remapper + pruner guard against real dead ids; "Display HDR" line; MultiView with a
+  radio slot; a VOD/episode on the final build; Ooustick (.222/.129 not answering); phone.
+- **Owner to-do on .84:** the walk removed two of the stick's live-channel favorites, "GA | Atlanta | NBC
+  WXIA" and "US: ESPN FHD" (screenshots before/after); re-add them.
+- **Still open (pre-existing):** after a MultiView swap the manager's onPlayerError reports the OLD slot
+  number.
+
+
 # Hardware-first 4K on mt8695 + title bitrate readout — 2026-10-29
 
 Why: shanewi (AFTSS, mt8695, 5.2.2) gets the 4K refusal on Marshals S2E2 (`hvc1.1.6.L150.90`,
