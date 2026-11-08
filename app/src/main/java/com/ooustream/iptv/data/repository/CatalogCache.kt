@@ -3,6 +3,8 @@ package com.ooustream.iptv.data.repository
 import com.ooustream.iptv.data.model.LiveStream
 import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.VodStream
+import com.ooustream.iptv.data.remote.VodListReader
+import com.ooustream.iptv.parental.AdultCategoryDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +27,13 @@ import javax.inject.Singleton
  *
  * Held for [TTL_MS] and then dropped so a 1 GB stick gets the heap back; a request after expiry
  * re-fetches. Single-flight per list: concurrent callers share one download.
+ *
+ * Adult movies are NOT kept (2026-11-04): the provider's adult categories grew to 125k titles in one
+ * evening, four times the rest of the catalogue, and holding them filled a 384MB heap (ANRs on the
+ * Movies screens). Nothing that reads this list shows adult titles anyway — they are reachable only
+ * inside their own category, which fetches that category on its own. The list is read one movie at
+ * a time and an adult row is dropped on the spot; only its id is kept ([vodAdult]), which is what
+ * [com.ooustream.iptv.parental.AdultContentGuard] needs.
  */
 @Singleton
 class CatalogCache @Inject constructor(
@@ -36,6 +45,7 @@ class CatalogCache @Inject constructor(
     private val liveMutex = Mutex()
 
     @Volatile private var vod: List<VodStream>? = null
+    @Volatile private var vodAdult: AdultVod? = null
     @Volatile private var vodAt = 0L
     @Volatile private var series: List<Series>? = null
     @Volatile private var seriesAt = 0L
@@ -45,16 +55,50 @@ class CatalogCache @Inject constructor(
 
     private fun fresh(at: Long) = System.currentTimeMillis() - at < TTL_MS
 
-    suspend fun vod(): List<VodStream> {
-        vod?.takeIf { fresh(vodAt) }?.let { return it }
+    /** Adult movie categories (by name) and the sorted ids of every movie filed under them. */
+    class AdultVod(val categories: Set<String>, val ids: IntArray)
+
+    /** The whole movie list minus adult titles. */
+    suspend fun vod(): List<VodStream> = loadVod().first
+
+    /** What [vod] left out. Shares its download. */
+    suspend fun vodAdult(): AdultVod = loadVod().second
+
+    private suspend fun loadVod(): Pair<List<VodStream>, AdultVod> {
+        cachedVod()?.let { return it }
         return vodMutex.withLock {
-            vod?.takeIf { fresh(vodAt) }?.let { return@withLock it }
-            val fetched = contentRepository.getVodStreams()
-            vod = fetched
+            cachedVod()?.let { return@withLock it }
+            val adultCategories = AdultCategoryDetector
+                .findAdultCategories(contentRepository.getVodCategories())
+                .map { it.categoryId }
+                .toSet()
+            val kept = ArrayList<VodStream>(40_000)
+            var adultIds = IntArray(1024)
+            var adultCount = 0
+            val slimmer = VodListReader.Slimmer()
+            contentRepository.streamVodStreams { movie ->
+                if (movie.categoryId in adultCategories) {
+                    if (adultCount == adultIds.size) adultIds = adultIds.copyOf(adultIds.size * 2)
+                    adultIds[adultCount++] = movie.streamId
+                } else {
+                    kept.add(slimmer.slim(movie))
+                }
+            }
+            kept.trimToSize()
+            val ids = adultIds.copyOf(adultCount).also { it.sort() }
+            val adult = AdultVod(adultCategories, ids)
+            vod = kept
+            vodAdult = adult
             vodAt = System.currentTimeMillis()
             scheduleExpiry()
-            fetched
+            kept to adult
         }
+    }
+
+    private fun cachedVod(): Pair<List<VodStream>, AdultVod>? {
+        val v = vod ?: return null
+        val a = vodAdult ?: return null
+        return if (fresh(vodAt)) v to a else null
     }
 
     suspend fun series(): List<Series> {
@@ -94,6 +138,7 @@ class CatalogCache @Inject constructor(
     /** Drop every list — "Update Playlist" and a provider change call this. */
     fun invalidate() {
         vod = null
+        vodAdult = null
         series = null
         live = null
         vodAt = 0L
@@ -105,7 +150,10 @@ class CatalogCache @Inject constructor(
         expiryJob?.cancel()
         expiryJob = scope.launch {
             delay(TTL_MS + 1_000)
-            if (!fresh(vodAt)) vod = null
+            if (!fresh(vodAt)) {
+                vod = null
+                vodAdult = null
+            }
             if (!fresh(seriesAt)) series = null
             if (!fresh(liveAt)) live = null
         }

@@ -35,9 +35,13 @@ class FavoriteRemapper @Inject constructor(
     private val vodDone = AtomicBoolean(false)
     private val seriesDone = AtomicBoolean(false)
 
-    /** @param catalog the RAW movie list, unfiltered (see [WatchHistoryPruner.pruneVod]). */
-    suspend fun remapVod(catalog: List<VodStream>) =
-        remap("vod", vodDone, catalog, { it.streamId }) {
+    /**
+     * @param catalog the RAW movie list, unfiltered (see [WatchHistoryPruner.pruneVod]).
+     * @param alsoLive sorted ids that exist but are not in [catalog] — the adult titles
+     *   [CatalogCache] leaves out. Without them every adult favorite would read as deleted.
+     */
+    suspend fun remapVod(catalog: List<VodStream>, alsoLive: IntArray = IntArray(0)) =
+        remap("vod", vodDone, catalog, { it.streamId }, alsoLive) {
             FavoriteNameMatch.Title(it.streamId, it.name, it.streamIcon, it.categoryId, it.containerExtension)
         }
 
@@ -52,6 +56,7 @@ class FavoriteRemapper @Inject constructor(
         done: AtomicBoolean,
         catalog: List<T>,
         idOf: (T) -> Int,
+        alsoLive: IntArray = IntArray(0),
         toTitle: (T) -> FavoriteNameMatch.Title
     ) = withContext(Dispatchers.Default) {
         // An empty catalog is a failed fetch, not "everything is gone".
@@ -62,7 +67,7 @@ class FavoriteRemapper @Inject constructor(
             val favorites = favoriteDao.getFavoritesListByType(type)
             if (favorites.isEmpty()) return@withContext
             val live = catalog.mapTo(HashSet(catalog.size * 2)) { idOf(it) }
-            val dead = favorites.filter { it.streamId !in live }
+            val dead = favorites.filter { it.streamId !in live && alsoLive.binarySearch(it.streamId) < 0 }
             if (dead.isEmpty()) return@withContext
 
             val steps = FavoriteNameMatch.plan(

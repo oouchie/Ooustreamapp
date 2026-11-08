@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.ooustream.iptv.common.BaseViewModel
 import com.ooustream.iptv.data.local.entity.WatchProgressEntity
 import com.ooustream.iptv.data.model.VodInfo
+import com.ooustream.iptv.data.model.VodStream
 import com.ooustream.iptv.data.repository.ContentRepository
 import com.ooustream.iptv.data.repository.WatchProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,18 +55,30 @@ class VodDetailViewModel @Inject constructor(
         if (categoryId.isNullOrBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             try {
-                val list = contentRepository.getVodStreams(categoryId)
                 // Parental controls apply here too — a blocked category must never leak in
-                // through a side door. (Same category as the movie, but the filter is the
-                // single source of truth, and it also covers the temporary-unlock window.)
-                val allowed = contentFilterManager.filterContent("vod", list) { it.categoryId }
-                _similar.value = allowed.asSequence()
-                    .filter { it.streamId != vodId }
-                    .map { it to (it.rating5based ?: it.rating?.toDoubleOrNull()?.div(2) ?: 0.0) }
-                    .sortedByDescending { it.second }
-                    .map { it.first }
-                    .take(20)
-                    .toList()
+                // through a side door. Every title here shares the movie's category, so one
+                // check covers the list.
+                if (contentFilterManager.filterContent("vod", listOf(categoryId)) { it }.isEmpty()) {
+                    _similar.value = emptyList()
+                    return@launch
+                }
+                // Streamed and kept to the best SIMILAR_COUNT: a category can hold 125k titles
+                // (bp-v2 adult categories, 2026-11-04), and holding the whole list here while the
+                // category grid holds it too ran the heap out.
+                val best = java.util.PriorityQueue<Pair<VodStream, Double>>(
+                    SIMILAR_COUNT + 1, compareBy { it.second }
+                )
+                contentRepository.streamVodStreams(categoryId) { movie ->
+                    if (movie.streamId == vodId) return@streamVodStreams
+                    val score = movie.rating5based ?: movie.rating?.toDoubleOrNull()?.div(2) ?: 0.0
+                    if (best.size < SIMILAR_COUNT) {
+                        best.add(movie to score)
+                    } else if (score > best.peek()!!.second) {
+                        best.poll()
+                        best.add(movie to score)
+                    }
+                }
+                _similar.value = best.sortedByDescending { it.second }.map { it.first }
             } catch (_: Exception) {
                 _similar.value = emptyList()
             }
@@ -86,5 +99,9 @@ class VodDetailViewModel @Inject constructor(
 
     fun buildStreamUrl(streamId: Int, ext: String): String {
         return contentRepository.buildVodStreamUrl(streamId, ext)
+    }
+
+    private companion object {
+        const val SIMILAR_COUNT = 20
     }
 }

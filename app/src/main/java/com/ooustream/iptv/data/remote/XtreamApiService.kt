@@ -8,8 +8,10 @@ import com.ooustream.iptv.data.model.Series
 import com.ooustream.iptv.data.model.SeriesInfo
 import com.ooustream.iptv.data.model.VodInfo
 import com.ooustream.iptv.data.model.VodStream
+import okhttp3.ResponseBody
 import retrofit2.http.GET
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface XtreamApiService {
 
@@ -55,6 +57,21 @@ interface XtreamApiService {
         @Query("action") action: String = "get_vod_streams",
         @Query("category_id") categoryId: String? = null
     ): List<VodStream>
+
+    /**
+     * The same list as [getVodStreams], as a raw stream so the caller can read it one movie at a
+     * time ([com.ooustream.iptv.data.remote.VodListReader]) and keep only what it needs. The bulk
+     * list is ~30k titles plus whatever the provider files under adult categories (125k on
+     * 2026-11-04) — materializing all of it filled a 384MB heap.
+     */
+    @Streaming
+    @GET("player_api.php")
+    suspend fun getVodStreamsRaw(
+        @Query("username") username: String,
+        @Query("password") password: String,
+        @Query("action") action: String = "get_vod_streams",
+        @Query("category_id") categoryId: String? = null
+    ): ResponseBody
 
     @GET("player_api.php")
     suspend fun getSeries(

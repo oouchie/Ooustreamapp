@@ -1,3 +1,104 @@
+# 2026-11-04 triage — 4 customer exports (Oouchie247, stefanig, qwen2384, ckp912) — built + device-checked, NOT released
+
+## What the logs show (verified from the exports)
+- **Oouchie247** (AFTKRT .742f, 5.2.4): two "crashes" = ANRs, both with the Java heap FULL
+  (`Heap: 0% free, 384MB/384MB` at 19:48 on MoviesSpotlight, `328MB/328MB; 8,047,557 objects` at 23:28 on
+  VodFragment). GC marking up to 17.7s. Also 6 LOW_MEMORY kills since 10-30 (pss up to 524MB).
+  `ADULT_GUARD items vod=` 69,280 (19:45) → **125,768** (23:28), 2 adult VOD categories.
+  The 19:48 ANR came ~25s after leaving "18+: 4K CFNM" (AVC 3840x2160 on HW, played fine).
+- **stefanig** (AFTSS mt8695, 900MB, 5.2.4) "buffering": `ADULT_GUARD vod=` 66,754 → 85,221 → 87,274 → 89,234
+  in one hour. Heap `used=208MB total=208MB free=0MB` 4s after the 89k resolve, as Ted Lasso S2E4 started.
+  Ted Lasso (mkv, AVC 1080p + DTS-HD 6ch, 43 subtitle tracks, lowMem=true) stalls every attempt ~2s in with
+  `buffered≈200ms` STATIC for 30s, then the socket idles (`loaded=0KB` ×3) and dies `SocketTimeoutException`.
+  Her live channels the same evening refilled in ~1s at 10–21 Mbps.
+- **qwen2384** (AFTDCT31, **still on 5.1.1**): adult only 694 titles (different bouquet). "Badland Rising (2026)"
+  (168423.mkv) fails `No valid varint length mask found` at the same spot (~1h37m in) on two separate days →
+  damaged file at that point; retries re-hit it. 12 UNCLEAN_SHUTDOWNs on Search/Settings/Home (API 28 = no
+  exit reason available). Long binges otherwise play fine.
+- **ckp912** (AFTKRT, 5.2.4): from 21:21 every live channel gets `state=ENDED` (server closed the stream
+  cleanly, no error) every ~15–35s, app reconnects in ~1–2s. 1 Gbps wifi. App holds ONE stream (full-bleed
+  preview is released before fullscreen — checked `goFullscreen()`). Earlier that night CNN ran 18 min clean.
+  The slow-connection tip fired and told them to restart their router — wrong advice for this pattern.
+
+## Root cause (main one) — the adult catalogue exploded tonight and the app holds all of it
+NOT verified against the panel (portal DB access was denied) — inferred from the app's own counts.
+1. `AdultContentGuard.resolve()` downloads every adult category's full `VodStream` list (125k objects,
+   transient), keeps a boxed `Set<Int>`, and **persists 125k ids as a SharedPreferences StringSet** — held
+   in memory forever by SharedPreferencesImpl, re-written as XML every 15 min, `apply()` is waited on by
+   the main thread at onPause/onStop (QueuedWork).
+2. `CatalogCache.vod()` (Home, Spotlight, Movies, Search, recommendations) is the bulk `get_vod_streams` —
+   which (inferred) now also carries the adult titles: ~30k normal → up to ~155k objects.
+3. Opening the adult category: 60k+ `VodStream` → 60k+ `PosterItem` built ON THE MAIN THREAD (twice:
+   movies + watchProgressMap emissions), plus a Room `IN (...)` with 60k params (fails silently).
+
+## Fix plan
+- [x] 1. AdultContentGuard: derive adult ids from the bulk list already in memory (no second download);
+      hold them as a sorted `IntArray`; persist to a small binary file in filesDir, not SharedPreferences;
+      one-time delete of the old huge prefs keys.
+- [x] 2. CatalogCache: drop adult-category items while parsing (streaming Gson read of `get_vod_streams`,
+      skipping rows whose category is adult) so they are never materialized. Adult titles stay reachable
+      only through their own category (same rule as today).
+- [x] 3. Movies/Series category grid: build PosterItems off the main thread; chunk the watch-progress
+      query (≤900 ids) and only for what's visible; cap a giant category (e.g. first 3,000 + "use Search")
+      — owner decision.
+- [x] 4. stefanig: confirm whether the 20MB low-memory byte cap deadlocks on this file (cap full while
+      buffered stays 0.2s → loading stops, `prioritizeTimeOverSizeThresholds=false`). Repro on a 1GB box
+      (Ooustick) with Ted Lasso S2E4 (id 1224083). If confirmed: let loading continue below minBuffer
+      even when the byte cap is hit.
+- [x] 5. Slow-connection tip: don't count `LIVE_STREAM_ENDED` reconnects as rebuffers (ckp912).
+- [ ] 6. (optional) MKV varint error mid-file: skip ~10s past the bad spot instead of retrying the same byte.
+- [x] Verify: install on .82/.84 (release build), open the adult 4K category, Home, Movies; `dumpsys meminfo`
+      before/after; no ANR in `dumpsys dropbox`. Ooustick walk for #3/#4.
+
+## Review (2026-11-05, release builds on .82 AFTKRT + .129 Ooustick)
+**What changed**
+- `data/remote/VodListReader.kt` (new): streams `get_vod_streams` item by item (Gson JsonReader, Retrofit
+  `@Streaming` `getVodStreamsRaw`); `Slimmer` shares one copy of repeated values (type, category, ext,
+  rating, added) and drops num/custom_sid/direct_source (read nowhere for movies).
+- `CatalogCache`: the bulk movie list is streamed + slimmed and adult-category rows are never kept;
+  their ids go to a sorted IntArray (`vodAdult()`). Behaviour change: app-wide Search, Home, Spotlight and
+  the Movies "By decade"/"Recently Added" no longer contain adult titles; adult categories now sit in
+  "More services" without a count (their titles aren't in the index). Still browsable in their category.
+- `AdultContentGuard`: sorted IntArrays + binary file `filesDir/adult_content_guard.bin` (temp+rename);
+  movie ids come from `CatalogCache.vodAdult()` (no second download); old prefs XML deleted unopened.
+- `FavoriteRemapper` / `WatchHistoryPruner` take the adult ids as `alsoLive`, so adult favorites/history
+  are not treated as deleted now that the catalogue leaves them out.
+- Movies grid (`VodFragment`): shows the first 3,000; note "Showing the first 3,000 of N titles. Select
+  the search icon…" in the hint line (also on phone layouts when capped); the header search filters the
+  whole category. Watch progress only for the shown titles; `getProgressForIds` chunked at 900.
+  Per-category list in `VodViewModel` streamed + slimmed.
+- Series grid (`SeriesFragment`): same 3,000 cap + note ("Recently Added" = 34,533 series). Verified on .82:
+  note shown, grid scrolls, Dalvik alloc ~86 MB.
+- `VodDetailViewModel` "More like this": streamed, keeps the best 20 (was: whole category in memory).
+- `VodCastBackfillWorker`: uses the shared catalogue (was a full 165k download every 15 min).
+- `RecommendationEngine`: never fetches an adult category.
+- Slow-connection tip ignores the reconnect after a live `STATE_ENDED` (5s grace).
+
+**Measured**
+- .82, adult "18+ | 4K Nutflix" (65,218 titles): opens, note shown, grid scrolls, detail page + More like
+  this (20) fill. Dalvik alloc 127–135 MB before slimming → 90–100 MB after. Header search "Angels"
+  filters all 65k, note gives way to the normal hint. Home: 0 adult titles on screen.
+- Home cold start alloc: .82 153 → ~99–109 MB; .129 115 → ~80 MB (single samples, no forced GC).
+- `dumpsys dropbox`: no ooustream ANR/crash on either stick during the session.
+- stefanig repro on .129 (same low-memory 20 MB byte cap): Ted Lasso S2E4 "SD" copy is really 1080p AVC +
+  DTS-HD 6ch at ~28 Mbps (position vs bytes). Ooustick pulled ~25 Mbps and played with short rebuffers —
+  NO deadlock. Her log: ~2 Mbps delivered → the file can't play on her connection. Cause #4 rejected,
+  no BufferConfigs change.
+- The provider re-imported everything: Movies "Recently Added" = 135,578 non-adult titles (was ~29k in
+  October); Series "Recently Added" 34,533; categories are now genres + 4K + language + 2 services.
+
+**NOT verified**
+- The guard's binary file and the old prefs delete (release build: no `run-as`).
+- An AFTSS (stefanig's model) and .84; phone.
+- The slow-tip change on a real server-closed live stream (needs ckp912's pattern).
+- Item 6 (MKV varint skip) not done.
+- Finding, not changed: the "SD" quality badge is shown for a 1080p remux.
+
+## Customer replies (no app change needed)
+- qwen2384: update to 5.2.4 (Settings → Check for updates). Badland Rising is damaged ~1h37m in — report
+  to the provider.
+- ckp912: ask whether another device uses the same login; check active connections for the line on the panel.
+
 # v5.2.4 (versionCode 117) — favorites after the id change, 4K trial out, remote-friendly Favorites, Live TV categories — 2026-10-29
 
 Why: the 2026-10-29 reports (cysnell, cameron20, keithahg, forevery, allinone) and the provider's
@@ -223,3 +324,17 @@ id); Home's genre rows are service rows on this panel. Neither changed.
 - [ ] Not checked: Ooustick, low-memory stick (no background video by design), PSS while playing.
 - Seen, not fixed: a dark strip on NFL Network's right edge (ESPN 2 fills) — looks like the stream.
 - Detail-page season list overlaps "Start over" on All American (8 seasons) — check before Series.
+
+
+## Search ranking — "Scream (1996)" never showed (2026-11-07)
+Found via the portal's title requests: Cyrus Snell asked for "Scream 1996" (also Doctor Who 2005, Warehouse 13).
+Reproduced against the live list with the owner line and the app's exact filter: "scream" → 147 non-adult
+matches in `added`-ascending order, "Scream (1996)" at #122, row shows 60. "scream 1996" → 0 (parentheses).
+- [x] `search/SearchRanker.kt` — normalise, parse a trailing year, tier score, tie-breaks (year, plain copy,
+      release year, added); ASCII fast path + first-token pre-filter.
+- [x] `ContentRepository.search` ranks live / vod / series through it; cast-only matches still last.
+- [x] JUnit 4 added to the build; `SearchRankerTest` 7 cases pass (`:app:testDebugUnitTest`).
+- [x] `:app:assembleDebug` clean (both ABIs). Timing at 135k synthetic titles: 17 ms vs 7 ms old.
+- [ ] Device check on .82 / .129: type "scream", "scream 1996", "jay z", "doctor who 2005".
+- [ ] Release v5.2.5 (118): bump, `update.json`, assembleRelease, GitHub release. NOTE the working tree also
+      carries the unreleased 2026-11-05 adult-guard / streamed-list work — it ships with the same build.

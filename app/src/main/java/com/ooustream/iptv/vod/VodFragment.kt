@@ -78,7 +78,7 @@ class VodFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
-        navHints.text = "OK: Play Movie \u2022 Long-press: More Info \u2022 Back: Home"
+        navHints.text = NAV_HINTS
 
         // Mobile: keep the header visible — its search icon is the ONLY in-screen movie filter,
         // and the bottom nav's Search tab is a different (global) search. Hide just the decorative
@@ -268,9 +268,11 @@ class VodFragment : Fragment(), KeyEventHandler {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.movies.collect { movies ->
-                    // Load watch progress for the new movie list
-                    viewModel.loadWatchProgress(movies.map { it.streamId })
                     updateMovieList(posterAdapter)
+                    // Watch progress for the titles actually on screen (at most MAX_GRID_ITEMS).
+                    // updateMovieList can defer itself mid-layout; then the deferred pass shows
+                    // the new list and onResume / the next emission loads its progress.
+                    viewModel.loadWatchProgress(filteredMovies.map { it.streamId })
                     // Swap from skeleton to real adapter on first data arrival
                     if (!skeletonSwapped && movies.isNotEmpty()) {
                         posterGrid.adapter = posterBridgeAdapter
@@ -367,11 +369,16 @@ class VodFragment : Fragment(), KeyEventHandler {
     private fun updateMovieListInternal(posterAdapter: ArrayObjectAdapter, grid: RecyclerView) {
         val movies = viewModel.movies.value
         val progressMap = viewModel.watchProgressMap.value
-        filteredMovies = if (searchFilter.isEmpty()) {
+        val matching = if (searchFilter.isEmpty()) {
             movies
         } else {
-            movies.filter { it.name.lowercase().contains(searchFilter) }
+            movies.filter { it.name.contains(searchFilter, ignoreCase = true) }
         }
+        // A category can hold over 100k titles (bp-v2's adult categories, 2026-11-04). Building
+        // a card for each filled the heap and froze the screen, so the grid shows the first
+        // MAX_GRID_ITEMS and the note points at the search box, which still searches all of them.
+        filteredMovies = if (matching.size > MAX_GRID_ITEMS) matching.take(MAX_GRID_ITEMS) else matching
+        updateCapNote(matching.size)
         val savedPos = TouchGridSetup.currentPosition(grid)
         val newItems = filteredMovies.map { movie ->
             val progress = progressMap[movie.streamId.toString()]
@@ -398,6 +405,24 @@ class VodFragment : Fragment(), KeyEventHandler {
         if (newItems.isNotEmpty()) {
             val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, newItems.size - 1)
             try { TouchGridSetup.setSelected(grid, target, newItems.size) } catch (_: Exception) { }
+        }
+    }
+
+    /** Swaps the hint line for the "first 3,000" note while a list is cut short. */
+    private fun updateCapNote(total: Int) {
+        val hints = view?.findViewById<TextView>(R.id.vod_nav_hints) ?: return
+        val isTv = DeviceUtils.isTV(requireContext())
+        if (total > MAX_GRID_ITEMS) {
+            val where = if (isTv) "Select the search icon at the top" else "Tap the search icon at the top"
+            hints.text = String.format(
+                java.util.Locale.US,
+                "Showing the first %,d of %,d titles. %s and type a name to find any of them.",
+                MAX_GRID_ITEMS, total, where
+            )
+            hints.visibility = View.VISIBLE
+        } else {
+            hints.text = NAV_HINTS
+            hints.visibility = if (isTv) View.VISIBLE else View.GONE
         }
     }
 
@@ -487,6 +512,8 @@ class VodFragment : Fragment(), KeyEventHandler {
 
     companion object {
         private const val ARG_CATEGORY_ID = "category_id"
+        private const val MAX_GRID_ITEMS = 3_000
+        private const val NAV_HINTS = "OK: Play Movie \u2022 Long-press: More Info \u2022 Back: Home"
 
         fun newInstance(categoryId: String?): VodFragment = VodFragment().apply {
             arguments = Bundle().apply { putString(ARG_CATEGORY_ID, categoryId) }

@@ -31,8 +31,17 @@ class WatchProgressRepository @Inject constructor(
     suspend fun getSeriesEpisodes(seriesId: Int): List<WatchProgressEntity> =
         watchProgressDao.getSeriesEpisodes(seriesId)
 
+    /**
+     * Chunked: SQLite before Android 11 allows at most 999 bound variables, and one adult movie
+     * category on bp-v2 held 125k titles (2026-11-04). An unchunked IN list threw there.
+     */
     suspend fun getProgressForIds(streamIds: List<String>): List<WatchProgressEntity> =
-        watchProgressDao.getProgressForIds(streamIds)
+        if (streamIds.size <= MAX_IN_ARGS) watchProgressDao.getProgressForIds(streamIds)
+        else streamIds.chunked(MAX_IN_ARGS).flatMap { watchProgressDao.getProgressForIds(it) }
+
+    private companion object {
+        const val MAX_IN_ARGS = 900
+    }
 
     fun getCompletedContent(): Flow<List<WatchProgressEntity>> =
         watchProgressDao.getCompletedContent()

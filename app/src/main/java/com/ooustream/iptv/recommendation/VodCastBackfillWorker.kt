@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ooustream.iptv.data.local.dao.VodCastDao
+import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -25,6 +26,7 @@ class VodCastBackfillWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val contentRepository: ContentRepository,
+    private val catalogCache: CatalogCache,
     private val vodCastDao: VodCastDao
 ) : CoroutineWorker(context, params) {
 
@@ -40,7 +42,10 @@ class VodCastBackfillWorker @AssistedInject constructor(
             val doneAt = prefs.getLong(KEY_DONE_AT, 0L)
             if (doneAt > 0L && now - doneAt < RESCAN_INTERVAL_MS) return Result.success()
 
-            val allVod = contentRepository.getVodStreams()
+            // The shared catalogue, adult titles already left out: their cast is never searched,
+            // and the full list (165k titles on 2026-11-04) re-downloaded every 15 minutes in
+            // the app's own process was a heap problem of its own.
+            val allVod = catalogCache.vod()
             val fetched = vodCastDao.getFetchedIds().toSet()
             val pending = allVod.asSequence()
                 .map { it.streamId }

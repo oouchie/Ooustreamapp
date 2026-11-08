@@ -30,6 +30,23 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 > - Bumping `version_name`/`version_code` here is all that is needed; **no portal
 >   deploy** is required for the assistant to learn about a release.
 
+## Search ranks results (2026-11-07, in the working tree — not released)
+`search/SearchRanker.kt` (pure Kotlin, JUnit: `app/src/test/.../SearchRankerTest.kt`, 7 cases from the live
+catalogue; run `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew
+:app:testDebugUnitTest --tests '*SearchRankerTest'`). **Why:** `ContentRepository.search` filtered with a raw
+`contains` and `SearchFragment` showed `take(60)` of the list in CATALOGUE order = `added` ascending, i.e. the
+60 OLDEST matches. "Scream" had 147 matches and "Scream (1996)" was #122 — never on screen (customer Cyrus
+Snell, portal title request). "Scream 1996" matched nothing (the catalogue writes "Scream (1996)"); "Jay Z"
+missed "JAŸ-Z in 8". **Now:** match on normalised text (lower, diacritics folded, punctuation → space), a
+trailing year in the query is parsed and PREFERRED (other years still listed, lower), tiers exact > starts-with
+> word boundary > substring, then year match, plain copy before its 4K/4KDV twins, newer release year, newer
+`added`. Cast/director-only matches keep their place at the end. The 60-card cap is unchanged (heap). Cost:
+ASCII fast path (no regex / Normalizer) + first-token `contains` pre-filter — 135k synthetic titles, best of 5
+on an M-series Mac: "scream" 17 ms (old contains 7 ms), "a" 25 ms. Also used for live and series rows.
+`testImplementation("junit:junit:4.13.2")` was added for this — the app had no JVM test source set before.
+⬜ Release as v5.2.5 (versionCode 118) with a customer changelog line, e.g. "Search now finds the title you
+typed first, and understands a year after the name (Scream 1996)." Not yet verified on a device.
+
 ## PERFORMANCE REQUIREMENTS
 
 Before writing any code that touches ExoPlayer, UI rendering, RecyclerView, image loading, memory, or network — read and follow `PERFORMANCE_AGENT.md` in the project root. Every ExoPlayer instance must use the standard configuration pattern. Every RecyclerView must follow the 60fps rules. Every player release must use the safe release pattern. No exceptions.
@@ -390,6 +407,13 @@ Conventions for interpreting the exported debug report so customer reports aren'
   provider id change prunes on its first launch after the next update, so it reads as "the update
   wiped my history" when the cause was the id change (the pruner is identical 5.2.0–5.2.3). v5.2.4
   logs `WATCH_HISTORY_PRUNE_SKIPPED` instead when ≥3 and ≥50% of the history ids vanish at once.
+- **Check `ADULT_GUARD items vod=` first on an ANR / low-memory wave.** On 2026-11-04 the provider's
+  adult movie categories went 69k → 125k titles in an evening and the whole catalogue was re-imported
+  (135k non-adult movies, 34.5k series "Recently Added"). Heap-full ANRs followed. Since the 2026-11-05
+  working-tree fix: adult rows never enter `CatalogCache` (so not in Search/Home/Spotlight), the guard keeps
+  sorted IntArrays in `filesDir/adult_content_guard.bin`, movie lists are streamed + slimmed
+  (`VodListReader.Slimmer`), and the Movies/Series grids show the first 3,000 with a "use the search icon"
+  note. Plan + measurements: `tasks/todo.md`.
 - **Radio channels have no video track.** A live channel with only an audio track (the "Radio:"
   categories, AAC ~172 kbps) never logs `DECODER_INIT` video or a first frame. Before v5.2.4 the
   frame watchdog read that as a frozen picture and ended in a false "format not supported".
@@ -460,7 +484,7 @@ Conventions for interpreting the exported debug report so customer reports aren'
 | `data/local/` | 1 | OoustreamDatabase (Room v10) |
 | `data/` | 1 | UserPlanManager |
 | `data/model/` | 12 | AuthResponse, Category, ContentType, EpgProgram, LiveStream, Series, SeriesInfo, StreamUrlBuilder, VodInfo, VodStream, XtreamCredentials |
-| `data/remote/` | 3 | AuthInterceptor, SafeSeriesInfoDeserializer, XtreamApiService |
+| `data/remote/` | 4 | AuthInterceptor, SafeSeriesInfoDeserializer, XtreamApiService, VodListReader (streaming `get_vod_streams` reader + `Slimmer`, 2026-11-05) |
 | `data/repository/` | 9 | AuthRepository, ContentRepository, ContentCacheRepository, CredentialStore, EpgCacheRepository, FavoriteRepository, PredictivePreFetcher, SearchIndexRepository, WatchAnalyticsRepository, FavoriteRemapper + FavoriteNameMatch (v5.2.4) |
 | `di/` | 3 | AppModule, DatabaseModule, NetworkModule |
 | `epg/` | 2 | ChannelNameParser, SmartEpgFiller |

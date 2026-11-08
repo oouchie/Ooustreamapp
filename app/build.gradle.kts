@@ -19,8 +19,8 @@ android {
         applicationId = "com.ooustream.iptv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 117
-        versionName = "5.2.4"
+        versionCode = 118
+        versionName = "5.2.5"
 
         // TMDB API key for poster quality fallback
         val localPropsFile = rootProject.file("local.properties")
@@ -93,6 +93,8 @@ android {
 }
 
 dependencies {
+    // JVM unit tests (`./gradlew :app:testDebugUnitTest`) — pure-Kotlin helpers such as SearchRanker.
+    testImplementation("junit:junit:4.13.2")
     // Compose for TV — trial screen (Movies "Spotlight + Rows"). Kotlin 2.x only.
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

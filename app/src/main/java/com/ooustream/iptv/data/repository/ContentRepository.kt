@@ -1,9 +1,12 @@
 package com.ooustream.iptv.data.repository
 
+import com.google.gson.Gson
 import com.ooustream.iptv.data.local.dao.VodCastDao
 import com.ooustream.iptv.data.local.entity.VodCastEntity
 import com.ooustream.iptv.data.model.*
+import com.ooustream.iptv.data.remote.VodListReader
 import com.ooustream.iptv.data.remote.XtreamApiService
+import com.ooustream.iptv.search.SearchRanker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -13,7 +16,8 @@ import javax.inject.Singleton
 class ContentRepository @Inject constructor(
     private val authRepository: AuthRepository,
     private val credentialStore: CredentialStore,
-    private val vodCastDao: VodCastDao
+    private val vodCastDao: VodCastDao,
+    private val gson: Gson
 ) {
     private fun getApi(): XtreamApiService {
         val creds = credentialStore.load() ?: throw IllegalStateException("Not logged in")
@@ -47,6 +51,18 @@ class ContentRepository @Inject constructor(
     suspend fun getVodStreams(categoryId: String? = null): List<VodStream> {
         val creds = getCreds()
         return getApi().getVodStreams(creds.username, creds.password, categoryId = categoryId)
+    }
+
+    /**
+     * Streams `get_vod_streams` and calls [onItem] for each movie, retaining nothing. For the bulk
+     * list, where the caller keeps only part of it ([CatalogCache] drops adult titles).
+     */
+    suspend fun streamVodStreams(categoryId: String? = null, onItem: (VodStream) -> Unit) {
+        val creds = getCreds()
+        val body = getApi().getVodStreamsRaw(creds.username, creds.password, categoryId = categoryId)
+        withContext(Dispatchers.IO) {
+            body.use { VodListReader.read(it.charStream(), gson, onItem) }
+        }
     }
 
     suspend fun getSeries(categoryId: String? = null): List<Series> {
@@ -101,19 +117,22 @@ class ContentRepository @Inject constructor(
         val castIds = try { vodCastDao.findStreamIdsByCast(q).toSet() } catch (_: Exception) { emptySet() }
 
         return withContext(Dispatchers.Default) {
-            val live = allLive.filter { it.name.contains(q, ignoreCase = true) }
-            val vod = allVod.filter { it.name.contains(q, ignoreCase = true) || it.streamId in castIds }
+            // Ranked, not just filtered: the fragment keeps the first 60 of each list, and until
+            // 2026-11-07 those were the 60 OLDEST matches in catalogue order ("Scream (1996)" was
+            // match #122 of 147 for "scream" and never showed). See SearchRanker.
+            val rq = SearchRanker.parseQuery(q)
+            val live = SearchRanker.rank(allLive, rq, { it.name }, { it.added?.toLongOrNull() ?: 0L })
+            val vod = SearchRanker.rank(allVod, rq, { it.name }, { it.added?.toLongOrNull() ?: 0L }) { it.streamId in castIds }
             // Series bulk list already carries cast + director — match all three.
-            val series = allSeries.filter {
-                it.name.contains(q, ignoreCase = true) ||
-                    it.cast?.contains(q, ignoreCase = true) == true ||
+            val series = SearchRanker.rank(allSeries, rq, { it.name }, { it.lastModified?.toLongOrNull() ?: 0L }) {
+                it.cast?.contains(q, ignoreCase = true) == true ||
                     it.director?.contains(q, ignoreCase = true) == true
             }
 
             // "Starring {actor}" labels — only for results that matched on cast, NOT on the title.
             val lowerQuery = q.lowercase()
             val castMatches = mutableMapOf<String, String>()
-            val castOnlyVod = vod.filter { !it.name.contains(q, ignoreCase = true) }
+            val castOnlyVod = vod.filter { !SearchRanker.titleMatches(it.name, rq) }
             val vodCastById = try {
                 if (castOnlyVod.isEmpty()) emptyMap()
                 else vodCastDao.getForIds(castOnlyVod.map { it.streamId }).associateBy { it.streamId }
@@ -123,7 +142,7 @@ class ContentRepository @Inject constructor(
                     ?.let { castMatches["vod_${v.streamId}"] = it }
             }
             series.forEach { s ->
-                if (!s.name.contains(q, ignoreCase = true)) {
+                if (!SearchRanker.titleMatches(s.name, rq)) {
                     matchedActor(s.cast, lowerQuery)?.let { castMatches["series_${s.seriesId}"] = it }
                 }
             }

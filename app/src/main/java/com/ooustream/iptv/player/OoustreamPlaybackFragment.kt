@@ -276,6 +276,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private val slowTipRebuffersMs = ArrayDeque<Long>()
     private var slowTipWaitJob: Job? = null
     private var lastSeekAtMs = 0L
+    private var liveEndedAtMs = 0L                    // a live stream hit STATE_ENDED (server closed it)
     // v3.7.3: MTK (mt8695/mt8696/mt8167) can hardware-decode AC3/EAC3/DTS fine, but the
     // 6→2 channel downmix through ChannelMixingAudioProcessor is too heavy — audio
     // buffer underruns every 10-15s and the stall-recovery loop kicks in (15s IDLE →
@@ -1479,6 +1480,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         // Live streams should never end — server dropped connection, auto-retry
                         if (viewModel.contentType == ContentType.LIVE) {
                             streamDiagnosticLogger.logAppEvent("LIVE_STREAM_ENDED", "channel=${glue?.title}, auto-retrying")
+                            liveEndedAtMs = android.os.SystemClock.elapsedRealtime()
                             viewLifecycleOwner.lifecycleScope.launch {
                                 delay(1000)
                                 val p = player ?: return@launch
@@ -2367,6 +2369,10 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         val p = player ?: return
         if (slowTipShown || !p.playWhenReady) return
         val now = android.os.SystemClock.elapsedRealtime()
+        // The reconnect after the server closed a live stream is not the viewer's connection:
+        // ckp912's export (2026-11-02) showed the stream closed every 15-35s and the tip told
+        // them to restart their router. Neither a rebuffer nor a long wait counts here.
+        if (now - liveEndedAtMs < SLOW_TIP_RECONNECT_GRACE_MS) return
         if (slowTipPlayed && !rebuildInProgress && now - lastSeekAtMs > SLOW_TIP_SEEK_GRACE_MS) {
             slowTipRebuffersMs.addLast(now)
             while (now - slowTipRebuffersMs.first() > SLOW_TIP_WINDOW_MS) slowTipRebuffersMs.removeFirst()
@@ -4940,6 +4946,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val SLOW_TIP_WINDOW_MS = 5 * 60_000L
         private const val SLOW_TIP_LONG_WAIT_MS = 10_000L
         private const val SLOW_TIP_SEEK_GRACE_MS = 2_000L
+        private const val SLOW_TIP_RECONNECT_GRACE_MS = 5_000L   // re-tune fires 1s after STATE_ENDED
         private const val SLOW_TIP_COOLDOWN_MS = 10 * 60_000L
         /** Process-wide, so the cooldown holds across player screens. */
         private var lastSlowTipAtMs = 0L

@@ -66,7 +66,11 @@ class RecommendationEngine @Inject constructor(
 
             // Get VOD from top categories (most likely to have unseen content)
             val maxVodCount = topVodCategories.firstOrNull()?.totalCount ?: 1
+            // Adult categories are never fetched here: their picks are dropped from Home anyway,
+            // and one of them held 125k titles on 2026-11-04 (a whole-list download per refresh).
+            val adult = adultContentGuard.ensure()
             for (catCount in topVodCategories) {
+                if (adult?.isAdultCategory("vod", catCount.categoryId) == true) continue
                 try {
                     val streams = contentRepository.getVodStreams(catCount.categoryId)
                     val categoryName = contentRepository.getVodCategories()
@@ -121,6 +125,7 @@ class RecommendationEngine @Inject constructor(
             val favCategoryIds = favorites.mapNotNull { it.categoryId }.distinct().take(3)
             for (catId in favCategoryIds) {
                 if (catId in coveredVodCategoryIds) continue // already covered
+                if (adult?.isAdultCategory("vod", catId) == true) continue
                 try {
                     val streams = contentRepository.getVodStreams(catId)
                     streams.filter { "vod_${it.streamId}" !in watchedStreamIds }

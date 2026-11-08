@@ -74,7 +74,7 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         val headerSearchIcon = view.findViewById<ImageView>(R.id.header_search_icon)
         val headerSearchInput = view.findViewById<EditText>(R.id.header_search_input)
 
-        navHints.text = "OK: Series Detail \u2022 Long-press: More Info \u2022 Back: Home"
+        navHints.text = NAV_HINTS
 
         // Mobile: keep the header visible — its search icon is the ONLY in-screen series filter
         // (the bottom nav's Search tab is a different global search). Hide just the decorative
@@ -328,11 +328,14 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
     private fun updateSeriesListInternal(posterAdapter: ArrayObjectAdapter, grid: RecyclerView) {
         val series = viewModel.seriesList.value
-        filteredSeries = if (searchFilter.isEmpty()) {
+        val matching = if (searchFilter.isEmpty()) {
             series
         } else {
-            series.filter { it.name.lowercase().contains(searchFilter) }
+            series.filter { it.name.contains(searchFilter, ignoreCase = true) }
         }
+        // Same cap as the Movies grid: "Recently Added" held 34,533 series on 2026-11-04.
+        filteredSeries = if (matching.size > MAX_GRID_ITEMS) matching.take(MAX_GRID_ITEMS) else matching
+        updateCapNote(matching.size)
         val savedPos = TouchGridSetup.currentPosition(grid)
         val newItems = filteredSeries.map { s ->
             PosterItem(
@@ -356,6 +359,24 @@ class SeriesFragment : Fragment(), KeyEventHandler {
         if (newItems.isNotEmpty()) {
             val target = (if (savedPos >= 0) savedPos else 0).coerceIn(0, newItems.size - 1)
             try { TouchGridSetup.setSelected(grid, target, newItems.size) } catch (_: Exception) { }
+        }
+    }
+
+    /** Swaps the hint line for the "first 3,000" note while a list is cut short. */
+    private fun updateCapNote(total: Int) {
+        val hints = view?.findViewById<TextView>(R.id.series_nav_hints) ?: return
+        val isTv = DeviceUtils.isTV(requireContext())
+        if (total > MAX_GRID_ITEMS) {
+            val where = if (isTv) "Select the search icon at the top" else "Tap the search icon at the top"
+            hints.text = String.format(
+                java.util.Locale.US,
+                "Showing the first %,d of %,d series. %s and type a name to find any of them.",
+                MAX_GRID_ITEMS, total, where
+            )
+            hints.visibility = View.VISIBLE
+        } else {
+            hints.text = NAV_HINTS
+            hints.visibility = if (isTv) View.VISIBLE else View.GONE
         }
     }
 
@@ -429,6 +450,8 @@ class SeriesFragment : Fragment(), KeyEventHandler {
 
     companion object {
         private const val ARG_CATEGORY_ID = "category_id"
+        private const val MAX_GRID_ITEMS = 3_000
+        private const val NAV_HINTS = "OK: Series Detail \u2022 Long-press: More Info \u2022 Back: Home"
 
         fun newInstance(categoryId: String?): SeriesFragment = SeriesFragment().apply {
             arguments = Bundle().apply { putString(ARG_CATEGORY_ID, categoryId) }

@@ -183,7 +183,11 @@ class VodViewModel @Inject constructor(
                         }
                     }
                     else -> {
-                        val streams = contentRepository.getVodStreams(categoryId)
+                        // Streamed and slimmed: one category held 65k-125k titles on 2026-11-04.
+                        val streams = ArrayList<VodStream>()
+                        val slimmer = com.ooustream.iptv.data.remote.VodListReader.Slimmer()
+                        contentRepository.streamVodStreams(categoryId) { streams.add(slimmer.slim(it)) }
+                        streams.trimToSize()
                         _movies.value = contentFilterManager.filterContent("vod", streams) { it.categoryId }
                     }
                 }

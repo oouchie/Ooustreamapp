@@ -49,7 +49,11 @@ class WatchHistoryPruner @Inject constructor(
      * @param liveVodIds every VOD stream id currently in the catalog, UNFILTERED — pass the raw list,
      *   not the parental-filtered one, or blocked categories would look "missing" and be deleted.
      */
-    suspend fun pruneVod(liveVodIds: Collection<Int>) = withContext(Dispatchers.Default) {
+    /**
+     * @param alsoLive sorted ids that exist but are not in [liveVodIds] — the adult titles
+     *   [CatalogCache] leaves out of the movie list. Without them adult history reads as deleted.
+     */
+    suspend fun pruneVod(liveVodIds: Collection<Int>, alsoLive: IntArray = IntArray(0)) = withContext(Dispatchers.Default) {
         if (liveVodIds.isEmpty()) return@withContext
         if (!vodPruned.compareAndSet(false, true)) return@withContext
 
@@ -58,10 +62,12 @@ class WatchHistoryPruner @Inject constructor(
             val history = watchProgressDao.getAllOnce()
                 .filter { it.seriesId == null && it.type.equals("vod", ignoreCase = true) }
                 .map { it.streamId }
-            val dead = history.filter { it !in live }
+            val dead = history.filter { id ->
+                id !in live && (id.toIntOrNull()?.let { alsoLive.binarySearch(it) < 0 } ?: true)
+            }
 
             if (dead.isEmpty()) return@withContext
-            if (skipMassVanish("vod", dead.toSet().size, history.toSet().size, live.size)) return@withContext
+            if (skipMassVanish("vod", dead.toSet().size, history.toSet().size, live.size + alsoLive.size)) return@withContext
             dead.chunked(DELETE_CHUNK).forEach { watchProgressDao.deleteByStreamIds(it) }
             diagnosticLogger.logAppEvent(
                 "WATCH_HISTORY_PRUNED",

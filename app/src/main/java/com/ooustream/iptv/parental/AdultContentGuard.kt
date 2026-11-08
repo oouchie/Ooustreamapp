@@ -2,19 +2,30 @@ package com.ooustream.iptv.parental
 
 import android.content.Context
 import com.ooustream.iptv.common.StreamDiagnosticLogger
+import com.ooustream.iptv.data.repository.CatalogCache
 import com.ooustream.iptv.data.repository.ContentRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,28 +36,34 @@ import javax.inject.Singleton
  * never surface on Home (hero, trending, Top 10, genre rows, For You, Continue Watching,
  * Pick Up & New, For You — Live Now). They stay reachable by browsing their category.
  *
- * Home's history rows carry no category id, so the guard resolves the actual item ids: it
- * fetches the category lists, picks the adult ones by name ([AdultCategoryDetector]), then
- * fetches only those categories' contents. That is a handful of small requests rather than
- * the full catalogue.
+ * Home's history rows carry no category id, so the guard needs the actual item ids. Movie ids
+ * come from [CatalogCache.vodAdult] — the bulk movie list, read once and shared with Home —
+ * series and live ids from fetching just the adult categories (both are small on this panel).
  *
- * [ids] is null until the first successful resolve. Callers must treat null as "unknown" and
- * hold the row back (fail closed) — an adult poster flashing up for a second is the failure we
- * are preventing. The last good result is persisted so a cold start has it immediately.
+ * Ids are held as sorted [IntArray]s and saved to a small binary file. Until v5.2.5 they were a
+ * boxed Set plus a SharedPreferences StringSet: when the provider's adult movie categories grew
+ * to 125k titles (2026-11-04) that settings file stayed in memory for good, was rewritten every
+ * 15 minutes, and the heap ran out (ANRs on the Movies screens).
+ *
+ * [ids] is null until the saved copy loads or the first resolve finishes. Callers must treat null
+ * as "unknown" and hold the row back (fail closed) — an adult poster flashing up for a second is
+ * the failure we are preventing.
  */
 @Singleton
 class AdultContentGuard @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     private val contentRepository: ContentRepository,
+    private val catalogCache: CatalogCache,
     private val diagnosticLogger: StreamDiagnosticLogger
 ) {
-    data class AdultIds(
+    /** The three id arrays MUST be sorted ascending (they are binary-searched). */
+    class AdultIds(
         val vodCategories: Set<String>,
         val seriesCategories: Set<String>,
         val liveCategories: Set<String>,
-        val vod: Set<Int>,
-        val series: Set<Int>,
-        val live: Set<Int>
+        private val vod: IntArray,
+        private val series: IntArray,
+        private val live: IntArray
     ) {
         fun isAdultCategory(section: String, categoryId: String?): Boolean = when (section) {
             "vod" -> categoryId in vodCategories
@@ -56,26 +73,68 @@ class AdultContentGuard @Inject constructor(
         }
 
         /** [type] is "vod" / "series" / "live"; [id] is a stream id, or a series id for "series". */
-        fun isAdultItem(type: String, id: Int?): Boolean = when (type) {
-            "vod" -> id in vod
-            "series" -> id in series
-            "live" -> id in live
-            else -> false
+        fun isAdultItem(type: String, id: Int?): Boolean {
+            if (id == null) return false
+            val ids = when (type) {
+                "vod" -> vod
+                "series" -> series
+                "live" -> live
+                else -> return false
+            }
+            return ids.binarySearch(id) >= 0
+        }
+
+        internal fun counts() = "vod=${vod.size} series=${series.size} live=${live.size}"
+
+        internal fun writeTo(out: DataOutputStream) {
+            out.writeInt(FILE_MAGIC)
+            for (set in listOf(vodCategories, seriesCategories, liveCategories)) {
+                out.writeInt(set.size)
+                set.forEach { out.writeUTF(it) }
+            }
+            for (arr in listOf(vod, series, live)) {
+                out.writeInt(arr.size)
+                arr.forEach { out.writeInt(it) }
+            }
+        }
+
+        internal companion object {
+            fun readFrom(input: DataInputStream): AdultIds? {
+                if (input.readInt() != FILE_MAGIC) return null
+                val sets = List(3) { List(input.readInt()) { input.readUTF() }.toSet() }
+                val arrays = List(3) { IntArray(input.readInt()) { input.readInt() }.also { it.sort() } }
+                return AdultIds(sets[0], sets[1], sets[2], arrays[0], arrays[1], arrays[2])
+            }
         }
     }
 
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val mutex = Mutex()
     private var lastResolvedAt = 0L
+    private val file = File(context.filesDir, FILE_NAME)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _ids = MutableStateFlow(loadPersisted())
+    private val _ids = MutableStateFlow<AdultIds?>(null)
     val ids: StateFlow<AdultIds?> = _ids.asStateFlow()
+
+    /** Loads the saved copy off the main thread; [ensure] waits for it before deciding to resolve. */
+    private val loaded = scope.async {
+        deleteOldPrefs()
+        val saved = try {
+            if (file.exists()) {
+                DataInputStream(BufferedInputStream(file.inputStream())).use { AdultIds.readFrom(it) }
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+        if (saved != null && _ids.value == null) _ids.value = saved
+    }
 
     /**
      * Returns current ids, resolving first if they are unknown or stale. Returns the previous
      * value (possibly null) if the resolve fails — never a partial set.
      */
     suspend fun ensure(): AdultIds? {
+        loaded.await()
         val current = _ids.value
         if (current != null && System.currentTimeMillis() - lastResolvedAt < TTL_MS) return current
         return mutex.withLock {
@@ -85,7 +144,7 @@ class AdultContentGuard @Inject constructor(
                 val resolved = resolve()
                 lastResolvedAt = System.currentTimeMillis()
                 _ids.value = resolved
-                persist(resolved)
+                scope.launch { persist(resolved) }
                 resolved
             } catch (c: CancellationException) {
                 throw c
@@ -97,69 +156,63 @@ class AdultContentGuard @Inject constructor(
     }
 
     private suspend fun resolve(): AdultIds = coroutineScope {
-        val vodCatsJob = async { contentRepository.getVodCategories() }
+        // Movies: the ids the shared catalogue set aside while reading the bulk list.
+        val vodJob = async { catalogCache.vodAdult() }
         val seriesCatsJob = async { contentRepository.getSeriesCategories() }
         val liveCatsJob = async { contentRepository.getLiveCategories() }
 
-        val vodCats = AdultCategoryDetector.findAdultCategories(vodCatsJob.await()).map { it.categoryId }.toSet()
         val seriesCats = AdultCategoryDetector.findAdultCategories(seriesCatsJob.await()).map { it.categoryId }.toSet()
         val liveCats = AdultCategoryDetector.findAdultCategories(liveCatsJob.await()).map { it.categoryId }.toSet()
 
         // Any failure throws out of here, so a half-resolved set is never published.
         val gate = Semaphore(4)
-        val vod = vodCats.map { id -> async { gate.withPermit { contentRepository.getVodStreams(id).map { it.streamId } } } }
         val series = seriesCats.map { id -> async { gate.withPermit { contentRepository.getSeries(id).map { it.seriesId } } } }
         val live = liveCats.map { id -> async { gate.withPermit { contentRepository.getLiveStreams(id).map { it.streamId } } } }
+        val vod = vodJob.await()
 
         val result = AdultIds(
-            vodCategories = vodCats,
+            vodCategories = vod.categories,
             seriesCategories = seriesCats,
             liveCategories = liveCats,
-            vod = vod.awaitAll().flatten().toSet(),
-            series = series.awaitAll().flatten().toSet(),
-            live = live.awaitAll().flatten().toSet()
+            vod = vod.ids,
+            series = series.awaitAll().flatten().toIntArray().also { it.sort() },
+            live = live.awaitAll().flatten().toIntArray().also { it.sort() }
         )
         diagnosticLogger.logAppEvent(
             "ADULT_GUARD",
-            "categories vod=${vodCats.size} series=${seriesCats.size} live=${liveCats.size}, " +
-                "items vod=${result.vod.size} series=${result.series.size} live=${result.live.size}"
+            "categories vod=${vod.categories.size} series=${seriesCats.size} live=${liveCats.size}, " +
+                "items ${result.counts()}"
         )
         result
     }
 
-    private fun persist(ids: AdultIds) {
-        prefs.edit()
-            .putStringSet(K_VOD_CATS, ids.vodCategories)
-            .putStringSet(K_SERIES_CATS, ids.seriesCategories)
-            .putStringSet(K_LIVE_CATS, ids.liveCategories)
-            .putStringSet(K_VOD, ids.vod.mapTo(HashSet()) { it.toString() })
-            .putStringSet(K_SERIES, ids.series.mapTo(HashSet()) { it.toString() })
-            .putStringSet(K_LIVE, ids.live.mapTo(HashSet()) { it.toString() })
-            .apply()
+    private suspend fun persist(ids: AdultIds) = withContext(Dispatchers.IO) {
+        try {
+            val tmp = File(file.parentFile, "$FILE_NAME.tmp")
+            DataOutputStream(BufferedOutputStream(tmp.outputStream())).use { ids.writeTo(it) }
+            if (!tmp.renameTo(file)) tmp.delete()
+        } catch (_: Exception) {
+            // Next launch resolves from the network instead; nothing else depends on the file.
+        }
     }
 
-    private fun loadPersisted(): AdultIds? {
-        if (!prefs.contains(K_VOD)) return null
-        fun strings(key: String) = prefs.getStringSet(key, null)?.toSet() ?: emptySet()
-        fun ints(key: String) = strings(key).mapNotNull { it.toIntOrNull() }.toSet()
-        return AdultIds(
-            vodCategories = strings(K_VOD_CATS),
-            seriesCategories = strings(K_SERIES_CATS),
-            liveCategories = strings(K_LIVE_CATS),
-            vod = ints(K_VOD),
-            series = ints(K_SERIES),
-            live = ints(K_LIVE)
-        )
+    /**
+     * v5.0.3–v5.2.4 kept the ids in SharedPreferences (125k strings on 2026-11-04). Delete the
+     * file without opening it — opening it would load every entry into memory.
+     */
+    private fun deleteOldPrefs() {
+        try {
+            val dir = File(context.applicationInfo.dataDir, "shared_prefs")
+            File(dir, "$OLD_PREFS.xml").delete()
+            File(dir, "$OLD_PREFS.xml.bak").delete()
+        } catch (_: Exception) {
+        }
     }
 
     private companion object {
-        const val PREFS = "adult_content_guard"
+        const val OLD_PREFS = "adult_content_guard"
+        const val FILE_NAME = "adult_content_guard.bin"
+        const val FILE_MAGIC = 0x4F414731 // "OAG1"
         const val TTL_MS = 15 * 60 * 1000L
-        const val K_VOD_CATS = "vod_categories"
-        const val K_SERIES_CATS = "series_categories"
-        const val K_LIVE_CATS = "live_categories"
-        const val K_VOD = "vod_ids"
-        const val K_SERIES = "series_ids"
-        const val K_LIVE = "live_ids"
     }
 }

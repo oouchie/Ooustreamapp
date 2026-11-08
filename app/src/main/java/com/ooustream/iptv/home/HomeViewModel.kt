@@ -350,6 +350,9 @@ class HomeViewModel @Inject constructor(
             // blocked categories look deleted. The prune itself runs off the hero critical path
             // (in the parallel block below) so it never delays first paint.
             val vodIdsForPrune = rawVodStreams.map { it.streamId }
+            // The adult titles the catalog leaves out still exist: the prune and the favorites
+            // re-match must not read them as deleted. Same download as rawVodStreams.
+            val adultVodIds = catalogCache.vodAdult().ids
             // Fail closed: no adult ids → no catalog rows, rather than unfiltered ones.
             val adult = adultContentGuard.ensure() ?: throw IllegalStateException("adult ids unavailable")
             val vodStreams = contentFilterManager.filterContent("vod", rawVodStreams) { it.categoryId }
@@ -389,8 +392,8 @@ class HomeViewModel @Inject constructor(
                     try {
                         refreshHistoryArt(vod = rawVodStreams, series = null)
                         // Favorites first: they move to the new ids by name (v5.2.4).
-                        favoriteRemapper.remapVod(rawVodStreams)
-                        watchHistoryPruner.pruneVod(vodIdsForPrune)
+                        favoriteRemapper.remapVod(rawVodStreams, adultVodIds)
+                        watchHistoryPruner.pruneVod(vodIdsForPrune, adultVodIds)
                     } catch (c: CancellationException) {
                         throw c
                     } catch (_: Exception) {
