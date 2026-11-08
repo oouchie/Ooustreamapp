@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.4 (versionCode 117)
+- **Current Version**: 5.2.5 (versionCode 118)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -30,7 +30,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 > - Bumping `version_name`/`version_code` here is all that is needed; **no portal
 >   deploy** is required for the assistant to learn about a release.
 
-## Search ranks results (2026-11-07, in the working tree — not released)
+## Search ranks results (v5.2.5, released 2026-11-07)
 `search/SearchRanker.kt` (pure Kotlin, JUnit: `app/src/test/.../SearchRankerTest.kt`, 7 cases from the live
 catalogue; run `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew
 :app:testDebugUnitTest --tests '*SearchRankerTest'`). **Why:** `ContentRepository.search` filtered with a raw
@@ -44,8 +44,9 @@ trailing year in the query is parsed and PREFERRED (other years still listed, lo
 ASCII fast path (no regex / Normalizer) + first-token `contains` pre-filter — 135k synthetic titles, best of 5
 on an M-series Mac: "scream" 17 ms (old contains 7 ms), "a" 25 ms. Also used for live and series rows.
 `testImplementation("junit:junit:4.13.2")` was added for this — the app had no JVM test source set before.
-⬜ Release as v5.2.5 (versionCode 118) with a customer changelog line, e.g. "Search now finds the title you
-typed first, and understands a year after the name (Scream 1996)." Not yet verified on a device.
+✅ Released as **v5.2.5 (versionCode 118)** on 2026-11-07 (commit bc20f68, GitHub release with both APKs, `update.json`
+`mandatory:false`) together with the 2026-11-05 memory work. Downloader code 1125229 still serves 5.2.4 — a fresh install is
+offered 5.2.5 in-app. ⚠️ Not yet verified on a device: type "scream", "scream 1996", "jay z", "doctor who 2005" on .82 / .129.
 
 ## PERFORMANCE REQUIREMENTS
 

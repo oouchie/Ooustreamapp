@@ -336,5 +336,5 @@ matches in `added`-ascending order, "Scream (1996)" at #122, row shows 60. "scre
 - [x] JUnit 4 added to the build; `SearchRankerTest` 7 cases pass (`:app:testDebugUnitTest`).
 - [x] `:app:assembleDebug` clean (both ABIs). Timing at 135k synthetic titles: 17 ms vs 7 ms old.
 - [ ] Device check on .82 / .129: type "scream", "scream 1996", "jay z", "doctor who 2005".
-- [ ] Release v5.2.5 (118): bump, `update.json`, assembleRelease, GitHub release. NOTE the working tree also
-      carries the unreleased 2026-11-05 adult-guard / streamed-list work — it ships with the same build.
+- [x] Released v5.2.5 (118) 2026-11-07 — commit bc20f68, GitHub release v5.2.5 (arm64 18.4 MB, arm32 17.0 MB), `update.json`
+      live. The 2026-11-05 adult-guard / streamed-list work shipped in the same build.
