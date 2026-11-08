@@ -275,6 +275,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
     private var slowTipPlayed = false                 // this stream reached READY, so BUFFERING is a rebuffer
     private val slowTipRebuffersMs = ArrayDeque<Long>()
     private var slowTipWaitJob: Job? = null
+    private var slowTipRebufferJob: Job? = null       // counts the rebuffer once it has lasted SLOW_TIP_MIN_REBUFFER_MS
     private var lastSeekAtMs = 0L
     private var liveEndedAtMs = 0L                    // a live stream hit STATE_ENDED (server closed it)
     // v3.7.3: MTK (mt8695/mt8696/mt8167) can hardware-decode AC3/EAC3/DTS fine, but the
@@ -1460,6 +1461,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         rebuildInProgress = false   // safety net: never leave saves blocked once ready
                         stallDetectorJob?.cancel()
                         slowTipWaitJob?.cancel()
+                        slowTipRebufferJob?.cancel()
                         syncSlowTipStream()
                         slowTipPlayed = true
                         retryCount = 0
@@ -1476,6 +1478,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
                         showBufferingOverlay(false)
                         stallDetectorJob?.cancel()
                         slowTipWaitJob?.cancel()
+                        slowTipRebufferJob?.cancel()
                         frameWatchdogJob?.cancel()
                         // Live streams should never end — server dropped connection, auto-retry
                         if (viewModel.contentType == ContentType.LIVE) {
@@ -1856,10 +1859,15 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
             mi.totalMem / (1024f * 1024f * 1024f)
         }
         val lowMem = am.memoryClass <= 192 && totalMemGb < 1.4f
+        // v5.2.6: VOD/SERIES buffers are byte-capped from the heap limit on every tier (see
+        // BufferConfigs). Logged so an export shows how much heap the buffer was allowed.
+        val maxHeapMb = Runtime.getRuntime().maxMemory() shr 20
+        val vodCapMb = (if (lowMem) BufferConfigs.LOW_MEMORY_TARGET_BUFFER_BYTES else BufferConfigs.heapTargetBufferBytes()) shr 20
         streamDiagnosticLogger.logAppEvent(
             "BUFFER_CONFIG",
             "memoryClass=${am.memoryClass}, totalMem=${"%.2f".format(totalMemGb)}GB, " +
-                "lowMem=$lowMem, type=${viewModel.contentType}, tier=${qualityPolicy.tier.value}"
+                "lowMem=$lowMem, maxHeap=${maxHeapMb}MB, vodTargetBytes=${vodCapMb}MB, " +
+                "type=${viewModel.contentType}, tier=${qualityPolicy.tier.value}"
         )
         return if (lowMem) {
             BufferConfigs.forLowMemory(viewModel.contentType)
@@ -2355,6 +2363,7 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         slowTipStreamUrl = url
         slowTipShown = false
         slowTipPlayed = false
+        slowTipRebufferJob?.cancel()
         slowTipRebuffersMs.clear()
     }
 
@@ -2374,11 +2383,22 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         // them to restart their router. Neither a rebuffer nor a long wait counts here.
         if (now - liveEndedAtMs < SLOW_TIP_RECONNECT_GRACE_MS) return
         if (slowTipPlayed && !rebuildInProgress && now - lastSeekAtMs > SLOW_TIP_SEEK_GRACE_MS) {
-            slowTipRebuffersMs.addLast(now)
-            while (now - slowTipRebuffersMs.first() > SLOW_TIP_WINDOW_MS) slowTipRebuffersMs.removeFirst()
-            if (slowTipRebuffersMs.size >= SLOW_TIP_REBUFFERS) {
-                showSlowConnectionTip("rebuffers=${slowTipRebuffersMs.size}")
-                return
+            // v5.2.6: a rebuffer counts only once it has lasted SLOW_TIP_MIN_REBUFFER_MS. kiarawil's
+            // export (2026-11-07): seven BUFFERING→READY flips of 7–104ms in one minute — the
+            // player hitching on a full Java heap, not the network — pushed the count to 3 and the
+            // tip told her to restart the router. READY/ENDED cancel the job, so a flip that
+            // recovers first never counts.
+            slowTipRebufferJob?.cancel()
+            slowTipRebufferJob = viewLifecycleOwner.lifecycleScope.launch {
+                delay(SLOW_TIP_MIN_REBUFFER_MS)
+                val q = player ?: return@launch
+                if (q.playbackState != Player.STATE_BUFFERING || !q.playWhenReady) return@launch
+                val at = android.os.SystemClock.elapsedRealtime()
+                slowTipRebuffersMs.addLast(at)
+                while (at - slowTipRebuffersMs.first() > SLOW_TIP_WINDOW_MS) slowTipRebuffersMs.removeFirst()
+                if (slowTipRebuffersMs.size >= SLOW_TIP_REBUFFERS) {
+                    showSlowConnectionTip("rebuffers=${slowTipRebuffersMs.size}")
+                }
             }
         }
         slowTipWaitJob?.cancel()
@@ -2400,6 +2420,20 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         if (slowTipShown || !DeviceUtils.isTV(ctx)) return
         val now = android.os.SystemClock.elapsedRealtime()
         if (lastSlowTipAtMs != 0L && now - lastSlowTipAtMs < SLOW_TIP_COOLDOWN_MS) return
+        // v5.2.6: the three steps are about the stick and the router. With the Java heap nearly
+        // full the player is hitching on garbage collection, not on the network (kiarawil,
+        // 2026-11-07: 383MB/384MB, GC pauses of 1–4s, then an ANR, while the tip blamed the
+        // connection). Stay quiet and record why; a later genuine stall can still show it.
+        val rt = Runtime.getRuntime()
+        val heapUsed = rt.totalMemory() - rt.freeMemory()
+        if (heapUsed > rt.maxMemory() * SLOW_TIP_HEAP_SUPPRESS_FRACTION) {
+            streamDiagnosticLogger.logAppEvent(
+                "SLOW_CONNECTION_TIP_SUPPRESSED",
+                "reason=heap, used=${heapUsed shr 20}MB, max=${rt.maxMemory() shr 20}MB, $reason, " +
+                    "type=${viewModel.contentType}"
+            )
+            return
+        }
         slowTipShown = true
         lastSlowTipAtMs = now
         streamDiagnosticLogger.logAppEvent(
@@ -4948,6 +4982,8 @@ class OoustreamPlaybackFragment : VideoSupportFragment() {
         private const val SLOW_TIP_SEEK_GRACE_MS = 2_000L
         private const val SLOW_TIP_RECONNECT_GRACE_MS = 5_000L   // re-tune fires 1s after STATE_ENDED
         private const val SLOW_TIP_COOLDOWN_MS = 10 * 60_000L
+        private const val SLOW_TIP_MIN_REBUFFER_MS = 500L      // shorter flips are the player, not the pipe
+        private const val SLOW_TIP_HEAP_SUPPRESS_FRACTION = 0.90
         /** Process-wide, so the cooldown holds across player screens. */
         private var lastSlowTipAtMs = 0L
         // bufferedPosition jitter tolerance — anything above this counts as real progress.

@@ -16,7 +16,7 @@ Native Kotlin/Leanback IPTV app for Android TV (Fire TV Stick primary target).
 - **Tech**: Kotlin 2.2 (KSP2, Hilt 2.57, Room 2.7), Compose for TV (Home, Movies, Series, Live TV screens since v5.2.0), Leanback, Media3 1.10.0 ExoPlayer, local FFmpeg video+audio extension (built from PR #1591), Hilt, Room, Retrofit, Coil
 - **Min SDK**: 23 | **Target SDK**: 36 | **compileSdk**: 36 | **AGP**: 8.7.3
 - **Theme**: Dark TV (#0A0A0A bg), gold focus (#FFC107), corner brackets
-- **Current Version**: 5.2.5 (versionCode 118)
+- **Current Version**: 5.2.6 (versionCode 119)
 
 > ⚠️ **`update.json` is now a SUPPORT contract, not just the OTA manifest.** The
 > customer portal's AI support assistant fetches it live
@@ -415,6 +415,12 @@ Conventions for interpreting the exported debug report so customer reports aren'
   sorted IntArrays in `filesDir/adult_content_guard.bin`, movie lists are streamed + slimmed
   (`VodListReader.Slimmer`), and the Movies/Series grids show the first 3,000 with a "use the search icon"
   note. Plan + measurements: `tasks/todo.md`.
+- **Micro-rebuffers are the heap, not the pipe.** A burst of `BUFFER_COMPLETE took=` under ~200ms with
+  `FRAMES_DROPPED rate=` above 10/s, `AUDIO_UNDERRUN`, and `SYSTEM/MEMORY free=0MB` (the ANR trace's
+  `Heap: 0% free`) is the garbage collector stalling the player, not the network — the slow-connection tip
+  fired on exactly that for kiarawil (2026-11-07). Read `BUFFER_CONFIG maxHeap= vodTargetBytes=` (v5.2.6)
+  next to the title's bitrate. And `PROCESS_EXIT reason=LOW_MEMORY importance=400` is background reclaim
+  the user never saw — not a crash (no longer mirrored to the crash log since v5.2.6).
 - **Radio channels have no video track.** A live channel with only an audio track (the "Radio:"
   categories, AAC ~172 kbps) never logs `DECODER_INIT` video or a first frame. Before v5.2.4 the
   frame watchdog read that as a frozen picture and ended in a false "format not supported".
@@ -590,6 +596,44 @@ Fire TV Stick has 1GB RAM. Total feature overhead: ~3-6MB. Audio-only mode saves
 - Test migrations by installing the old APK, creating data, then installing the new APK — verify favorites, watch progress, and series tracking survive.
 
 ## Version Release History
+
+- **v5.2.6 (versionCode 119, released 2026-11-08) — VOD/Series buffer capped by the heap, honest
+  slow-connection tip, quieter crash log.** Driven by kiarawil's export
+  (`2026-11-07_21-36-kiarawil-DL-99A47A99`, AFTKRT mt8696 1.6GB, 5.2.4, "buffering"). Verified from the
+  log: Live TV all day and Reasonable Doubt S1E2 (49 min) were perfect; S1E3 (episode id 1216707) stopped
+  being SERVED ~3.5 min in on all six attempts (184MB, then 0KB per 30s window, live channels fine in
+  between) = provider, not app; Inconceivable (2017) (1080p AVC + DTS-HD 6ch, **21.5 Mbps** measured on .84
+  via Fire OS `MediaCodecLogger StreamAvgBitrateInKbps`) took the Java heap 44MB → 219MB in 15s → 383/384MB
+  in 5 min, 121 GC cycles avg 1s / max 4.1s, dropped frames to 27/s, audio underruns, seven 7–104ms
+  BUFFERING flips, the slow tip fired ("rebuffers=3"), then ANR at 21:29:38 (pss 598MB). **Mechanism
+  (Media3 1.10.0 `DefaultLoadControl`, read from the tagged source):** with
+  `prioritizeTimeOverSizeThresholds(true)` loading ignores the byte target until `minBufferMs` (25s on HIGH)
+  and then fills to `maxBufferMs` (60s) OR Media3's DEFAULT target (~141MB = 2000 video + 200 audio 64KB
+  segments) — 141MB of buffer on top of the baseline is the 315–336MB live set in the export.
+  **(1) `BufferConfigs`:** VOD/SERIES on every tier now `setTargetBufferBytes(heapTargetBufferBytes())` =
+  20% of `Runtime.maxMemory()` (floor 20MB, ceiling 128MB: 384MB heap → 76MB, 256MB → 51MB) with
+  `setPrioritizeTimeOverSizeThresholds(false)` — the v5.2.2 low-memory pattern (`shouldStartPlayback` also
+  returns true once the target is reached, so a cap can never deadlock a start). LIVE unchanged; the Home
+  hero trailer inherits via `forContentType(VOD)`. `BUFFER_CONFIG` now logs `maxHeap=` and `vodTargetBytes=`.
+  JUnit `BufferConfigsTest` (5 cases). **(2) Slow-connection tip:** a rebuffer counts only once it has lasted
+  500ms (`SLOW_TIP_MIN_REBUFFER_MS`; the job is cancelled by READY/ENDED/a new stream), and the tip is
+  suppressed with `SLOW_CONNECTION_TIP_SUPPRESSED reason=heap` when the heap is ≥90% used — the three steps
+  are about the stick and the router, and kiarawil was told to restart hers while our heap was the fault.
+  **(3) `SessionIntegrityTracker`:** `LOW_MEMORY` exits reach the crash log only at importance ≤ VISIBLE
+  (200). kiarawil's ten were all `importance=400` (cached background reclaim, invisible to her) and read as
+  "crashed ten times". **Device-verified on .84 (AFTKRT, release build, Inconceivable via
+  `ooustream://vod/171339`, `dumpsys meminfo` Dalvik HeapAlloc every 10–20s):** 5.2.5 climbed 153 → 230MB in
+  160s and was still rising; 5.2.6 rose to 127MB (fresh process) / 174MB (later run) within 20s and stayed
+  FLAT for 160–180s, PLAYING throughout, decoder at 23.96 fps, no ANR/LMK. One run saw the player replaced by
+  a 4K HEVC title at 119s; the stick's input queue then held five remote presses that were not mine
+  (someone in the room), it did not recur in two further runs, and it is not attributed to code. **.129
+  (Ooustick, API 29, low-memory path unchanged):** same title played, heap 37 → 65MB over 90s, one expected
+  audio rebuild at 8s, one rebuffer at 45–60s (the Ooustick pulled ~25 Mbps with short rebuffers on the
+  stefanig repro too), same pid, no crash. **NOT verified:** the tip's 500ms gate and heap suppression on a
+  device; the LOW_MEMORY importance filter against a real kill; a 4K remux under the cap (76MB ≈ 6–10s of a
+  60–95 Mbps file — .84's connection did not sustain FNAF 4K at 95 Mbps before this either). Plan + review:
+  `tasks/todo.md`. **Provider follow-up:** Reasonable Doubt S1 E3 (episode 1216707, `1216707.mkv`) stops
+  serving a few minutes in — reproduce on .82/.84 before ticketing.
 
 - **v5.2.4 (versionCode 117, released 2026-11-02; built 2026-11-01) — Favorites after the provider's id change, 4K
   trial out, remote-friendly Favorites, Live TV categories, radio channels.** Driven by the

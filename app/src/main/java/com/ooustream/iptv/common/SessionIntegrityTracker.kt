@@ -88,6 +88,16 @@ object SessionIntegrityTracker {
         "ANR", "CRASH_NATIVE", "LOW_MEMORY", "EXCESSIVE_RESOURCES", "SIGNALED", "INIT_FAILURE"
     )
 
+    /**
+     * LOW_MEMORY at importance SERVICE/CACHED is the kernel reclaiming a backgrounded app nobody
+     * was looking at — routine, and invisible to the viewer. kiarawil's export (2026-11-07)
+     * carried ten of them in 24 hours, every one at importance 400 with a 0–130MB PSS, and the
+     * crash log read as "crashed ten times". Only a kill while VISIBLE or better earns a line.
+     */
+    private fun isRoutineReclaim(reason: String, info: ApplicationExitInfo): Boolean =
+        reason == "LOW_MEMORY" &&
+            info.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+
     /** Clocks drift a little across a boot; anything under this is the same boot. */
     private const val BOOT_EPOCH_TOLERANCE_MS = 10_000L
 
@@ -271,7 +281,7 @@ object SessionIntegrityTracker {
             // handler already wrote that entry, with a stack trace, and duplicating it would
             // evict a real trace from the capped file. The ANR thread dump stays in the
             // diagnostic log; this entry is the one-line record that has to survive.
-            if (reason in PERSISTED_EXIT_REASONS) {
+            if (reason in PERSISTED_EXIT_REASONS && !isRoutineReclaim(reason, info)) {
                 CrashLogger.recordEvent(context, "PROCESS_EXIT", details)
             }
             appendTraceIfPresent(info, logger)

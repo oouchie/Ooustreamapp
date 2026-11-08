@@ -1,9 +1,9 @@
 {
-  "version_name": "5.2.5",
-  "version_code": 118,
-  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.5/app-armeabi-v7a-release.apk",
-  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.5/app-arm64-v8a-release.apk",
-  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.5/app-armeabi-v7a-release.apk",
-  "changelog": "v5.2.5 — Search finds what you typed, and the app uses much less memory\n\n• Search now shows the closest match first. Typing \"Scream\" puts Scream (1996) and its 4K copy at the top, instead of 60 older look-alikes.\n\n• You can type the year after a title (\"Scream 1996\", \"Doctor Who 2005\") and Search understands it.\n\n• Search ignores accents and punctuation, so \"Jay Z\" finds \"JAŸ-Z in 8\" and \"Spider Man\" finds \"Spider-Man\".\n\n• The movie library grew to over 135,000 titles this month. The app now loads it in a lighter way, so Home, Movies and Search use far less memory, and the freezes some Fire TV Sticks saw after October 29 should stop.\n\n• Very large categories show their first 3,000 titles with a note. Use the search icon at the top of the category to find anything in it.\n\n• Adult categories are still there, but their titles no longer appear in Search, on Home, or in the Movies \"By decade\" rows.\n\n• A live channel that reconnects on its own no longer triggers the slow-connection tip.",
+  "version_name": "5.2.6",
+  "version_code": 119,
+  "download_url": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.6/app-armeabi-v7a-release.apk",
+  "download_url_arm64": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.6/app-arm64-v8a-release.apk",
+  "download_url_arm32": "https://github.com/oouchie/Ooustreamapp/releases/download/v5.2.6/app-armeabi-v7a-release.apk",
+  "changelog": "v5.2.6 — Steadier playback of large movie files on Fire TV Sticks\n\n• Movies and episodes with very large files (Blu-ray quality video with DTS or TrueHD sound) could stutter, lose sound for a second at a time, and after a few minutes freeze the whole app. The app now keeps a sensible amount of video in memory for these titles, sized to what your device can hold, so they play steadily.\n\n• The \"slow connection\" tip no longer appears for split-second pauses, or when the slowdown was inside the app rather than on your network. When you see it now, it is about your connection.\n\n• Crash Logs no longer list the system quietly closing Ooustream in the background as a crash.",
   "mandatory": false
 }

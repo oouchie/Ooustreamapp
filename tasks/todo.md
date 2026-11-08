@@ -1,3 +1,43 @@
+# 2026-11-07 — v5.2.6 (versionCode 119): byte-capped VOD buffer, honest slow-tip, quieter crash log
+
+Source: kiarawil's export `2026-11-07_21-36-kiarawil-DL-99A47A99` (AFTKRT mt8696, 1.6GB, 5.2.4), reported as
+"buffering". Verified from the log: Live TV + Reasonable Doubt S1E2 (49 min) were perfect; S1E3 stopped being
+served by the provider 3.5 min in (6 attempts, 184MB then 0KB/30s windows, live channels fine in between);
+Inconceivable (2017) (1080p AVC + DTS-HD 6ch) took the Java heap 44MB → 219MB (15s) → 383/384MB (5 min),
+121 GC cycles avg 1s / max 4.1s, dropped frames up to 27/s, audio underruns, seven 7–104ms BUFFERING flips,
+the slow-connection tip fired ("rebuffers=3"), then ANR at 21:29:38 (pss 598MB). Ten LOW_MEMORY PROCESS_EXIT
+rows in the crash log were all importance=400 (cached) = invisible background reclaim.
+
+Mechanism (Media3 1.10.0 `DefaultLoadControl`, verified from the tagged source): with
+`prioritizeTimeOverSizeThresholds(true)` loading ignores the byte target until `minBufferMs` (25s on HIGH),
+then stops at `maxBufferMs` (60s) OR the DEFAULT target (~141MB = 2000+200 × 64KB segments). 141MB of
+buffer + ~200MB baseline = the observed 315–336MB live set on a 384MB heap.
+
+## Plan
+- [x] `BufferConfigs`: VOD/SERIES on every tier get `setTargetBufferBytes(heapTargetBufferBytes())` =
+      20% of `Runtime.maxMemory()` (floor 20MB, ceiling 128MB; 384MB heap → 76MB, 256MB → 51MB) and
+      `setPrioritizeTimeOverSizeThresholds(false)` — the v5.2.2 low-memory pattern, device-verified then.
+      LIVE unchanged. Hero trailer inherits (it uses `forContentType(VOD)`). JUnit for the cap maths.
+- [x] `buildLoadControl()` logs `maxHeap=` and `vodTargetBytes=` on `BUFFER_CONFIG`.
+- [x] Slow-connection tip: a rebuffer counts only after it has lasted 500ms (job cancelled by READY/ENDED);
+      the tip is suppressed (`SLOW_CONNECTION_TIP_SUPPRESSED reason=heap`) when the heap is ≥90% used.
+- [x] `SessionIntegrityTracker`: LOW_MEMORY exits persist to the crash log only at importance ≤ VISIBLE (200).
+- [x] Bump 5.2.6 / 119, `update.json` (customer changelog), `assembleRelease`, device check on .84 (AFTKRT,
+      same model as kiarawil) + .129 (Ooustick), commit, push, GitHub release with both APKs, CLAUDE.md.
+
+## Review (2026-11-08)
+- JVM: `BufferConfigsTest` 5/5, `SearchRankerTest` 7/7. `assembleRelease` clean (the `lintVitalAnalyzeRelease`
+  ASM `NegativeArraySizeException` is the known non-fatal Compose-lint noise; BUILD SUCCESSFUL).
+- .84 AFTKRT, Inconceivable (2017) = 1080p AVC + DTS-HD, 21.5 Mbps (Fire OS MediaCodecLogger):
+  5.2.5 Dalvik HeapAlloc 153 → 230MB over 160s, still rising. 5.2.6: 101 → 127MB by 20s then flat to 160s
+  (fresh process); 2nd run 128 → 130MB flat; 3rd run 146 → 174MB by 20s then flat to 180s, one fragment,
+  PLAYING the whole time. One run switched to a 4K HEVC title at 119s with five non-adb remote presses in the
+  input queue soon after — not reproduced, not attributed to code.
+- .129 Ooustick (API 29, low-memory 20MB cap unchanged): same title, HeapAlloc 37 → 65MB over 90s, one
+  rebuffer at 45–60s, same pid, no crash.
+- Not device-verified: 500ms rebuffer gate, heap suppression of the tip, LOW_MEMORY importance filter.
+
+
 # 2026-11-04 triage — 4 customer exports (Oouchie247, stefanig, qwen2384, ckp912) — built + device-checked, NOT released
 
 ## What the logs show (verified from the exports)
